@@ -19,7 +19,7 @@ function regenerate_emails(frm) {
             );
             
             frappe.call({
-                method: 'ai_crm.ai_crm.doctype.communication_log.communication_log.regenerate_emails_for_log',
+                method: 'finbyzreach.ai_email_outreach.doctype.communication_log.communication_log.regenerate_emails_for_log',
                 args: {
                     'log_name': frm.doc.name
                 },

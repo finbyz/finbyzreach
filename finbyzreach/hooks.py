@@ -127,23 +127,23 @@ required_apps = ["finbyz/finbyzai"]
 # Scheduled Tasks
 # ---------------
 
-# scheduler_events = {
-# 	"all": [
-# 		"finbyzreach.tasks.all"
-# 	],
-# 	"daily": [
-# 		"finbyzreach.tasks.daily"
-# 	],
-# 	"hourly": [
-# 		"finbyzreach.tasks.hourly"
-# 	],
-# 	"weekly": [
-# 		"finbyzreach.tasks.weekly"
-# 	],
-# 	"monthly": [
-# 		"finbyzreach.tasks.monthly"
-# 	],
-# }
+scheduler_events = {
+	# "all": [
+	# 	"finbyzreach.tasks.all"
+	# ],
+	"daily": [
+		"finbyzreach.tasks.daily.email_sender.enqueue_scheduled_emails",
+	],
+	# "hourly": [
+	# 	"finbyzreach.tasks.hourly"
+	# ],
+	# "weekly": [
+	# 	"finbyzreach.tasks.weekly"
+	# ],
+	# "monthly": [
+	# 	"finbyzreach.tasks.monthly"
+	# ],
+}
 
 # Testing
 # -------
