@@ -4,7 +4,7 @@ app_publisher = "Finbyz Tech Pvt Ltd"
 app_description = "AI-Powered Follow-ups and Smart Email Outreach"
 app_email = "info@finbyz.tech"
 app_license = "MIT"
-
+required_apps = ["finbyz/finbyzai"]
 # Includes in <head>
 # ------------------
 
