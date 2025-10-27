@@ -10,6 +10,7 @@
   "is_default",
   "section_break_qoxe",
   "campaign_name",
+  "ai_agent",
   "start_date",
   "end_date",
   "column_break_hcft",
@@ -74,12 +75,19 @@
    "fieldtype": "Table MultiSelect",
    "label": "Email Accounts",
    "options": "Email Accounts"
+  },
+  {
+   "default": "Default",
+   "fieldname": "ai_agent",
+   "fieldtype": "Link",
+   "label": "AI Agent",
+   "options": "AI Agent"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2025-10-27 16:13:38.723305",
+ "modified": "2025-10-27 17:48:00.359354",
  "modified_by": "Administrator",
  "module": "AI Email Outreach",
  "name": "AI Email Campaign",

@@ -7,10 +7,10 @@
  "engine": "InnoDB",
  "field_order": [
   "section_break_party",
-  "party_type",
-  "party",
+  "contact",
   "column_break_1",
   "sender_mail",
+  "ai_email_campaign",
   "section_break_emails",
   "communication_email"
  ],
@@ -19,22 +19,6 @@
    "fieldname": "section_break_party",
    "fieldtype": "Section Break",
    "label": "Party Information"
-  },
-  {
-   "fieldname": "party_type",
-   "fieldtype": "Select",
-   "in_list_view": 1,
-   "label": "Party Type",
-   "options": "Lead\nCustomer",
-   "reqd": 1
-  },
-  {
-   "fieldname": "party",
-   "fieldtype": "Dynamic Link",
-   "in_list_view": 1,
-   "label": "Party",
-   "options": "party_type",
-   "reqd": 1
   },
   {
    "fieldname": "column_break_1",
@@ -46,7 +30,7 @@
    "in_list_view": 1,
    "label": "Sender Email Account",
    "options": "Email Account",
-   "reqd": 1
+   "read_only": 1
   },
   {
    "fieldname": "section_break_emails",
@@ -58,16 +42,29 @@
    "fieldtype": "Table",
    "label": "Scheduled Emails",
    "options": "Communication Email"
+  },
+  {
+   "fieldname": "ai_email_campaign",
+   "fieldtype": "Link",
+   "label": "AI Email Campaign",
+   "options": "AI Email Campaign",
+   "reqd": 1
+  },
+  {
+   "fieldname": "contact",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Contact",
+   "options": "Contact",
+   "reqd": 1
   }
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2025-10-11 11:00:11.246361",
+ "modified": "2025-10-27 18:22:36.725730",
  "modified_by": "Administrator",
  "module": "AI Email Outreach",
  "name": "Outbound Email",
-
- 
  "naming_rule": "Expression",
  "owner": "Administrator",
  "permissions": [
