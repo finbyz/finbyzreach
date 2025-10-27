@@ -1,5 +1,5 @@
 
-frappe.ui.form.on('Communication Log', {
+frappe.ui.form.on('Outbound Email', {
     refresh(frm) {
         
         if (!frm.is_new()) {

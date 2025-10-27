@@ -8,30 +8,16 @@ import re
 def get_followup_settings():
     return frappe.get_single("Followup Settings")
 
-class CommunicationLog(Document):
-    
-    def validate(self):
-        if self.party_type and self.party:
-            if not frappe.db.exists(self.party_type, self.party):
-                frappe.throw(f"{self.party_type} {self.party} does not exist")
-        
-        if self.sender_mail:
-            if "@" in self.sender_mail:
-                account_name = frappe.db.get_value("Email Account", {"email_id": self.sender_mail}, "name")
-                if account_name:
-                    self.sender_mail = account_name
-                else:
-                    frappe.throw(f"Email Account with email {self.sender_mail} does not exist")
-            
-            if not frappe.db.get_value("Email Account", self.sender_mail, "enable_outgoing"):
-                frappe.throw(f"Email Account {self.sender_mail} is not enabled for outgoing emails")
+class OutboundEmail(Document):
+    pass
+
 
 class EmailAccountManager:
     @staticmethod
     def get_next_account_for_party(party_type, party):
         """Get next email account using round-robin logic - Returns Email Account NAME"""
         existing_log = frappe.db.get_value(
-            "Communication Log",
+            "Outbound Email",
             {"party_type": party_type, "party": party},
             "sender_mail"
         )
@@ -58,7 +44,7 @@ class EmailAccountManager:
             frappe.throw("No enabled email accounts found in Followup Setting")
         
         last_log = frappe.get_all(
-            "Communication Log",
+            "Outbound Email",
             fields=["sender_mail"],
             order_by="creation desc",
             limit=1
@@ -224,6 +210,7 @@ class AIFollowupGenerator:
         
         # Company Research  
         if self.settings.company_research and company_name:
+           
             try:
                 company_query = company_name
                 industry = self.party_doc.get("industry")
@@ -745,7 +732,7 @@ class CommunicationLogManager:
                 return None
             
             existing_log = frappe.db.get_value(
-                "Communication Log",
+                "Outbound Email",
                 {"party_type": party_type, "party": party_name}
             )
             
@@ -769,15 +756,15 @@ class CommunicationLogManager:
                 formatted_emails.append(formatted_email)
             
             if existing_log:
-                doc = frappe.get_doc("Communication Log", existing_log)
+                doc = frappe.get_doc("Outbound Email", existing_log)
                 doc.communication_email = [e for e in doc.communication_email if e.status != "Unsent"]
                 for email in formatted_emails:
                     doc.append("communication_email", email)
                 doc.save()
-                frappe.msgprint(f"Updated Communication Log: {doc.name}", indicator="green")
+                frappe.msgprint(f"Updated Outbound Email: {doc.name}", indicator="green")
             else:
                 doc = frappe.get_doc({
-                    "doctype": "Communication Log",
+                    "doctype": "Outbound Email",
                     "party_type": party_type,
                     "party": party_name,
                     "sender_mail": sender_mail,
@@ -785,7 +772,7 @@ class CommunicationLogManager:
                     "communication_email": formatted_emails
                 })
                 doc.insert()
-                frappe.msgprint(f"Created Communication Log: {doc.name}", indicator="green")
+                frappe.msgprint(f"Created Outbound Email: {doc.name}", indicator="green")
             return doc.name
 def generate_followups_on_party_activity(doc, method):
     try:
@@ -830,7 +817,7 @@ def generate_followups_on_party_activity(doc, method):
 @frappe.whitelist()
 def regenerate_emails_for_log(log_name):
     try:
-        log = frappe.get_doc("Communication Log", log_name)
+        log = frappe.get_doc("Outbound Email", log_name)
         log.reload()
         
         existing_emails = []

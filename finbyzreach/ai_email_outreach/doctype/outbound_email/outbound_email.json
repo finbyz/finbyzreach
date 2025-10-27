@@ -65,7 +65,9 @@
  "modified": "2025-10-11 11:00:11.246361",
  "modified_by": "Administrator",
  "module": "AI Email Outreach",
- "name": "Communication Log",
+ "name": "Outbound Email",
+
+ 
  "naming_rule": "Expression",
  "owner": "Administrator",
  "permissions": [

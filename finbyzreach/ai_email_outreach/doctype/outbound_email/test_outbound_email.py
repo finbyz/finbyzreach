@@ -5,5 +5,5 @@
 from frappe.tests.utils import FrappeTestCase
 
 
-class Testcommunicationlog(FrappeTestCase):
+class TestoutboundEmail(FrappeTestCase):
 	pass

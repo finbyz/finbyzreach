@@ -5,5 +5,5 @@
 from frappe.model.document import Document
 
 
-class MailSchedule(Document):
+class EmailAccounts(Document):
 	pass
