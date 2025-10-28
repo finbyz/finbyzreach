@@ -8,18 +8,32 @@ from frappe.contacts.doctype.contact.contact import get_contacts_linking_to
 
 class OutboundEmail(Document):
     def after_insert(self):
-        self.draft_emails()
+        frappe.enqueue(self.draft_emails, queue='long', timeout=300,job_name=f"Draft Emails for Outbound Email {self.name}")
+        # self.draft_emails()
     
+    
+    def get_message_id(self) -> str:
+        if self.communication:
+            message_id = frappe.get_value("Communication", self.communication, "message_id")
+            return message_id
+        
     def draft_emails(self):
         contact = frappe.get_doc('Contact', self.contact)
         company_details = None
         person_details = contact.person_details
+        website = ''
+        country = ''
         for link in contact.links:
             company_details = frappe.get_value(link.link_doctype, link.link_name, 'company_details')
             if company_details:
                 break
+        if link.link_doctype == 'Lead':
+            website = frappe.get_value('Lead', link.link_name, 'website') or ''
+            country = frappe.get_value('Lead', link.link_name, 'country') or ''
+            
         
         if not (company_details and person_details):
+            frappe.throw("Insufficient data in Contact to generate emails.")
             return
         
         email_campaign = frappe.get_doc('AI Email Campaign', self.ai_email_campaign)
@@ -31,16 +45,16 @@ class OutboundEmail(Document):
         
         for i, schedule in enumerate(campaign_schedules, start=1):
             emails_objective += (
-                f"EMail {i}. {schedule.description.strip()} "
-                f"(Send After: {schedule.send_after_days} days)\n"
+                f"Email {i}. {schedule.description.strip()} "
+                f"(Send After: {schedule.send_after} days)\n"
             )
         
         input_data = {
             "emails_objective": emails_objective,
-            "full_name": contact.full_name,
+            "full_name": f"{contact.first_name} {contact.last_name}",
             "company_name": contact.company_name,
-            "website": contact.website,
-            "country": contact.country,
+            "website": website,
+            "country": country,
             "company_details": company_details,
             "person_details": person_details,
             "number_of_emails": len(campaign_schedules)
@@ -50,18 +64,16 @@ class OutboundEmail(Document):
         agent = frappe.get_doc("AI Agent", email_campaign.ai_agent)
         agent_service = agent.agent_service
         email_list_output = agent_service.invoke(**input_data)
-        
         if email_accounts:
             existing_count = frappe.db.count('Outbound Email', {
                 'ai_email_campaign': self.ai_email_campaign
             })
             sender_index = existing_count % len(email_accounts)
-            sender_mail = email_accounts[sender_index].email_account
+            sender = email_accounts[sender_index].email_account
         else:
             frappe.throw("No email accounts configured in the campaign")
-        
+        self.sender = sender
         # Calculate send times based on campaign schedules
-        communication_email = []
         base_time = now_datetime()
         
         for idx, email in enumerate(email_list_output.emails):
@@ -74,12 +86,11 @@ class OutboundEmail(Document):
             # Calculate scheduled time
             scheduled_time = add_days(base_time, send_after_days)
             
-            communication_email.append({
+            self.append("communication_email",{
                 "subject": email.subject,
                 "content": email.body,
                 "time": scheduled_time,
-                "status": "Draft"
+                "status": "Unsent",
             })
-        
-        self.communication_email = communication_email
-        self.save()
+            self.save()
+        self.reload()

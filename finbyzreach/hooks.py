@@ -131,9 +131,9 @@ scheduler_events = {
 	# "all": [
 	# 	"finbyzreach.tasks.all"
 	# ],
-	"daily": [
-		"finbyzreach.tasks.daily.email_sender.enqueue_scheduled_emails",
-	],
+	# "daily": [
+	# 	"finbyzreach.tasks.daily",
+	# ],
 	# "hourly": [
 	# 	"finbyzreach.tasks.hourly"
 	# ],
@@ -143,6 +143,11 @@ scheduler_events = {
 	# "monthly": [
 	# 	"finbyzreach.tasks.monthly"
 	# ],
+	"cron": {
+		"*/10 * * * *": [
+			"finbyzreach.tasks.every_10_min.enqueue_outbound_emails.enqueue_outbound_emails"
+		]
+	}
 }
 
 # Testing

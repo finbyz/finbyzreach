@@ -6,31 +6,18 @@
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
-  "section_break_party",
   "contact",
   "column_break_1",
-  "sender_mail",
+  "sender",
   "ai_email_campaign",
   "section_break_emails",
-  "communication_email"
+  "communication_email",
+  "communication"
  ],
  "fields": [
   {
-   "fieldname": "section_break_party",
-   "fieldtype": "Section Break",
-   "label": "Party Information"
-  },
-  {
    "fieldname": "column_break_1",
    "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "sender_mail",
-   "fieldtype": "Link",
-   "in_list_view": 1,
-   "label": "Sender Email Account",
-   "options": "Email Account",
-   "read_only": 1
   },
   {
    "fieldname": "section_break_emails",
@@ -57,11 +44,25 @@
    "label": "Contact",
    "options": "Contact",
    "reqd": 1
+  },
+  {
+   "fieldname": "sender",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Sender Email Account",
+   "options": "Email Account"
+  },
+  {
+   "fieldname": "communication",
+   "fieldtype": "Link",
+   "label": "Communication",
+   "options": "Communication",
+   "read_only": 1
   }
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2025-10-27 18:22:36.725730",
+ "modified": "2025-10-28 12:08:12.773204",
  "modified_by": "Administrator",
  "module": "AI Email Outreach",
  "name": "Outbound Email",
@@ -92,7 +93,6 @@
    "write": 1
   }
  ],
- "row_format": "Dynamic",
  "sort_field": "modified",
  "sort_order": "DESC",
  "states": [],
