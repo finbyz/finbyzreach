@@ -27,7 +27,6 @@ def enqueue_outbound_emails():
         try:
             outbound_email = frappe.get_doc(email.parenttype, email.parent)
             if outbound_email.contact:
-                message_id = outbound_email.get_message_id()
                 email_id = frappe.get_value("Contact", outbound_email.contact, "email_id")
 
                 if not email_id:
@@ -36,22 +35,44 @@ def enqueue_outbound_emails():
                         "Enqueue Outbound Email"
                     )
                     continue
-                comm = make(
-                    recipients=[email_id],
-                    subject= email.subject,
-                    content= email.content,
-                    doctype= email.parenttype,
-                    name= email.parent,
-                    send_email=True,
-                    in_reply_to=message_id,
-                    references=message_id,
-                    reply_to=outbound_email.sender
-                )
+
+                sender = frappe.get_value("Email Account", outbound_email.sender, "email_id")
                 if email.idx == 1:
-                    outbound_email.update({
-                        "communication": comm.get("name")
+                    thread = frappe.get_doc("Communication", outbound_email.communication)
+                    comm = frappe.get_doc({
+                        "doctype": "Communication",
+                        "communication_type": "Communication",
+                        "communication_medium": "Email",
+                        "sent_or_received": "Sent",
+                        "subject": email.subject,
+                        "content": email.content,
+                        "recipients": email_id,
+                        "sender": sender,
+                        "reference_doctype": "Outbound Email",
+                        "reference_name": email.parent,
+                        "email_account": outbound_email.sender
                     })
-                    outbound_email.save()
+                    
+                else:
+                    thread = frappe.get_doc("Communication", outbound_email.communication)
+                    comm = frappe.get_doc({
+                        "doctype": "Communication",
+                        "communication_type": "Communication",
+                        "communication_medium": "Email",
+                        "sent_or_received": "Sent",
+                        "subject": f"Re: {email.subject or thread.subject}",
+                        "content": email.content,
+                        "recipients": thread.recipients,
+                        "sender": thread.sender,
+                        "reference_doctype": thread.reference_doctype,
+                        "reference_name": thread.reference_name,
+                        "in_reply_to": thread.name,
+                        "email_account": thread.email_account
+                    })
+                    
+                comm.insert()
+                comm.send_email()
+                outbound_email.save()
                 
                 
             frappe.db.set_value(
