@@ -12,7 +12,8 @@
   "ai_email_campaign",
   "section_break_emails",
   "communication_email",
-  "communication"
+  "communication",
+  "replied"
  ],
  "fields": [
   {
@@ -58,11 +59,17 @@
    "label": "Communication",
    "options": "Communication",
    "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "replied",
+   "fieldtype": "Check",
+   "label": "Replied"
   }
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2025-10-28 12:08:12.773204",
+ "modified": "2025-10-28 16:43:34.832117",
  "modified_by": "Administrator",
  "module": "AI Email Outreach",
  "name": "Outbound Email",
