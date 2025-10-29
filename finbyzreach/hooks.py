@@ -27,7 +27,11 @@ required_apps = ["finbyz/finbyzai"]
 # page_js = {"page" : "public/js/file.js"}
 
 # include js in doctype views
-# doctype_js = {"doctype" : "public/js/doctype.js"}
+doctype_js = {
+    "Contact" : "public/js/contact.js",
+    "Customer" : "public/js/customer.js",
+    "Lead" : "public/js/lead.js"
+}
 # doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
@@ -116,13 +120,17 @@ required_apps = ["finbyz/finbyzai"]
 # ---------------
 # Hook on document methods and events
 
-# doc_events = {
-# 	"*": {
-# 		"on_update": "method",
-# 		"on_cancel": "method",
-# 		"on_trash": "method"
-# 	}
-# }
+doc_events = {
+	"Lead": {
+		"after_insert": "finbyzreach.doc_events.lead.after_insert",
+	},
+	"Customer": {
+		"after_insert": "finbyzreach.doc_events.customer.after_insert",
+	},
+	"Contact": {
+		"after_insert": "finbyzreach.doc_events.contact.after_insert",
+	}
+}
 
 # Scheduled Tasks
 # ---------------

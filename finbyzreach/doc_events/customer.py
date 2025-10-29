@@ -6,7 +6,7 @@ def research_customer(self):
         return
     research_company("Customer", self.name)
     
-def after_insert(self):
+def after_insert(self,method):
     """Hook to research company and person details after lead creation."""
-    frappe.enqueue(research_customer, doc=self)
+    frappe.enqueue(research_customer, doc=self, job_name=f"Customer Research - {self.name}")
     

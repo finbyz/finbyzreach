@@ -7,11 +7,9 @@
  "field_order": [
   "section_ai_agents",
   "enable_check",
-  "dynamic_followup_generator",
-  "person_research",
-  "company_research",
-  "email_sending_schedule",
-  "mail_schedule"
+  "email_agent",
+  "person_research_agent",
+  "company_research_agent"
  ],
  "fields": [
   {
@@ -26,40 +24,28 @@
    "label": "Enable"
   },
   {
-   "fieldname": "dynamic_followup_generator",
+   "fieldname": "email_agent",
    "fieldtype": "Link",
-   "label": "Dynamic Follow-Up Generator",
+   "label": "Email Agent",
    "options": "AI Agent"
   },
   {
-   "fieldname": "person_research",
+   "fieldname": "person_research_agent",
    "fieldtype": "Link",
-   "label": "Person Research",
+   "label": "Person Research Agent",
    "options": "AI Agent"
   },
   {
-   "fieldname": "company_research",
+   "fieldname": "company_research_agent",
    "fieldtype": "Link",
-   "label": "Company Research",
+   "label": "Company Research Agent",
    "options": "AI Agent"
-  },
-  {
-   "fieldname": "email_sending_schedule",
-   "fieldtype": "Table",
-   "label": "Email Sending Schedule",
-   "options": "Email Sending Schedule"
-  },
-  {
-   "fieldname": "mail_schedule",
-   "fieldtype": "Table",
-   "label": "Mail Schedule",
-   "options": "Mail Schedule"
   }
  ],
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2025-10-27 12:35:09.836261",
+ "modified": "2025-10-29 14:27:40.396062",
  "modified_by": "Administrator",
  "module": "AI Email Outreach",
  "name": "Followup Settings",
@@ -76,8 +62,6 @@
    "write": 1
   }
  ],
- "row_format": "Dynamic",
- "rows_threshold_for_grid_search": 20,
  "sort_field": "modified",
  "sort_order": "DESC",
  "states": [],

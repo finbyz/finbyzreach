@@ -23,11 +23,13 @@ class OutboundEmail(Document):
         person_details = contact.person_details
         website = ''
         country = ''
+        link = None
         for link in contact.links:
             company_details = frappe.get_value(link.link_doctype, link.link_name, 'company_details')
             if company_details:
+                link = link
                 break
-        if link.link_doctype == 'Lead':
+        if link and link.link_doctype == 'Lead':
             website = frappe.get_value('Lead', link.link_name, 'website') or ''
             country = frappe.get_value('Lead', link.link_name, 'country') or ''
             

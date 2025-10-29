@@ -61,12 +61,20 @@ def research_person(contact_name: str) -> str:
             "city": getattr(party_doc, "city", "") or "",
             "territory": getattr(party_doc, "territory", "") or "",
         }
+    else:
+         lead_info = {
+            "website": contact.get("email_id", "").split("@")[1] if contact.get("email_id") and "@" in contact.get("email_id") else "",
+            "country": "",
+            "city": "",
+            "territory": "",
+        }
 
     lead_info.update({
         "company": contact.company_name or (party_doc.customer_name if party_type == "Customer" else party_doc.company_name if party_doc else ""),
         "full_name": " ".join(filter(None, [contact.first_name, contact.middle_name, contact.last_name])),
     })
-
+    # 'city', 'company', 'country', 'format_instructions', 'full_name', 'territory
+    frappe.log_error('lead info', frappe.as_json(lead_info))
     # Get agent service from Followup Settings
     setting = frappe.get_single("Followup Settings")
     person_research_service = AgentService(setting.person_research_agent)
@@ -75,7 +83,7 @@ def research_person(contact_name: str) -> str:
     result = person_research_service.invoke(**lead_info)
 
     # Update contact with research info
-    contact.person_research = result.research_summary
+    contact.person_details = result.research_summary
     contact.linkedin_profile = (
         result.linkedin_profile if getattr(result, "linkedin_profile", "").startswith("http") else None
     )
