@@ -92,7 +92,7 @@ class OutboundEmail(Document):
                 "subject": email.subject,
                 "content": email.body,
                 "time": scheduled_time,
-                "status": "Unsent",
+                "status": "Queued",
             })
             self.save()
         self.reload()

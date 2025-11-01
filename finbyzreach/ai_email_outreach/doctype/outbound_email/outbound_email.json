@@ -1,11 +1,12 @@
 {
  "actions": [],
  "allow_rename": 1,
- "autoname": "format:COMM-LOG-{#####}",
+ "autoname": "naming_series:",
  "creation": "2025-10-08 12:00:00",
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
+  "naming_series",
   "contact",
   "column_break_1",
   "sender",
@@ -65,15 +66,22 @@
    "fieldname": "replied",
    "fieldtype": "Check",
    "label": "Replied"
+  },
+  {
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "hidden": 1,
+   "label": "Naming Series",
+   "options": "OE-.YY.MM.DD.-"
   }
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2025-10-28 16:43:34.832117",
+ "modified": "2025-11-01 12:37:17.839052",
  "modified_by": "Administrator",
  "module": "AI Email Outreach",
  "name": "Outbound Email",
- "naming_rule": "Expression",
+ "naming_rule": "By \"Naming Series\" field",
  "owner": "Administrator",
  "permissions": [
   {
