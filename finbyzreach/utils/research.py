@@ -33,7 +33,30 @@ def research_company(party_type: str,party_name: str,**kwargs) -> str:
 
     result = company_research_service.invoke(**lead_info)
 
-    doc.company_details = result
+    doc.company_details = result.company_overview
+    doc.industry = result.industry_type
+
+    if not doc.country:
+        doc.country = result.country
+
+    if not doc.state:
+        doc.state = result.state
+
+    if not doc.city:
+        doc.city = result.city
+
+    if not doc.website:
+        doc.website = result.website
+
+    if hasattr(doc, "designation") and not doc.designation:
+        doc.designation = result.designation
+
+    if hasattr(doc, "no_of_employees") and not doc.no_of_employees:
+        doc.no_of_employees = result.no_of_employees
+
+    if hasattr(doc, "lead_type") and not doc.lead_type:
+        doc.lead_type = result.lead_type
+    
     doc.save()
     return result
 
@@ -73,8 +96,6 @@ def research_person(contact_name: str) -> str:
         "company": contact.company_name or (party_doc.customer_name if party_type == "Customer" else party_doc.company_name if party_doc else ""),
         "full_name": " ".join(filter(None, [contact.first_name, contact.middle_name, contact.last_name])),
     })
-    # 'city', 'company', 'country', 'format_instructions', 'full_name', 'territory
-    frappe.log_error('lead info', frappe.as_json(lead_info))
     # Get agent service from Followup Settings
     setting = frappe.get_single("Followup Settings")
     person_research_service = AgentService(setting.person_research_agent)

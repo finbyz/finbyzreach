@@ -120,17 +120,17 @@ doctype_js = {
 # ---------------
 # Hook on document methods and events
 
-doc_events = {
-	"Lead": {
-		"after_insert": "finbyzreach.doc_events.lead.after_insert",
-	},
-	"Customer": {
-		"after_insert": "finbyzreach.doc_events.customer.after_insert",
-	},
-	"Contact": {
-		"after_insert": "finbyzreach.doc_events.contact.after_insert",
-	}
-}
+# doc_events = {
+# 	"Lead": {
+# 		"after_insert": "finbyzreach.doc_events.lead.after_insert",
+# 	},
+# 	"Customer": {
+# 		"after_insert": "finbyzreach.doc_events.customer.after_insert",
+# 	},
+# 	"Contact": {
+# 		"after_insert": "finbyzreach.doc_events.contact.after_insert",
+# 	}
+# }
 
 # Scheduled Tasks
 # ---------------

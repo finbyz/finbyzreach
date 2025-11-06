@@ -1,5 +1,5 @@
 frappe.ui.form.on("Lead", {
-   onload(frm){
+   refresh(frm){
         frm.add_custom_button("Research", function() {
             frappe.call({
                 method: "finbyzreach.api.lead.research_lead",
