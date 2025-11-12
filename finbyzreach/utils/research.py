@@ -54,8 +54,8 @@ def research_company(party_type: str,party_name: str,**kwargs) -> str:
     if hasattr(doc, "no_of_employees") and not doc.no_of_employees:
         doc.no_of_employees = result.no_of_employees
 
-    if hasattr(doc, "lead_type") and not doc.lead_type:
-        doc.lead_type = result.lead_type
+    if hasattr(doc, "type") and not doc.type:
+        doc.type = result.lead_type
     
     doc.save()
     return result

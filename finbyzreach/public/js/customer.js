@@ -12,6 +12,7 @@ frappe.ui.form.on("Customer", {
                     if (r.message) {
                         frm.refresh_fields()
                         frappe.msgprint("Research completed");
+                        frm.reload_doc()
                     }
                 }
             });

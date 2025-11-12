@@ -14,6 +14,7 @@ frappe.ui.form.on("Contact", {
                         if (r.message) {
                             frm.refresh_fields();
                             frappe.msgprint("Research completed");
+                            frm.reload_doc()
                         }
                     }
                 });
@@ -48,6 +49,7 @@ frappe.ui.form.on("Contact", {
                                 if (r.message) {
                                     frm.refresh_fields();
                                     frappe.msgprint("Research completed");
+                                    frm.reload_doc()
                                 }
                             }
                         });
