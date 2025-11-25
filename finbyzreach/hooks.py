@@ -153,8 +153,11 @@ scheduler_events = {
 	# ],
 	"cron": {
 		"*/10 * * * *": [
-			"finbyzreach.tasks.every_10_min.enqueue_outbound_emails.enqueue_outbound_emails"
-		]
+			"finbyzreach.tasks.every_10_min.enqueue_outbound_emails.enqueue_outbound_emails",
+		],
+		"00 16 * * *": [
+            "finbyzreach.tasks.every_4PM.smart_followup.run_followup_job"
+        ]
 	}
 }
 
