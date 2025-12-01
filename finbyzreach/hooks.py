@@ -28,9 +28,9 @@ required_apps = ["finbyz/finbyzai"]
 
 # include js in doctype views
 doctype_js = {
-    "Contact" : "public/js/contact.js",
-    "Customer" : "public/js/customer.js",
-    "Lead" : "public/js/lead.js"
+    "Contact": "public/js/contact.js",
+    "Customer": "public/js/customer.js",
+    "Lead": "public/js/lead.js"
 }
 # doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
@@ -136,29 +136,29 @@ doctype_js = {
 # ---------------
 
 scheduler_events = {
-	# "all": [
-	# 	"finbyzreach.tasks.all"
-	# ],
-	# "daily": [
-	# 	"finbyzreach.tasks.daily",
-	# ],
-	# "hourly": [
-	# 	"finbyzreach.tasks.hourly"
-	# ],
-	# "weekly": [
-	# 	"finbyzreach.tasks.weekly"
-	# ],
-	# "monthly": [
-	# 	"finbyzreach.tasks.monthly"
-	# ],
-	"cron": {
-		"*/10 * * * *": [
-			"finbyzreach.tasks.every_10_min.enqueue_outbound_emails.enqueue_outbound_emails",
-		],
-		"00 16 * * *": [
+    # "all": [
+    # 	"finbyzreach.tasks.all"
+    # ],
+    # "daily": [
+    # 	"finbyzreach.tasks.daily",
+    # ],
+    # "hourly": [
+    # 	"finbyzreach.tasks.hourly"
+    # ],
+    # "weekly": [
+    # 	"finbyzreach.tasks.weekly"
+    # ],
+    # "monthly": [
+    # 	"finbyzreach.tasks.monthly"
+    # ],
+    "cron": {
+        "*/10 * * * *": [
+            "finbyzreach.tasks.every_10_min.enqueue_outbound_emails.enqueue_outbound_emails",
+        ],
+        "00 16 * * *": [
             "finbyzreach.tasks.every_4PM.smart_followup.run_followup_job"
         ]
-	}
+    }
 }
 
 # Testing
@@ -229,3 +229,21 @@ scheduler_events = {
 # auth_hooks = [
 # 	"finbyzreach.auth.validate"
 # ]
+
+
+fixtures = [
+    {
+        "doctype": "Role",
+        "filters": {"name": ["in", ["AI Automation", "Social Media Manager"]]}
+    },
+    {
+        "doctype": "Custom DocPerm",
+        "filters": {"role": ["in", ["AI Automation"]]}
+    },
+    {
+        "doctype": "Custom Field",
+        "filters": [
+            ["module", "in", ["Finbyzreach"]]
+        ]
+    }
+]
