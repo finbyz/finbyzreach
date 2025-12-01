@@ -1,6 +1,6 @@
 from finbyzai.ai.agent.agent_service import AgentService
 import frappe
-from ai_crm.utils.perplexity import research_company, research_person
+from finbyzreach.utils.research import research_company, research_person
 from frappe.core.doctype.communication.email import make
 from datetime import datetime
 
