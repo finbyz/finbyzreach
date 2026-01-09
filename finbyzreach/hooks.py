@@ -234,11 +234,13 @@ scheduler_events = {
 fixtures = [
     {
         "doctype": "Role",
-        "filters": {"name": ["in", ["AI Automation", "Social Media Manager"]]}
+        "filters": {"name": ["in", ["Social Media Manager"]]}
     },
     {
-        "doctype": "Custom DocPerm",
-        "filters": {"role": ["in", ["AI Automation"]]}
+        "dt": "AI Agent",
+        "filters": [
+            ["name","in",["Person Research", "Company Research"]]
+        ]
     },
     {
         "doctype": "Custom Field",

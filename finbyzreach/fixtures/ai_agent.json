@@ -1,0 +1,80 @@
+[
+ {
+  "agent_type": "LangChain Chain",
+  "docstatus": 0,
+  "doctype": "AI Agent",
+  "enable_memory": 0,
+  "gemini_cache": null,
+  "knowledge_base": null,
+  "lc_agent_type": null,
+  "llm": "perplexity/sonar",
+  "llm_provider": "Perplexity",
+  "max_iterations": 0,
+  "max_tokens": 0,
+  "memory_type": null,
+  "messages": [
+   {
+    "content": "You are a B2B sales research assistant.\nchoose industry from this given list only : [ \"Interior Design\", \"aluminum fittings manufacturing and installation\", \"Coconut processing and trading\", \"scientific and analytical instruments industry\", \"Renewable Energy\", \"Interior Products Manufacturing\", \"TRAINING SESSION\", \"IT Hardware Trading\", \"RO Manufacturing\", \"Bearing Trading\", \"Tyre manufacturing\", \"Modular Kitchen Manufacturing\", \"Agro Products Manufacturer\", \"Yarn Trading\", \"Timber Block Supplier\", \"Battery Manufacturing\", \"ELECTRONICS TRADING\", \"Water Treatment Service\", \"School\", \"Wallpaper Manufacturing\", \"Security System Services\", \"Toy manufacturing\", \"Testing Equipments\", \"IT- ERPNEXT PARTNER\", \"Water Treatment Plant- Distributor\", \"Pump Manufacturing\", \"Autonomous\", \"Solar Industry\", \"Construction Project\", \"Medical Equipment Manufacturing\", \"Machine Manufacturing\", \"Construction Equipment Manufacturing\", \"Glass Manufacturing\", \"Solar power plants\", \"Solar energy equipment supplier\", \"Hinges Manufacturing\", \"Supermarket\", \"Bobbins Manufacturing\", \"Luxury Gifts\", \"Content Writing Agency\", \"Weighbridge Manufacturing\", \"Lifts Manufacturing\", \"Hospitality\", \"Pharma Manufacturing\", \"Plastic Tape Manufacturing\", \"Electronic Vehicle Manufacturing\", \"Warehouse Management for Pharma Companies\", \"Machinery Manufacturing and Leasing\", \"Petrochemicals\", \"Paper Trading\", \"Chemical Trading\", \"Rice Mill\", \"Paper Manufacturing\", \"Engineering Service\", \"Food Item Manufacturing\", \"Machinery Manufacturing\", \"Engineering Manufacturing\", \"civil\", \"Immigration Consulting\", \"Pigment Industry\", \"Ceramic\", \"Networking\", \"Yarn Manufacturer\", \"Fuel\", \"Tea Packers\", \"Notebook Mfg. \", \"Testing Laboratory\", \"Plastic\", \"Pharmaceutical\", \"Retail\", \"Lamination\", \"Pumps\", \"Packaging\", \"Metal Casting\", \"Trading\", \"Polymers\", \"FMCG\", \"Rubber\", \"Jewellery\", \"E-Commerce\", \"Printing & Signage Board Manufacturer\", \"Logistics\", \"IT-BPO\", \"Oil & Gas\", \"Engineering Goods\", \"Textile\", \"Power\", \"Agro Commodities\", \"Metal\", \"Venture Capital\", \"Transportation\", \"Television\", \"Telecommunications\", \"Technology\", \"Sports\", \"Software\", \"Soap & Detergent\", \"Service\", \"Securities & Commodity Exchanges\", \"Retail & Wholesale\", \"Real Estate\", \"Publishing\", \"Private Equity\", \"Pharmaceuticals\", \"Pension Funds\", \"Online Auctions\", \"Newspaper Publishers\", \"Music\", \"Motion Picture & Video\", \"Manufacturing\", \"Legal\", \"Investment Banking\", \"Internet Publishing\", \"Health Care\", \"Grocery\", \"Food,Beverage & Tobacco\", \"Financial Services\", \"Executive Search\", \"Entertainment & Leisure\", \"Energy\", \"Electronics\", \"Education\", \"Department Stores\", \"Defense\", \"Cosmetics\", \"Consumer Products\", \"Consulting\", \"Computer\", \"Chemical\", \"Brokerage\", \"Broadcasting\", \"Biotechnology\", \"Banking\", \"Automotive\", \"Apparel & Accessories\", \"Airline\", \"Agriculture\", \"Aerospace\", \"Advertising\", \"Accounting\"]\n\nchoose lead type only from this given list : [\"Client\", \"Consultant\", \"Channel Partner\"]",
+    "content_type": "text",
+    "parent": "Company Research",
+    "parentfield": "messages",
+    "parenttype": "AI Agent",
+    "type": "system"
+   },
+   {
+    "content": "Research about the company \"{company}\" (website: {website}), \nand the party \"{full_name}\" from {country}, {state} {city} {territory}.\nProvide sales-relevant insights, recent news, and potential opportunities.",
+    "content_type": "text",
+    "parent": "Company Research",
+    "parentfield": "messages",
+    "parenttype": "AI Agent",
+    "type": "human"
+   }
+  ],
+  "modified": "2025-12-01 11:31:43.225314",
+  "name": "Company Research",
+  "output_schema": "{\r\n    \"properties\": {\r\n        \"company_overview\": {\r\n            \"anyOf\": [\r\n                {\r\n                    \"type\": \"string\"\r\n                },\r\n                {\r\n                    \"type\": \"null\"\r\n                }\r\n            ],\r\n            \"title\": \"Company Overview\"\r\n        },\r\n        \"industry_type\": {\r\n            \"anyOf\": [\r\n                {\r\n                    \"type\": \"string\"\r\n                },\r\n                {\r\n                    \"type\": \"null\"\r\n                }\r\n            ],\r\n            \"title\": \"Industry Type\"\r\n        },\r\n        \"lead_type\": {\r\n            \"anyOf\": [\r\n                {\r\n                    \"enum\": [\r\n                        \"Key Account\",\r\n                        \"Large Customer\",\r\n                        \"Medium Customer\",\r\n                        \"Small Customer\"\r\n                    ],\r\n                    \"type\": \"string\"\r\n                },\r\n                {\r\n                    \"type\": \"null\"\r\n                }\r\n            ],\r\n            \"title\": \"Lead Type\"\r\n        },\r\n        \"country\": {\r\n            \"anyOf\": [\r\n                {\r\n                    \"type\": \"string\"\r\n                },\r\n                {\r\n                    \"type\": \"null\"\r\n                }\r\n            ],\r\n            \"title\": \"Country\"\r\n        },\r\n        \"state\": {\r\n            \"anyOf\": [\r\n                {\r\n                    \"type\": \"string\"\r\n                },\r\n                {\r\n                    \"type\": \"null\"\r\n                }\r\n            ],\r\n            \"title\": \"State\"\r\n        },\r\n        \"city\": {\r\n            \"anyOf\": [\r\n                {\r\n                    \"type\": \"string\"\r\n                },\r\n                {\r\n                    \"type\": \"null\"\r\n                }\r\n            ],\r\n            \"title\": \"City\"\r\n        },\r\n        \"website\": {\r\n            \"anyOf\": [\r\n                {\r\n                    \"type\": \"string\"\r\n                },\r\n                {\r\n                    \"type\": \"null\"\r\n                }\r\n            ],\r\n            \"title\": \"Website\"\r\n        },\r\n        \"designation\": {\r\n            \"anyOf\": [\r\n                {\r\n                    \"type\": \"string\"\r\n                },\r\n                {\r\n                    \"type\": \"null\"\r\n                }\r\n            ],\r\n            \"title\": \"Designation\"\r\n        },\r\n        \"no_of_employees\": {\r\n            \"anyOf\": [\r\n                {\r\n                    \"enum\": [\r\n                        \"1-10\",\r\n                        \"11-50\",\r\n                        \"51-200\",\r\n                        \"201-500\",\r\n                        \"501-1000\",\r\n                        \"1000+\"\r\n                    ],\r\n                    \"type\": \"string\"\r\n                },\r\n                {\r\n                    \"type\": \"null\"\r\n                }\r\n            ],\r\n            \"title\": \"No Of Employees\"\r\n        }\r\n    },\r\n    \"required\": [\r\n        \"company_overview\",\r\n        \"industry_type\",\r\n        \"lead_type\",\r\n        \"country\",\r\n        \"state\",\r\n        \"city\",\r\n        \"website\",\r\n        \"designation\",\r\n        \"no_of_employees\"\r\n    ],\r\n    \"title\": \"CompanyResearch\",\r\n    \"type\": \"object\"\r\n}",
+  "temperature": 0.0,
+  "title": "Company Research",
+  "tools": [],
+  "verbose_mode": 0
+ },
+ {
+  "agent_type": "LangChain Chain",
+  "docstatus": 0,
+  "doctype": "AI Agent",
+  "enable_memory": 0,
+  "gemini_cache": null,
+  "knowledge_base": null,
+  "lc_agent_type": null,
+  "llm": "perplexity/sonar",
+  "llm_provider": "Perplexity",
+  "max_iterations": 0,
+  "max_tokens": 0,
+  "memory_type": null,
+  "messages": [
+   {
+    "content": "You are a B2B sales research assistant.Provide sales-relevant insights, recent news, and potential opportunities and linkedin profile url.",
+    "content_type": "text",
+    "parent": "Person Research",
+    "parentfield": "messages",
+    "parenttype": "AI Agent",
+    "type": "system"
+   },
+   {
+    "content": "Research about the person \"{full_name}\" from {country} {city} {territory} working at {company}.\nProvide sales-relevant insights, recent news, and potential opportunities and linkedin profile url.",
+    "content_type": "text",
+    "parent": "Person Research",
+    "parentfield": "messages",
+    "parenttype": "AI Agent",
+    "type": "human"
+   }
+  ],
+  "modified": "2025-12-01 11:31:55.154987",
+  "name": "Person Research",
+  "output_schema": "{\r\n\t\"properties\": {\r\n\t\t\"linkedin_profile\": {\r\n\t\t\t\"default\": \"LinkedIn profile url\",\r\n\t\t\t\"title\": \"Linkedin Profile\",\r\n\t\t\t\"type\": \"string\"\r\n\t\t},\r\n\t\t\"research_summary\": {\r\n\t\t\t\"default\": \"Research summary about Person\",\r\n\t\t\t\"title\": \"Research Summary\",\r\n\t\t\t\"type\": \"string\"\r\n\t\t}\r\n\t},\r\n\t\"title\": \"PersonResearch\",\r\n\t\"type\": \"object\"\r\n}",
+  "temperature": 0.0,
+  "title": "Person Research",
+  "tools": [],
+  "verbose_mode": 0
+ }
+]
