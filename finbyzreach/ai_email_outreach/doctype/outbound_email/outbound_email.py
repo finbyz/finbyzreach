@@ -20,7 +20,7 @@ class OutboundEmail(Document):
     def draft_emails(self):
         contact = frappe.get_doc('Contact', self.contact)
         company_details = None
-        person_details = contact.person_details
+        person_details = contact.person_research
         website = ''
         country = ''
         link = None

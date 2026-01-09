@@ -30,7 +30,7 @@ required_apps = ["finbyz/finbyzai"]
 doctype_js = {
     "Contact": "public/js/contact.js",
     "Customer": "public/js/customer.js",
-    "Lead": "public/js/lead.js"
+    "Lead": "public/js/lead.js",
 }
 # doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}

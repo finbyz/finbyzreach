@@ -1,7 +1,7 @@
 frappe.ui.form.on("Contact", {
     refresh(frm) {
-        // Only show Research button if person_details is empty
-        if (!frm.doc.person_details) {
+        // Only show Research button if person_research is empty
+        if (!frm.doc.person_research) {
             frm.add_custom_button("Research", function () {
                 frappe.call({
                     method: "finbyzreach.api.contact.research_contact",
@@ -20,9 +20,9 @@ frappe.ui.form.on("Contact", {
                 });
             });
         }
-        
-        // Only show Create Emails button if person_details exists
-        if (frm.doc.person_details) {
+
+        // Only show Create Emails button if person_research exists
+        if (frm.doc.person_research) {
             frm.add_custom_button("Create Emails", function () {
                 const d = new frappe.ui.Dialog({
                     title: "Select AI Email Campaign",
@@ -48,7 +48,7 @@ frappe.ui.form.on("Contact", {
                             callback: function (r) {
                                 if (r.message) {
                                     frm.refresh_fields();
-                                    frappe.msgprint("Research completed");
+                                    frappe.msgprint("Emails created");
                                     frm.reload_doc()
                                 }
                             }

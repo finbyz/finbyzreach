@@ -27,35 +27,45 @@ def research_company(party_type: str,party_name: str,**kwargs) -> str:
             "territory" : doc.territory or kwargs.get("territory"),
         }
         
-    # get prompt template from settings
-    setting = frappe.get_single("Followup Settings")
-    company_research_service = AgentService(setting.company_research_agent)
+    # get agent from Followup Settings
+    settings = frappe.get_single("Followup Settings")
+    if not settings.company_research_agent:
+        frappe.throw("AI Agent not configured. Please set 'company_research_agent' in Followup Settings.")
+    company_research_service = AgentService(settings.company_research_agent)
 
     result = company_research_service.invoke(**lead_info)
 
-    doc.company_details = result.company_overview
-    doc.industry = result.industry_type
+    # Save to appropriate field based on doctype
+    if party_type == "Customer":
+        doc.customer_details = getattr(result, "company_overview", "") or ""
+    else:  # Lead
+        doc.company_details = getattr(result, "company_overview", "") or ""
+    
+    if hasattr(doc, "industry") and not doc.industry:
+        doc.industry = getattr(result, "industry_type", "") or ""
 
-    if not doc.country:
-        doc.country = result.country
+    if hasattr(doc, "country") and not doc.country:
+        doc.country = getattr(result, "country", "") or ""
 
-    if not doc.state:
-        doc.state = result.state
+    if hasattr(doc, "state") and not doc.state:
+        doc.state = getattr(result, "state", "") or ""
 
-    if not doc.city:
-        doc.city = result.city
+    if hasattr(doc, "city") and not doc.city:
+        doc.city = getattr(result, "city", "") or ""
 
-    if not doc.website:
-        doc.website = result.website
+    if hasattr(doc, "website") and not doc.website:
+        website_value = getattr(result, "website", "") or ""
+        if website_value:
+            doc.website = website_value
 
     if hasattr(doc, "designation") and not doc.designation:
-        doc.designation = result.designation
+        doc.designation = getattr(result, "designation", "") or ""
 
     if hasattr(doc, "no_of_employees") and not doc.no_of_employees:
-        doc.no_of_employees = result.no_of_employees
+        doc.no_of_employees = getattr(result, "no_of_employees", "") or ""
 
     if hasattr(doc, "type") and not doc.type:
-        doc.type = result.lead_type
+        doc.type = getattr(result, "lead_type", "") or ""
     
     doc.save()
     return result
@@ -98,13 +108,15 @@ def research_person(contact_name: str) -> str:
     })
     # Get agent service from Followup Settings
     setting = frappe.get_single("Followup Settings")
+    if not setting.person_research_agent:
+        frappe.throw("AI Agent not configured. Please set 'person_research_agent' in Followup Settings.")
     person_research_service = AgentService(setting.person_research_agent)
 
     # Call research agent
     result = person_research_service.invoke(**lead_info)
 
     # Update contact with research info
-    contact.person_details = result.research_summary
+    contact.person_research = result.research_summary
     contact.linkedin_profile = (
         result.linkedin_profile if getattr(result, "linkedin_profile", "").startswith("http") else None
     )
