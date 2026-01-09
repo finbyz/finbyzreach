@@ -36,25 +36,25 @@ def research_company(party_type: str,party_name: str,**kwargs) -> str:
     doc.company_details = result.company_overview
     doc.industry = result.industry_type
 
-    if not doc.country:
+    if not doc.get("country"):
         doc.country = result.country
 
-    if not doc.state:
+    if not doc.get("state"):
         doc.state = result.state
 
-    if not doc.city:
+    if not doc.get("city"):
         doc.city = result.city
 
-    if not doc.website:
+    if not doc.get("website"):
         doc.website = result.website
 
-    if hasattr(doc, "designation") and not doc.designation:
+    if hasattr(doc, "designation") and not doc.get("designation"):
         doc.designation = result.designation
 
-    if hasattr(doc, "no_of_employees") and not doc.no_of_employees:
+    if hasattr(doc, "no_of_employees") and not doc.get("no_of_employees"):
         doc.no_of_employees = result.no_of_employees
 
-    if hasattr(doc, "type") and not doc.type:
+    if hasattr(doc, "type") and not doc.get("type"):
         doc.type = result.lead_type
     
     doc.save()
