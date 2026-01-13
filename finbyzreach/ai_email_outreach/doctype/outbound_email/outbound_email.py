@@ -19,14 +19,14 @@ class OutboundEmail(Document):
         
     def draft_emails(self):
         contact = frappe.get_doc('Contact', self.contact)
-        company_details = None
+        customer_details = None
         person_details = contact.person_details
         website = ''
         country = ''
         link = None
         for link in contact.links:
-            company_details = frappe.get_value(link.link_doctype, link.link_name, 'company_details')
-            if company_details:
+            customer_details = frappe.get_value(link.link_doctype, link.link_name, 'customer_details')
+            if customer_details:
                 link = link
                 break
         if link and link.link_doctype == 'Lead':
@@ -34,7 +34,7 @@ class OutboundEmail(Document):
             country = frappe.get_value('Lead', link.link_name, 'country') or ''
             
         
-        if not (company_details and person_details):
+        if not (customer_details and person_details):
             frappe.throw("Insufficient data in Contact to generate emails.")
             return
         
@@ -57,7 +57,7 @@ class OutboundEmail(Document):
             "company_name": contact.company_name,
             "website": website,
             "country": country,
-            "company_details": company_details,
+            "customer_details": customer_details,
             "person_details": person_details,
             "number_of_emails": len(campaign_schedules)
         }

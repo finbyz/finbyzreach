@@ -33,7 +33,7 @@ def research_company(party_type: str,party_name: str,**kwargs) -> str:
 
     result = company_research_service.invoke(**lead_info)
 
-    doc.company_details = result.company_overview
+    doc.customer_details = result.company_overview
     doc.industry = result.industry_type
 
     if not doc.get("country"):

@@ -2,7 +2,7 @@ from  finbyzreach.utils.research import research_company
 import frappe
 
 def research_lead(self):
-    if self.company_details:
+    if self.customer_details:
         return
     research_company("Lead", self.name)
     
