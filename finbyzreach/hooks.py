@@ -30,7 +30,8 @@ required_apps = ["finbyz/finbyzai"]
 doctype_js = {
     "Contact": "public/js/contact.js",
     "Customer": "public/js/customer.js",
-    "Lead": "public/js/lead.js"
+    "Lead": "public/js/lead.js",
+    "Communication": "public/js/communication.js"
 }
 # doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
@@ -120,17 +121,21 @@ doctype_js = {
 # ---------------
 # Hook on document methods and events
 
-# doc_events = {
-# 	"Lead": {
-# 		"after_insert": "finbyzreach.doc_events.lead.after_insert",
-# 	},
-# 	"Customer": {
-# 		"after_insert": "finbyzreach.doc_events.customer.after_insert",
-# 	},
-# 	"Contact": {
-# 		"after_insert": "finbyzreach.doc_events.contact.after_insert",
-# 	}
-# }
+doc_events = {
+    "Communication": {
+        "after_insert": "finbyzreach.doc_events.communication.after_insert",
+    },
+    # "Lead": {
+    # 	"after_insert": "finbyzreach.doc_events.lead.after_insert",
+    # },
+    # "Customer": {
+    # 	"after_insert": "finbyzreach.doc_events.customer.after_insert",
+    # },
+    # "Contact": {
+    # 	"after_insert": "finbyzreach.doc_events.contact.after_insert",
+    # }
+}
+
 
 # Scheduled Tasks
 # ---------------
