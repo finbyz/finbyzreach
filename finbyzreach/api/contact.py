@@ -3,8 +3,14 @@ import frappe
 
 @frappe.whitelist()
 def research_contact(name):
-    research_person(name)
-
+    result = research_person(name)
+    frappe.db.commit() 
+    
+    return {
+        "status": "success",
+        "contact": name,
+        "result": result   
+    }
 
 @frappe.whitelist()
 def add_to_ai_email_campaign(name,campaign=None):
