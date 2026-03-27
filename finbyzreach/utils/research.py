@@ -32,6 +32,10 @@ def research_company(party_type: str,party_name: str,**kwargs) -> str:
     company_research_service = AgentService(setting.company_research_agent)
 
     result = company_research_service.invoke(**lead_info)
+    frappe.log_error(
+        title="Perplexity Company Research Result",
+        message=frappe.as_json(result)
+    )
 
     doc.customer_details = result.company_overview
     doc.industry = result.industry_type
@@ -103,11 +107,9 @@ def research_person(contact_name: str) -> str:
     # Call research agent
     result = person_research_service.invoke(**lead_info)
 
-    # Update contact with research info
-    contact.person_details = result.research_summary
-    contact.linkedin_profile = (
-        result.linkedin_profile if getattr(result, "linkedin_profile", "").startswith("http") else None
-    )
+    # Save to contact
+    contact.person_research = result.research_summary
+    contact.linkedin_profile = result.linkedin_profile
     contact.save(ignore_permissions=True)
-
+    
     return result
