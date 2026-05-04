@@ -40,8 +40,12 @@ def analyze_communication(doc_name):
     Args:
         doc_name: Name of the Communication document
     """
-    doc = frappe.get_doc("Communication", doc_name)
-    
+    try:
+        doc = frappe.get_doc("Communication", doc_name)
+    except frappe.DoesNotExistError:
+        frappe.logger().info(f"Communication {doc_name} no longer exists, skipping analysis.")
+        return
+
     if not doc.reference_doctype or not doc.reference_name:
         return
     
@@ -51,16 +55,22 @@ def analyze_communication(doc_name):
         return
     
     try:
-        # Determine communication category using AI
-        # Pass reference_doctype to context
-        category = get_communication_category(content, doc.subject, doc.reference_doctype)
+        # Determine communication category and description using AI
+        result = get_communication_category(content, doc.subject, doc.reference_doctype)
         
-        if not category:
+        if not result:
             frappe.logger().info(f"Could not determine category for communication {doc_name}")
             return
         
+        category = result.get("category")
+        description = result.get("description", "")
+        
+        if not category:
+            frappe.logger().info(f"No category returned for communication {doc_name}")
+            return
+        
         # Update the reference document based on its type
-        updated = update_reference_document(doc.reference_doctype, doc.reference_name, category)
+        updated = update_reference_document(doc.reference_doctype, doc.reference_name, category, description)
         
         if updated:
             reference_doc_url = frappe.utils.get_url_to_form(doc.reference_doctype, doc.reference_name)
@@ -69,7 +79,6 @@ def analyze_communication(doc_name):
             
             frappe.logger().info(f"Communication {doc_name} categorized as '{category}' and updated {doc.reference_doctype} {doc.reference_name}")
             
-            # Show popup only if request (Manual Trigger) to avoid background noise, though msgprint handles context usually
             if frappe.request:
                  frappe.msgprint(msg, title="Analysis Success", indicator="green")
         else:
@@ -81,15 +90,13 @@ def analyze_communication(doc_name):
         
     except Exception as e:
         frappe.log_error(f"Error analyzing communication {doc_name}: {str(e)}", "Communication Analysis Error")
-        # Only throw if it's a direct whitelist call to inform the user, but we are often in background job.
-        # If in request (manual button), throw ensures UI error.
         if frappe.request:
             frappe.throw(f"Error: {str(e)}")
 
 
 def get_communication_category(content, subject="", reference_doctype="Opportunity"):
     """
-    Use AI Agent to categorize the communication.
+    Use AI Agent to categorize the communication and generate a short description.
     
     Args:
         content: Email body content
@@ -97,15 +104,18 @@ def get_communication_category(content, subject="", reference_doctype="Opportuni
         reference_doctype: The Doctype this communication is linked to
         
     Returns:
-        Category string or None
+        dict with 'category' and 'description' keys, or None on failure
     """
     try:
-        # 1. Get Agent Name from Settings
-        ai_agent_name = "Communication Analyzer" # Default
+        # 1. Get Agent Name from AI Agent Settings (required)
+        ai_agent_name = None
         if frappe.get_meta("AI Agent Settings").has_field("communication_analyzer"):
-             settings = frappe.get_single("AI Agent Settings")
-             if settings.communication_analyzer:
-                 ai_agent_name = settings.communication_analyzer
+            settings = frappe.get_single("AI Agent Settings")
+            ai_agent_name = settings.communication_analyzer
+
+        if not ai_agent_name:
+            frappe.log_error("Communication Analyzer not configured in AI Agent Settings", "Communication Analysis Error")
+            return None
 
         if not frappe.db.exists("AI Agent", ai_agent_name):
             frappe.log_error(f"AI Agent '{ai_agent_name}' not found", "Communication Analysis Error")
@@ -118,20 +128,16 @@ def get_communication_category(content, subject="", reference_doctype="Opportuni
         valid_options = []
         
         if reference_doctype == "Opportunity":
-            # Fetch names of all Opportunity Types
             valid_options = frappe.get_all("Opportunity Type", pluck="name")
             
         elif reference_doctype in ["Sales Order", "Quotation"]:
-            # Fetch options from 'order_type' Select field
             meta = frappe.get_meta(reference_doctype)
             if meta.has_field("order_type"):
                 field = meta.get_field("order_type")
                 if field.options:
-                    # Options are newline separated string
                     valid_options = [opt.strip() for opt in field.options.split("\n") if opt.strip()]
         
         if not valid_options:
-             # Default fallback if no options found or generic doctype
              valid_options = ["Sales", "Parts", "Service", "Support", "Administrative"]
 
         options_str = ", ".join(valid_options)
@@ -147,42 +153,70 @@ def get_communication_category(content, subject="", reference_doctype="Opportuni
         # Invoke AI Agent
         result = agent.invoke(subject, **ai_input_data)
         
-        # Extract category from result
-        category = ""
+        # Extract response from result
+        response_text = ""
         if hasattr(result, 'content'):
-            category = result.content
+            response_text = result.content
         elif isinstance(result, dict):
-            # Try common keys
-            category = result.get('output') or result.get('text') or result.get('response') or str(result)
+            response_text = result.get('output') or result.get('text') or result.get('response') or str(result)
         else:
-             category = str(result)
+            response_text = str(result)
              
-        if not category:
-             category = ""
+        if not response_text:
+            return None
              
-        category = category.strip()
+        response_text = response_text.strip()
         
-        # Validate category (Exact match first, then Case-insensitive)
+        # Parse JSON response from AI
+        # Strip markdown code blocks if present (e.g., ```json ... ```)
+        import json
+        import re
+        
+        clean_text = response_text
+        # Remove markdown code block wrapper
+        code_block_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', response_text)
+        if code_block_match:
+            clean_text = code_block_match.group(1).strip()
+        
+        try:
+            parsed = json.loads(clean_text)
+            ai_category = parsed.get("category", "").strip()
+            ai_description = parsed.get("description", "").strip()
+        except json.JSONDecodeError:
+            # Fallback: assume it's just the category (old format)
+            ai_category = response_text
+            ai_description = ""
+        
+        # Validate category
+        matched_category = None
         for valid in valid_options:
-            if valid.lower() == category.lower():
-                return valid
+            if valid.lower() == ai_category.lower():
+                matched_category = valid
+                break
         
-        # Fallback partial match
-        for valid in valid_options:
-            if valid.lower() in category.lower():
-                return valid
+        if not matched_category:
+            for valid in valid_options:
+                if valid.lower() in ai_category.lower():
+                    matched_category = valid
+                    break
         
-        frappe.logger().info(f"AI returned category '{category}' which did not match valid options: {valid_options}")
-        return None
+        if not matched_category:
+            frappe.logger().info(f"AI returned category '{ai_category}' which did not match valid options: {valid_options}")
+            return None
+        
+        return {
+            "category": matched_category,
+            "description": ai_description
+        }
         
     except Exception as e:
         frappe.log_error(f"Error getting communication category: {str(e)}", "AI Agent Error")
         return None
 
 
-def update_reference_document(doctype, docname, category):
+def update_reference_document(doctype, docname, category, description=""):
     """
-    Update the reference document with the communication category.
+    Update the reference document with the communication category and description.
     Uses frappe.db.set_value for direct database update, bypassing validation
     and field editability constraints. This is safe for background jobs.
     
@@ -190,6 +224,7 @@ def update_reference_document(doctype, docname, category):
         doctype: Reference doctype
         docname: Reference document name
         category: Communication category (Should be a valid option)
+        description: Short description of the email (2-3 lines)
     Returns:
         bool: True if updated, False otherwise
     """
@@ -197,13 +232,19 @@ def update_reference_document(doctype, docname, category):
         field_to_update = None
         new_value = None
         current_value = None
+        updated = False
         
         if doctype == "Opportunity":
             if frappe.db.exists("Opportunity Type", category):
                 current_value = frappe.db.get_value(doctype, docname, "opportunity_type")
                 if current_value != category:
-                    field_to_update = "opportunity_type"
-                    new_value = category
+                    frappe.db.set_value(doctype, docname, "opportunity_type", category, update_modified=False)
+                    updated = True
+                
+                # Store description in customer_application field
+                if description:
+                    frappe.db.set_value(doctype, docname, "customer_application", description, update_modified=False)
+                    updated = True
             else:
                 frappe.log_error(f"Opportunity Type '{category}' does not exist.", "Reference Update Error")
                 return False
@@ -211,8 +252,15 @@ def update_reference_document(doctype, docname, category):
         elif doctype in ["Sales Order", "Quotation"]:
             current_value = frappe.db.get_value(doctype, docname, "order_type")
             if current_value != category:
-                field_to_update = "order_type"
-                new_value = category
+                frappe.db.set_value(doctype, docname, "order_type", category, update_modified=False)
+                updated = True
+            
+            # Log description for Sales Order/Quotation since they don't have a dedicated field
+            if description:
+                frappe.log_error(
+                    f"Email Description for {doctype} {docname}:\nCategory: {category}\nDescription: {description}",
+                    f"Communication Analysis - {doctype}"
+                )
                 
         elif doctype == "Lead":
             type_mapping = {
@@ -234,15 +282,14 @@ def update_reference_document(doctype, docname, category):
 
             current_value = frappe.db.get_value(doctype, docname, "request_type")
             if current_value != new_type:
-                field_to_update = "request_type"
-                new_value = new_type
+                frappe.db.set_value(doctype, docname, "request_type", new_type, update_modified=False)
+                updated = True
             
         elif doctype == "Customer":
             frappe.logger().info(f"Customer {docname} communication categorized as {category}")
             return False
             
-        if field_to_update and new_value:
-            frappe.db.set_value(doctype, docname, field_to_update, new_value, update_modified=False)
+        if updated:
             frappe.db.commit()
             return True
             
