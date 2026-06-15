@@ -4,7 +4,15 @@ app_publisher = "Finbyz Tech Pvt Ltd"
 app_description = "AI-Powered Follow-ups and Smart Email Outreach"
 app_email = "info@finbyz.tech"
 app_license = "MIT"
-required_apps = ["finbyz/finbyzai"]
+add_to_apps_screen = [
+    {
+        "name": app_name,
+        "logo": "/assets/finbyzreach/images/logo.jpg",
+        "title": app_title,
+        "route": "/desk",
+    }
+]
+
 # Includes in <head>
 # ------------------
 
@@ -31,7 +39,6 @@ doctype_js = {
     "Contact": "public/js/contact.js",
     "Customer": "public/js/customer.js",
     "Lead": "public/js/lead.js",
-    "Communication": "public/js/communication.js"
 }
 # doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
@@ -160,9 +167,7 @@ scheduler_events = {
         "*/10 * * * *": [
             "finbyzreach.tasks.every_10_min.enqueue_outbound_emails.enqueue_outbound_emails",
         ],
-        "00 16 * * *": [
-            "finbyzreach.tasks.every_4PM.smart_followup.run_followup_job"
-        ]
+        "00 16 * * *": ["finbyzreach.tasks.every_4PM.smart_followup.run_followup_job"],
     }
 }
 
