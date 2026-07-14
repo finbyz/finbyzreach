@@ -34,8 +34,8 @@ class OutboundEmail(Document):
             country = frappe.get_value('Lead', link.link_name, 'country') or ''
             
         
-        if not (customer_details and person_details):
-            frappe.throw("Insufficient data in Contact to generate emails.")
+        if not person_details:
+            frappe.throw("Insufficient data in Contact to generate emails. Needs person_details.")
             return
         
         email_campaign = frappe.get_doc('AI Email Campaign', self.ai_email_campaign)
