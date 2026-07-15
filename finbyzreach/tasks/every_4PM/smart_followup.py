@@ -29,9 +29,9 @@ def run_followup_job():
             "state":row.get("state"),
         }
 
-        if not party.get("person_research"):
-            research_summary = research_person(party.get("party_type"),party.get("name"),party.get("contact_name"))
-            party["person_research"] = research_summary
+        if not party.get("person_research") and party.get("contact_name"):
+            research_result = research_person(party.get("contact_name"))
+            party["person_research"] = getattr(research_result, "research_summary", research_result)
             
         if not party.get("customer_details"):
             research_summary = research_company(
@@ -63,14 +63,14 @@ def get_opportunity_followups(days_since_last_activity=5):
             l.lead_name AS customer_name,
             COALESCE(ct.email_id, l.email_id) AS email,
             l.company_name AS company,
-            l.company_research AS customer_details,
+            l.customer_details AS customer_details,
             o.name AS opportunity_id,
             o.status AS opportunity_status,
             o.country,
             o.city,
             o.state,
             comm.last_activity,
-            ct.person_research AS person_research,
+            ct.person_details AS person_research,
             ct.name AS contact_name
         FROM `tabLead` l
         INNER JOIN `tabOpportunity` o 
@@ -102,7 +102,7 @@ def get_opportunity_followups(days_since_last_activity=5):
             o.city,
             o.state,
             comm.last_activity,
-            ct.person_research AS person_research,
+            ct.person_details AS person_research,
             c.customer_details AS customer_details,
             ct.name AS contact_name
         FROM `tabCustomer` c
@@ -186,7 +186,7 @@ def draft_email(lead, activity_summary):
         "country":lead.get("country", ""),
         "status":lead.get("status", ""),
         "email":lead.get("email_id", ""),
-        "company_research":lead.get("company_research"),
+        "company_research": lead.get("customer_details") or lead.get("company_research"),
         "person_research":lead.get("person_research"),
         "activity_summary":activity_summary or "No recent activities.",
         "research_text":research_text

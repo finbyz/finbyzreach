@@ -108,7 +108,9 @@ def research_person(contact_name: str) -> str:
     result = person_research_service.invoke(**lead_info)
 
     # Save to contact
-    contact.person_research = result.research_summary
+    contact.person_details = result.research_summary
+    if hasattr(contact, "person_research"):
+        contact.person_research = result.research_summary
     contact.linkedin_profile = result.linkedin_profile
     contact.save(ignore_permissions=True)
     

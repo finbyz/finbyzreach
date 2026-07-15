@@ -3,4 +3,5 @@ import frappe
 
 @frappe.whitelist(methods=["POST"])
 def research_lead(name):
-    research_company("Lead", name)
+    result = research_company("Lead", name)
+    return {"status": "success", "lead": name, "result": result}
