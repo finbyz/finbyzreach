@@ -46,10 +46,7 @@ class OutboundEmail(Document):
         emails_objective = ""
         
         for i, schedule in enumerate(campaign_schedules, start=1):
-            emails_objective += (
-                f"Email {i}. {schedule.description.strip()} "
-                f"(Send After: {schedule.send_after} days)\n"
-            )
+            emails_objective += get_schedule_objective(schedule, i)
         
         input_data = {
             "emails_objective": emails_objective,
@@ -93,6 +90,17 @@ class OutboundEmail(Document):
                 "content": email.body,
                 "time": scheduled_time,
                 "status": "Queued",
+                "custom_branch_condition": schedule.get("custom_branch_condition") if idx < len(campaign_schedules) else None,
             })
             self.save()
         self.reload()
+
+def get_schedule_objective(schedule, index):
+    objective = (
+        f"Email {index}. {(schedule.get('description') or '').strip()} "
+        f"(Send After: {schedule.get('send_after') or 0} days"
+    )
+    branch_condition = schedule.get("custom_branch_condition")
+    if branch_condition:
+        objective += f", Branch Condition: {branch_condition}"
+    return f"{objective})\n"
