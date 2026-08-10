@@ -74,7 +74,7 @@ doctype_js = {
 # ------------
 
 # before_install = "finbyzreach.install.before_install"
-# after_install = "finbyzreach.install.after_install"
+after_install = "finbyzreach.install.after_install"
 
 # Uninstallation
 # ------------
@@ -245,12 +245,6 @@ fixtures = [
     {
         "doctype": "Role",
         "filters": {"name": ["in", ["Social Media Manager"]]}
-    },
-    {
-        "dt": "AI Agent",
-        "filters": [
-            ["name","in",["Person Research", "Company Research"]]
-        ]
     },
     {
         "doctype": "Custom Field",

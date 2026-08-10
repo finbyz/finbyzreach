@@ -29,6 +29,8 @@ def research_company(party_type: str,party_name: str,**kwargs) -> str:
         
     # get prompt template from settings
     setting = frappe.get_single("Followup Settings")
+    if not setting.company_research_agent:
+        frappe.throw("Please set Company Research Agent in Followup Settings.")
     company_research_service = AgentService(setting.company_research_agent)
 
     result = company_research_service.invoke(**lead_info)
@@ -102,6 +104,8 @@ def research_person(contact_name: str) -> str:
     })
     # Get agent service from Followup Settings
     setting = frappe.get_single("Followup Settings")
+    if not setting.person_research_agent:
+        frappe.throw("Please set Person Research Agent in Followup Settings.")
     person_research_service = AgentService(setting.person_research_agent)
 
     # Call research agent
