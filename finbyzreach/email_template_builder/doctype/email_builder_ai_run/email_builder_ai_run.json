@@ -1,0 +1,160 @@
+{
+ "actions": [],
+ "autoname": "hash",
+ "creation": "2026-07-22 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "template",
+  "agent",
+  "status",
+  "accepted",
+  "accepted_on",
+  "user",
+  "prompt",
+  "summary",
+  "change_notes",
+  "warnings",
+  "error",
+  "before_hash",
+  "after_hash",
+  "before_schema_json",
+  "after_schema_json",
+  "issues_json"
+ ],
+ "fields": [
+  {
+   "fieldname": "template",
+   "fieldtype": "Link",
+   "label": "Email Template",
+   "options": "Email Template",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "agent",
+   "fieldtype": "Data",
+   "label": "AI Agent",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Success\nRejected\nFailed",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "accepted",
+   "fieldtype": "Check",
+   "label": "Accepted",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "accepted_on",
+   "fieldtype": "Datetime",
+   "label": "Accepted On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "user",
+   "fieldtype": "Link",
+   "label": "User",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "prompt",
+   "fieldtype": "Small Text",
+   "label": "Prompt",
+   "read_only": 1
+  },
+  {
+   "fieldname": "summary",
+   "fieldtype": "Small Text",
+   "label": "Summary",
+   "read_only": 1
+  },
+  {
+   "fieldname": "change_notes",
+   "fieldtype": "Small Text",
+   "label": "Change Notes",
+   "read_only": 1
+  },
+  {
+   "fieldname": "warnings",
+   "fieldtype": "Small Text",
+   "label": "Warnings",
+   "read_only": 1
+  },
+  {
+   "fieldname": "error",
+   "fieldtype": "Small Text",
+   "label": "Error",
+   "read_only": 1
+  },
+  {
+   "fieldname": "before_hash",
+   "fieldtype": "Data",
+   "label": "Before Hash",
+   "read_only": 1
+  },
+  {
+   "fieldname": "after_hash",
+   "fieldtype": "Data",
+   "label": "After Hash",
+   "read_only": 1
+  },
+  {
+   "fieldname": "before_schema_json",
+   "fieldtype": "Code",
+   "label": "Before Schema",
+   "options": "JSON",
+   "read_only": 1,
+   "hidden": 1
+  },
+  {
+   "fieldname": "after_schema_json",
+   "fieldtype": "Code",
+   "label": "After Schema",
+   "options": "JSON",
+   "read_only": 1,
+   "hidden": 1
+  },
+  {
+   "fieldname": "issues_json",
+   "fieldtype": "Code",
+   "label": "Issues",
+   "options": "JSON",
+   "read_only": 1,
+   "hidden": 1
+  }
+ ],
+ "links": [],
+ "modified": "2026-07-22 00:00:00.000000",
+ "module": "Email Template Builder",
+ "name": "Email Builder AI Run",
+ "permissions": [
+  {
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Email Designer"
+  },
+  {
+   "delete": 1,
+   "export": 1,
+   "import": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "track_changes": 0
+}

@@ -18,7 +18,9 @@ add_to_apps_screen = [
 
 # include js, css files in header of desk.html
 # app_include_css = "/assets/finbyzreach/css/finbyzreach.css"
-# app_include_js = "/assets/finbyzreach/js/finbyzreach.js"
+app_include_js = [
+    "/assets/finbyzreach/js/email_builder_composer.js?v=20260716.1",
+]
 
 # include js, css files in header of web template
 # web_include_css = "/assets/finbyzreach/css/finbyzreach.css"
@@ -39,8 +41,14 @@ doctype_js = {
     "Contact": "public/js/contact.js",
     "Customer": "public/js/customer.js",
     "Lead": "public/js/lead.js",
+    "Email Template": "public/js/doctype_js/email_template.js",
+    "Campaign": "public/js/doctype_js/campaign.js",
+	"Email Campaign": "public/js/doctype_js/email_campaign.js",
 }
-# doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
+doctype_list_js = {
+    "Email Template": "public/js/doctype_list_js/email_template_list.js",
+	"Campaign": "public/js/doctype_list_js/campaign_list.js",
+}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
 
@@ -65,10 +73,17 @@ doctype_js = {
 # ----------
 
 # add methods and filters to jinja environment
-# jinja = {
-# 	"methods": "finbyzreach.utils.jinja_methods",
-# 	"filters": "finbyzreach.utils.jinja_filters"
-# }
+# add methods and filters to jinja environment
+jinja = {
+	"methods": [
+		"finbyzreach.email_template_builder.tokens.ebv",
+	],
+	"filters": [
+		"finbyzreach.email_template_builder.tokens.email_builder_safe_url",
+		"finbyzreach.email_template_builder.tokens.email_builder_text",
+		"finbyzreach.email_template_builder.tokens.ebt",
+	]
+}
 
 # Installation
 # ------------
@@ -124,23 +139,29 @@ after_install = "finbyzreach.install.after_install"
 # 	"ToDo": "custom_app.overrides.CustomToDo"
 # }
 
+extend_doctype_class = {
+	"Campaign": [
+		"finbyzreach.email_marketing.CampaignEmailBroadcastMixin",
+	],
+	"Email Campaign": [
+		"finbyzreach.email_marketing.EmailCampaignBroadcastMixin",
+	],
+}
+
 # Document Events
 # ---------------
 # Hook on document methods and events
 
 doc_events = {
     "Communication": {
-        "after_insert": "finbyzreach.doc_events.communication.after_insert",
+        "after_insert": [
+            "finbyzreach.doc_events.communication.after_insert",
+            "finbyzreach.email_marketing.communication_after_insert",
+        ]
     },
-    # "Lead": {
-    # 	"after_insert": "finbyzreach.doc_events.lead.after_insert",
-    # },
-    # "Customer": {
-    # 	"after_insert": "finbyzreach.doc_events.customer.after_insert",
-    # },
-    # "Contact": {
-    # 	"after_insert": "finbyzreach.doc_events.contact.after_insert",
-    # }
+    "File": {
+        "after_insert": "finbyzreach.email_template_builder.realtime.on_file_after_insert"
+    },
 }
 
 
@@ -148,9 +169,10 @@ doc_events = {
 # ---------------
 
 scheduler_events = {
-    # "all": [
-    # 	"finbyzreach.tasks.all"
-    # ],
+    "all": [
+        "finbyzreach.email_marketing.dispatch_due_marketing_batches",
+        "finbyzreach.email_marketing.sync_marketing_email_statuses",
+    ],
     # "daily": [
     # 	"finbyzreach.tasks.daily",
     # ],
@@ -189,6 +211,10 @@ scheduler_events = {
 # override_doctype_dashboards = {
 # 	"Task": "finbyzreach.task.get_dashboard_data"
 # }
+
+override_doctype_dashboards = {
+    "Campaign": "finbyzreach.campaign_dashboard.get_data",
+}
 
 # exempt linked doctypes from being automatically cancelled
 #
@@ -240,6 +266,14 @@ scheduler_events = {
 # 	"finbyzreach.auth.validate"
 # ]
 
+from frappe.email.doctype.email_queue.email_queue import QueueBuilder
+from finbyzreach.email_marketing import get_unsubscribed_user_emails
+QueueBuilder.get_unsubscribed_user_emails = get_unsubscribed_user_emails
+
+website_route_rules = [
+    {"from_route": "/builder/<path:app_path>", "to_route": "builder"},
+]
+
 
 fixtures = [
     {
@@ -250,6 +284,12 @@ fixtures = [
         "doctype": "Custom Field",
         "filters": [
             ["module", "in", ["Finbyzreach"]]
+        ]
+    },
+    {
+        "doctype": "Custom Field",
+        "filters": [
+            ["name", "in", ["Lead-custom_unsubscribe_topics"]]
         ]
     }
 ]

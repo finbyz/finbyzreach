@@ -5,3 +5,6 @@
 tags
 finbyzreach/docs/current
 node_modules/
+finbyzreach/public/builder
+finbyzreach/www/builder.html
+finbyzreach/public/node_modules
