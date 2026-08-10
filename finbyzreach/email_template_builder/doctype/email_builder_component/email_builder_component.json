@@ -1,0 +1,27 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "field:component_name",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": ["component_name", "component_type", "category", "enabled", "schema_version", "definition_json", "preview_html"],
+ "fields": [
+  {"fieldname": "component_name", "fieldtype": "Data", "label": "Component Name", "reqd": 1, "unique": 1, "in_list_view": 1},
+  {"fieldname": "component_type", "fieldtype": "Select", "label": "Component Type", "options": "Block\nSection", "reqd": 1, "in_list_view": 1},
+  {"fieldname": "category", "fieldtype": "Select", "label": "Category", "options": "Header\nContent\nCTA\nFooter\nSocial\nOther", "default": "Content", "in_list_view": 1},
+  {"fieldname": "enabled", "fieldtype": "Check", "label": "Enabled", "default": "1", "in_list_view": 1},
+  {"fieldname": "schema_version", "fieldtype": "Int", "label": "Schema Version", "default": "1", "read_only": 1},
+  {"fieldname": "definition_json", "fieldtype": "Code", "label": "Definition JSON", "options": "JSON", "hidden": 1, "reqd": 1},
+  {"fieldname": "preview_html", "fieldtype": "Code", "label": "Preview HTML", "options": "HTML", "read_only": 1}
+ ],
+ "links": [],
+ "module": "Email Template Builder",
+ "name": "Email Builder Component",
+ "permissions": [
+  {"create": 1, "delete": 1, "export": 1, "read": 1, "report": 1, "role": "Email Designer", "write": 1},
+  {"create": 1, "delete": 1, "export": 1, "import": 1, "read": 1, "report": 1, "role": "System Manager", "share": 1, "write": 1}
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "track_changes": 1
+}

@@ -1,0 +1,381 @@
+{% extends "templates/web.html" %}
+
+{% block title %}Manage Subscriptions{% endblock %}
+
+{% block page_content %}
+<style>
+    /* Reset & Scope */
+    body {
+        background-color: #f8f9fa; /* Light grey background for the whole page */
+    }
+    
+    .pref-wrapper {
+        font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        background-color: #ffffff;
+        max-width: 640px; /* Matched width proportions */
+        margin: 40px auto;
+        padding: 40px 48px; /* Proper padding matching the design */
+        min-height: calc(100vh - 200px);
+        position: relative;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02); /* Almost invisible shadow */
+        border-radius: 8px;
+    }
+
+    /* Top gradient line exactly like screenshot */
+    .pref-wrapper::before {
+        content: "";
+        position: absolute;
+        top: 0; left: 0; right: 0; height: 3px;
+        background: linear-gradient(90deg, #3b82f6, #ec4899);
+        border-top-left-radius: 8px;
+        border-top-right-radius: 8px;
+    }
+    
+    .pref-header {
+        text-align: center;
+        margin-bottom: 32px;
+        margin-top: 16px;
+    }
+    
+    .pref-title {
+        font-size: 26px;
+        font-weight: 700;
+        color: #0f172a;
+        margin: 0 0 10px 0;
+    }
+    
+    .pref-subtitle {
+        color: #64748b;
+        font-size: 14px;
+        line-height: 1.6;
+        margin: 0;
+    }
+
+    /* Topic List */
+    .pref-topics-title {
+        font-size: 11px;
+        font-weight: 700;
+        color: #94a3b8;
+        margin-bottom: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    .pref-topics-list {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        margin-bottom: 32px;
+    }
+
+    .topic-item {
+        position: relative;
+        display: flex;
+        align-items: center;
+        padding: 14px 16px; /* Compact padding like the design */
+        background: #f8fafc; /* Grey background for unselected */
+        border: 1px solid transparent;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+    
+    .topic-item:hover {
+        background: #ffffff; /* White background on hover */
+        border-color: #e2e8f0; /* Grey border on hover */
+    }
+
+    /* Custom Checkbox */
+    .topic-checkbox {
+        position: absolute;
+        opacity: 0;
+        width: 0;
+        height: 0;
+    }
+    
+    .custom-check {
+        flex-shrink: 0;
+        width: 18px; /* Slightly smaller box */
+        height: 18px;
+        background: #ffffff;
+        border: 1.5px solid #cbd5e1;
+        border-radius: 4px; 
+        margin-right: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.1s ease;
+    }
+    
+    .custom-check::after {
+        content: "";
+        width: 9px;
+        height: 9px;
+        background-color: transparent;
+        border-right: 2px solid white;
+        border-bottom: 2px solid white;
+        transform: rotate(45deg) scale(0);
+        margin-bottom: 2px;
+        transition: transform 0.1s ease;
+    }
+
+    /* Checked State */
+    .topic-checkbox:checked + .custom-check {
+        background-color: #ec4899; /* Pink */
+        border-color: #ec4899;
+    }
+    
+    .topic-checkbox:checked + .custom-check::after {
+        transform: rotate(45deg) scale(1);
+    }
+    
+    .topic-item:has(.topic-checkbox:checked) {
+        background: #fdf2f8; /* Light pink background */
+        border-color: #fdf2f8; /* Remove grey border, blend with background */
+    }
+    .topic-item:has(.topic-checkbox:checked):hover {
+        background: #fce7f3;
+        border-color: #fce7f3;
+    }
+
+    .topic-content {
+        flex-grow: 1;
+    }
+    
+    .topic-content h5 {
+        font-size: 15px;
+        color: #0f172a;
+        font-weight: 600;
+        margin: 0;
+        line-height: 1.4;
+    }
+    
+    .topic-content p {
+        font-size: 13px;
+        color: #64748b;
+        margin: 2px 0 0 0; /* Tighter spacing */
+        line-height: 1.5;
+    }
+
+    /* Submit Button */
+    .pref-save-btn {
+        background: #0f172a;
+        color: #ffffff;
+        border: none;
+        padding: 16px 24px; /* Taller button */
+        border-radius: 8px;
+        font-size: 15px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        width: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    .pref-save-btn:hover:not(:disabled) {
+        background: #1e293b;
+    }
+    
+    .pref-save-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    @keyframes spin { 
+        to { transform: rotate(360deg); } 
+    }
+
+    /* Responsive */
+    @media (max-width: 640px) {
+        .pref-wrapper {
+            margin: 16px auto;
+            padding: 24px 16px;
+            width: calc(100% - 32px);
+            box-sizing: border-box;
+        }
+        .pref-header {
+            margin-bottom: 24px;
+            margin-top: 8px;
+        }
+        .pref-title {
+            font-size: 22px;
+        }
+        .pref-subtitle {
+            font-size: 13px;
+        }
+        .pref-topics-list {
+            gap: 8px;
+            margin-bottom: 24px;
+        }
+        .topic-item {
+            padding: 12px 14px;
+        }
+        .custom-check {
+            width: 16px;
+            height: 16px;
+            margin-right: 12px;
+        }
+        .custom-check::after {
+            width: 8px;
+            height: 8px;
+        }
+        .topic-content h5 {
+            font-size: 14px;
+        }
+        .topic-content p {
+            font-size: 12px;
+        }
+        .pref-save-btn {
+            padding: 14px 20px;
+            font-size: 14px;
+        }
+    }
+    
+    .current-topic-badge {
+        font-size: 11px;
+        background: #eff6ff;
+        color: #2563eb;
+        padding: 3px 8px;
+        border-radius: 12px;
+        margin-left: 8px;
+        font-weight: 600;
+        vertical-align: middle;
+        letter-spacing: 0.3px;
+        text-transform: uppercase;
+    }
+    
+    .topic-item.highlight-current {
+        border: 1px solid #93c5fd;
+        background-color: #f8fafc;
+    }
+    .topic-item.highlight-current:hover {
+        background-color: #f1f5f9;
+        border-color: #60a5fa;
+    }
+</style>
+
+<div class="pref-wrapper">
+    {% if error_message %}
+    <div class="pref-header" style="margin-bottom: 0;">
+        <div style="font-size: 48px; margin-bottom: 24px;">❌</div>
+        <h2 class="pref-title">Invalid Link</h2>
+        <p class="pref-subtitle">{{ error_message }}</p>
+    </div>
+    {% else %}
+    <div class="pref-header">
+        <h2 class="pref-title">Email Preferences</h2>
+        <p class="pref-subtitle">Manage subscriptions for<br>{{ email }}</p>
+    </div>
+
+    <form id="subscription-form">
+        <div class="pref-topics-title">Select topics to unsubscribe from</div>
+        <div class="pref-topics-list">
+                {% for topic in topics %}
+                <label class="topic-item {% if topic.is_current %}highlight-current{% endif %}">
+                    <input type="checkbox" class="topic-checkbox" value="{{ topic.name }}" {% if topic.unsubscribed %}checked{% endif %}>
+                    <div class="custom-check"></div>
+                    <div class="topic-content">
+                        <h5>{{ topic.name }} {% if topic.is_current %}<span class="current-topic-badge">Current Topic</span>{% endif %}</h5>
+                        {% if topic.description %}
+                        <p>{{ topic.description }}</p>
+                        {% endif %}
+                    </div>
+                </label>
+                {% endfor %}
+            </div>
+            
+            <button type="submit" id="save-btn" class="pref-save-btn" disabled>
+                Save Preferences
+            </button>
+        </form>
+    {% endif %}
+    </div>
+
+{% if not error_message %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const form = document.getElementById('subscription-form');
+        const saveBtn = document.getElementById('save-btn');
+        
+        const checkboxes = document.querySelectorAll('.topic-checkbox');
+        let initialState = Array.from(checkboxes).map(cb => cb.checked);
+
+        function checkChanges() {
+            let changed = false;
+            checkboxes.forEach((cb, index) => {
+                if (cb.checked !== initialState[index]) {
+                    changed = true;
+                }
+            });
+            saveBtn.disabled = !changed;
+        }
+
+        checkboxes.forEach(cb => {
+            cb.addEventListener('change', checkChanges);
+        });
+
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            saveBtn.disabled = true;
+            saveBtn.innerHTML = '<span style="display:inline-block; margin-right:8px; animation: spin 1s linear infinite;">↻</span> Saving...';
+
+            let unsubscribedTopics = [];
+            checkboxes.forEach(cb => {
+                if (cb.checked) {
+                    unsubscribedTopics.push(cb.value);
+                }
+            });
+
+            const urlParams = new URLSearchParams(window.location.search);
+            const campaign_recipient = urlParams.get('campaign_recipient');
+            const email = urlParams.get('email');
+            const signed_query_string = window.location.search.substring(1);
+
+            if (typeof frappe === 'undefined') {
+                alert("Error: Frappe environment not loaded.");
+                return;
+            }
+
+            frappe.call({
+                method: 'finbyzreach.email_marketing.update_subscription_preferences',
+                args: {
+                    campaign_recipient: campaign_recipient,
+                    email: email,
+                    unsubscribed_topics: unsubscribedTopics,
+                    signed_query_string: signed_query_string
+                },
+                callback: function(r) {
+                    saveBtn.textContent = "Save Preferences";
+                    if (r.message === "success") {
+                        // Update initial state to reflect new saved state
+                        initialState = Array.from(checkboxes).map(cb => cb.checked);
+                        checkChanges(); // Disables the button
+                        
+                        frappe.msgprint({
+                            title: 'Success',
+                            indicator: 'green',
+                            message: 'Your preferences have been saved successfully!'
+                        });
+                    }
+                },
+                error: function(r) {
+                    saveBtn.textContent = "Save Preferences";
+                    checkChanges(); // Re-enables the button so user can try again later
+                    
+                    if (!r || (r.exc_type !== "TooManyRequestsError" && (!r.responseJSON || r.responseJSON.exc_type !== "TooManyRequestsError"))) {
+                        frappe.msgprint({
+                            title: 'Error',
+                            indicator: 'red',
+                            message: 'An error occurred while saving your preferences. Please try again.'
+                        });
+                    }
+                }
+            });
+        });
+    });
+</script>
+{% endif %}
+{% endblock %}

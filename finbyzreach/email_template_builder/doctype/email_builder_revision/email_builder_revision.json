@@ -1,0 +1,104 @@
+{
+ "actions": [],
+ "autoname": "hash",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "template",
+  "revision_number",
+  "content_hash",
+  "subject",
+  "preheader",
+  "schema_json",
+  "compiled_html",
+  "html_bytes",
+  "save_note"
+ ],
+ "fields": [
+  {
+   "fieldname": "template",
+   "fieldtype": "Link",
+   "label": "Email Template",
+   "options": "Email Template",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "revision_number",
+   "fieldtype": "Int",
+   "label": "Revision",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "content_hash",
+   "fieldtype": "Data",
+   "label": "Content Hash",
+   "read_only": 1
+  },
+  {
+   "fieldname": "subject",
+   "fieldtype": "Data",
+   "label": "Subject",
+   "read_only": 1
+  },
+  {
+   "fieldname": "preheader",
+   "fieldtype": "Small Text",
+   "label": "Preheader",
+   "read_only": 1
+  },
+  {
+   "fieldname": "schema_json",
+   "fieldtype": "Code",
+   "label": "Builder Schema",
+   "options": "JSON",
+   "read_only": 1,
+   "hidden": 1
+  },
+  {
+   "fieldname": "compiled_html",
+   "fieldtype": "Code",
+   "label": "Compiled HTML",
+   "options": "HTML",
+   "read_only": 1,
+   "hidden": 1
+  },
+  {
+   "fieldname": "html_bytes",
+   "fieldtype": "Int",
+   "label": "HTML Bytes",
+   "read_only": 1,
+   "hidden": 1
+  },
+  {
+   "fieldname": "save_note",
+   "fieldtype": "Small Text",
+   "label": "Save Note",
+   "read_only": 1
+  }
+ ],
+ "links": [],
+ "module": "Email Template Builder",
+ "name": "Email Builder Revision",
+ "permissions": [
+  {
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Email Designer"
+  },
+  {
+   "delete": 1,
+   "export": 1,
+   "import": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "track_changes": 0
+}

@@ -1,0 +1,26 @@
+{
+ "content": null,
+ "creation": "2026-07-10 15:32:29.805301",
+ "docstatus": 0,
+ "doctype": "Page",
+ "idx": 0,
+ "modified": "2026-07-10 15:36:48.286345",
+ "modified_by": "Administrator",
+ "module": "Email Template Builder",
+ "name": "email-template-builder",
+ "owner": "Administrator",
+ "page_name": "email-template-builder",
+ "roles": [
+  {
+   "role": "Email Designer"
+  },
+  {
+   "role": "System Manager"
+  }
+ ],
+ "script": null,
+ "standard": "Yes",
+ "style": null,
+ "system_page": 0,
+ "title": "Email Template Builder"
+}

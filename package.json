@@ -1,0 +1,22 @@
+{
+  "name": "finbyzreach",
+  "version": "1.0.0",
+  "description": "AI-Powered Follow-ups and Smart Email Outreach",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "dependencies": {},
+  "devDependencies": {},
+  "scripts": {
+    "postinstall": "yarn --cwd builder install",
+    "dev:builder": "yarn --cwd builder dev",
+    "typecheck": "yarn --cwd builder typecheck",
+    "test": "yarn --cwd builder test",
+    "build:builder": "yarn --cwd builder build",
+    "build": "yarn build:builder"
+  },
+  "author": "Finbyz Tech Pvt Ltd",
+  "license": "MIT",
+  "type": "commonjs"
+}
