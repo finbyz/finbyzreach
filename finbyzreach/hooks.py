@@ -43,11 +43,11 @@ doctype_js = {
     "Lead": "public/js/lead.js",
     "Email Template": "public/js/doctype_js/email_template.js",
     "Campaign": "public/js/doctype_js/campaign.js",
-	"Email Campaign": "public/js/doctype_js/email_campaign.js",
+	  "Email Campaign": "public/js/doctype_js/email_campaign.js",
 }
 doctype_list_js = {
     "Email Template": "public/js/doctype_list_js/email_template_list.js",
-	"Campaign": "public/js/doctype_list_js/campaign_list.js",
+	  "Campaign": "public/js/doctype_list_js/campaign_list.js",
 }
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
@@ -284,12 +284,6 @@ fixtures = [
         "doctype": "Custom Field",
         "filters": [
             ["module", "in", ["Finbyzreach"]]
-        ]
-    },
-    {
-        "doctype": "Custom Field",
-        "filters": [
-            ["name", "in", ["Lead-custom_unsubscribe_topics"]]
         ]
     }
 ]
