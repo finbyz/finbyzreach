@@ -1,4 +1,4 @@
-import { lazy, memo, Suspense } from 'react'
+import { lazy, memo, Suspense, useCallback, useState } from 'react'
 import { Menu, Monitor, PanelRight, Smartphone } from 'lucide-react'
 
 import { Canvas } from './Canvas'
@@ -9,6 +9,7 @@ const Sidebar = lazy(() => import('./Sidebar').then((module) => ({ default: modu
 const Inspector = lazy(() => import('./Inspector').then((module) => ({ default: module.Inspector })))
 
 export const BuilderWorkspace = memo(function BuilderWorkspace() {
+  const [referenceDoctypeFocusRequest, setReferenceDoctypeFocusRequest] = useState(0)
   const {
     document,
     isReadOnly,
@@ -62,6 +63,12 @@ export const BuilderWorkspace = memo(function BuilderWorkspace() {
     prepareMergeField,
     insertMergeField,
   } = useBuilder()
+
+  const configurePersonalization = useCallback(() => {
+    setReferenceDoctypeFocusRequest((current) => current + 1)
+    openTemplateInspector()
+  }, [openTemplateInspector])
+  const clearReferenceDoctypeFocusRequest = useCallback(() => setReferenceDoctypeFocusRequest(0), [])
 
   if (!document) return null
 
@@ -125,10 +132,6 @@ export const BuilderWorkspace = memo(function BuilderWorkspace() {
             onSaveComponent={requestSaveComponent}
             onPickImage={chooseImage}
             onEditTemplate={openTemplateInspector}
-            mergeFields={mergeFields}
-            mergeFieldsLoading={sdk.mergeFields.isLoading}
-            mergeFieldsError={sdk.mergeFields.error}
-            onRetryMergeFields={retryMergeFields}
             onTextEditorController={registerTextEditor}
             readOnly={isReadOnly}
           />
@@ -155,7 +158,9 @@ export const BuilderWorkspace = memo(function BuilderWorkspace() {
             onColumnWidths={changeColumnWidths}
             onUploadImage={uploadInspectorImage}
             onChooseImage={chooseImage}
-            onConfigurePersonalization={openTemplateInspector}
+            onConfigurePersonalization={configurePersonalization}
+            referenceDoctypeFocusRequest={referenceDoctypeFocusRequest}
+            onReferenceDoctypeFocused={clearReferenceDoctypeFocusRequest}
             onRetryMergeFields={retryMergeFields}
             onFocusText={focusTextEditor}
             onPrepareMergeField={prepareMergeField}

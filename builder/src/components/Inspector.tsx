@@ -32,6 +32,8 @@ type InspectorProps = {
   onUploadImage: (blockId: string, file: File) => void
   onChooseImage: (blockId: string) => void
   onConfigurePersonalization: () => void
+  referenceDoctypeFocusRequest: number
+  onReferenceDoctypeFocused: () => void
   onRetryMergeFields: () => void
   onFocusText: (blockId: string) => void
   onPrepareMergeField: (blockId: string) => void
@@ -462,10 +464,35 @@ function SpacingEditor({ label, value = {}, onChange }: { label: string; value?:
 
 function PersonalizationPreview({ props }: { props: InspectorProps }) {
   const { metadata } = props.document
+  const { onReferenceDoctypeFocused, referenceDoctypeFocusRequest } = props
+  const referenceDoctypeFieldRef = useRef<HTMLDivElement>(null)
+  const [highlightReferenceDoctype, setHighlightReferenceDoctype] = useState(false)
+
+  useLayoutEffect(() => {
+    if (!referenceDoctypeFocusRequest) return
+    const frame = window.requestAnimationFrame(() => {
+      const field = referenceDoctypeFieldRef.current
+      if (!field) return
+      field.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      field.querySelector<HTMLInputElement>('input')?.focus({ preventScroll: true })
+      setHighlightReferenceDoctype(true)
+      onReferenceDoctypeFocused()
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [onReferenceDoctypeFocused, referenceDoctypeFocusRequest])
+
+  useEffect(() => {
+    if (!highlightReferenceDoctype) return
+    const timer = window.setTimeout(() => setHighlightReferenceDoctype(false), 2400)
+    return () => window.clearTimeout(timer)
+  }, [highlightReferenceDoctype])
+
   return <Group title="Personalization preview">
     <p className="helper-text">Choose a sample record to preview dynamic fields with real values.</p>
     <div className="personalization-preview-fields">
-      <Field label="Reference DocType"><FrappeLinkInput doctype="DocType" value={metadata.reference_doctype} onChange={(value) => props.onMetadata('reference_doctype', value)} placeholder="Customer" filters={{ issingle: 0, istable: 0 }} /></Field>
+      <div ref={referenceDoctypeFieldRef} className={`reference-doctype-field${highlightReferenceDoctype ? ' is-highlighted' : ''}`}>
+        <Field label="Reference DocType"><FrappeLinkInput doctype="DocType" value={metadata.reference_doctype} onChange={(value) => props.onMetadata('reference_doctype', value)} placeholder="Customer" filters={{ issingle: 0, istable: 0 }} /></Field>
+      </div>
       <Field label="Preview document"><FrappeLinkInput doctype={metadata.reference_doctype} value={metadata.preview_document} onChange={(value) => props.onMetadata('preview_document', value)} placeholder={metadata.reference_doctype ? `Select ${metadata.reference_doctype}` : 'Choose Reference DocType first'} disabled={!metadata.reference_doctype} /></Field>
       <label className="toggle-field validation-toggle"><span>Validate dynamic fields{!metadata.reference_doctype ? <small>Off keeps this template generic. Turn on only when a Reference DocType is selected.</small> : <small>Checks merge fields and visibility rules against readable {metadata.reference_doctype} fields.</small>}</span><input type="checkbox" checked={Boolean(metadata.validate_dynamic_fields)} onChange={(event) => props.onMetadata('validate_dynamic_fields', event.target.checked)} /><i /></label>
     </div>

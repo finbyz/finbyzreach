@@ -2,13 +2,12 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, use
 import { useDroppable, type DraggableAttributes, type DraggableSyntheticListeners } from '@dnd-kit/core'
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { AlignCenter, AlignLeft, AlignRight, Bold, Bookmark, Braces, Copy, EyeOff, GripVertical, ImagePlus, Italic, Link, List, ListOrdered, Pencil, Plus, RemoveFormatting, Sparkles, Trash2, Underline } from 'lucide-react'
+import { AlignCenter, AlignLeft, AlignRight, Bold, Bookmark, Copy, EyeOff, GripVertical, ImagePlus, Italic, Link, List, ListOrdered, Pencil, Plus, RemoveFormatting, Sparkles, Trash2, Underline } from 'lucide-react'
 
 import { BLOCKS, findBlock, LAYOUTS, nodeCss, normalizeColumnWidths, normalizeLength } from '../lib/builder'
 import { insertLineBreakAtSelection, insertTextAtSelection, runLegacyEditorCommand } from '../lib/editorDom'
 import { isValidMergeToken } from '../lib/tokens'
-import type { BuilderBlock, BuilderColumn, BuilderMetadata, BuilderSchema, BuilderSection, MergeField, Selection, Viewport } from '../types'
-import { PersonalizationDialog } from './PersonalizationPicker'
+import type { BuilderBlock, BuilderColumn, BuilderMetadata, BuilderSchema, BuilderSection, Selection, Viewport } from '../types'
 
 export type TextEditorController = {
   blockId: string
@@ -37,10 +36,6 @@ type CanvasProps = {
   onSaveComponent: (selection: NonNullable<Selection>) => void
   onPickImage: (blockId: string) => void
   onEditTemplate: () => void
-  mergeFields: MergeField[]
-  mergeFieldsLoading: boolean
-  mergeFieldsError: unknown
-  onRetryMergeFields: () => void
   onTextEditorController: (controller: TextEditorController | null, blockId?: string) => void
   readOnly?: boolean
 }
@@ -383,27 +378,14 @@ function ButtonTextToolbar({ block, settings, onUpdateNode }: {
 function RichTextToolbar({
   block,
   onUpdate,
-  referenceDoctype,
-  mergeFields,
-  mergeFieldsLoading,
-  mergeFieldsError,
-  onConfigurePersonalization,
-  onRetryMergeFields,
 }: {
   block: BuilderBlock
   onUpdate: CanvasProps['onUpdateContent']
-  referenceDoctype: string
-  mergeFields: MergeField[]
-  mergeFieldsLoading: boolean
-  mergeFieldsError: unknown
-  onConfigurePersonalization: () => void
-  onRetryMergeFields: () => void
 }) {
   const savedSelection = useRef<TextSelectionBookmark | null>(null)
   const selectionFrame = useRef<number | null>(null)
   const linkInputRef = useRef<HTMLInputElement>(null)
   const [toolbarState, dispatchToolbar] = useReducer(richTextToolbarReducer, INITIAL_RICH_TEXT_TOOLBAR_STATE)
-  const [personalizationOpen, setPersonalizationOpen] = useState(false)
   const { format, linkOpen, linkValue } = toolbarState
   const getEditor = useCallback(() => document.querySelector(`[data-block-id="${block.id}"] .rich-text`) as HTMLElement | null, [block.id])
 
@@ -505,17 +487,6 @@ function RichTextToolbar({
     dispatchToolbar({ type: 'close-link-editor' })
   }
 
-  const insertPersonalization = useCallback((token: string) => {
-    const editor = getEditor()
-    if (!editor) return
-    editor.focus({ preventScroll: true })
-    restoreSelection(editor)
-    insertTextAtSelection(token)
-    onUpdate(block.id, 'html', safeRichHtml(editor.innerHTML))
-    captureSelection()
-    setPersonalizationOpen(false)
-  }, [block.id, captureSelection, getEditor, onUpdate, restoreSelection])
-
   const keepSelection = (event: MouseEvent<HTMLButtonElement>) => event.preventDefault()
   const selectCommand = (command: string, value: string) => apply(command, command === 'formatBlock' ? `<${value}>` : value)
 
@@ -546,20 +517,6 @@ function RichTextToolbar({
         <button type="button" aria-label="Cancel link" title="Cancel" onClick={() => dispatchToolbar({ type: 'close-link-editor' })}>×</button>
       </form>}
       <button type="button" aria-label="Clear formatting" title="Clear formatting" onMouseDown={keepSelection} onClick={() => apply('removeFormat')}><RemoveFormatting size={15} /></button>
-      <button type="button" className={`rich-text-toolbar__personalize${personalizationOpen ? ' is-active' : ''}`} aria-label="Personalize" aria-expanded={personalizationOpen} title="Insert personalization" onMouseDown={keepSelection} onClick={() => setPersonalizationOpen((current) => !current)}><Braces size={15} /><span>Personalize</span></button>
-      {personalizationOpen && <PersonalizationDialog
-        fields={mergeFields}
-        referenceDoctype={referenceDoctype}
-        loading={mergeFieldsLoading}
-        error={mergeFieldsError}
-        onConfigure={() => {
-          setPersonalizationOpen(false)
-          onConfigurePersonalization()
-        }}
-        onRetry={onRetryMergeFields}
-        onInsert={(token) => insertPersonalization(token)}
-        onClose={() => setPersonalizationOpen(false)}
-      />}
     </div>
   )
 }
@@ -940,12 +897,6 @@ export const Canvas = memo(function Canvas(props: CanvasProps) {
       {selectedText?.type === 'text' && <RichTextToolbar
         block={selectedText}
         onUpdate={props.onUpdateContent}
-        referenceDoctype={String(props.metadata.reference_doctype || '')}
-        mergeFields={props.mergeFields}
-        mergeFieldsLoading={props.mergeFieldsLoading}
-        mergeFieldsError={props.mergeFieldsError}
-        onConfigurePersonalization={props.onEditTemplate}
-        onRetryMergeFields={props.onRetryMergeFields}
       />}
       {selectedText?.type === 'button' && !props.readOnly && <ButtonTextToolbar block={selectedText} settings={props.schema.settings} onUpdateNode={props.onUpdateNode} />}
       <button type="button" className="inbox-card" onClick={(event: MouseEvent) => { event.stopPropagation(); props.onEditTemplate() }}>
