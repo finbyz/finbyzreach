@@ -2,14 +2,19 @@ from __future__ import annotations
 
 import json
 from copy import deepcopy
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import frappe
-from frappe.tests import IntegrationTestCase
 from frappe.utils import get_url
 
-from ..api import _compiled_subject, _content_hash, _validate_reference_usage, attach_builder_image, create_visual_template, get_link_merge_fields, get_merge_fields, list_builder_images, list_components, list_revisions, load_builder, load_component, render_preview, render_revision_preview, restore_revision, save_builder, save_component, send_test_email, switch_to_raw_html
+try:
+	from frappe.tests import IntegrationTestCase
+except ImportError:  # Frappe 15
+	from frappe.tests.utils import FrappeTestCase as IntegrationTestCase
+
+from ..api import _compiled_subject, _content_hash, _validate_reference_usage, attach_builder_image, create_visual_template, get_link_merge_fields, get_merge_fields, list_builder_images, list_components, list_revisions, load_builder, load_component, render_preview, render_revision_preview, restore_revision, save_builder, save_component, send_communication_email, send_test_email, switch_to_raw_html
 from ..compiler import compile_schema
+from ..compat import sendmail as compat_sendmail
 from ..constants import BLOCK_TYPES, LAYOUTS, MAX_COMPONENT_BYTES, MAX_METADATA_BYTES, MAX_SCHEMA_BYTES
 from ..schema import validate_schema
 
@@ -1044,7 +1049,7 @@ class TestEmailTemplateBuilder(IntegrationTestCase):
 				self.assertEqual(template.subject, original.subject)
 				self.assertEqual(template.custom_builder_content_hash, original.custom_builder_content_hash)
 
-	@patch("finbyzreach.email_template_builder.api.frappe.sendmail")
+	@patch("finbyzreach.email_template_builder.api.sendmail")
 	def test_send_test_email_matches_preview_compile_path_and_validates_recipient(self, sendmail):
 		template = _email_template("_Test Builder Send Preview Parity", subject="Fallback subject")
 		schema = _schema("1", "text")
@@ -1073,6 +1078,64 @@ class TestEmailTemplateBuilder(IntegrationTestCase):
 			with self.subTest(recipient=recipient):
 				with self.assertRaises(frappe.ValidationError):
 					send_test_email(template.name, json.dumps(schema), json.dumps(metadata), recipient=recipient)
+
+	@patch("finbyzreach.email_template_builder.api.sendmail")
+	@patch("frappe.core.doctype.communication.email.make")
+	@patch("finbyzreach.email_template_builder.api.frappe.get_doc")
+	def test_raw_composer_email_uses_v15_compatible_queue(self, get_doc, make_communication, sendmail):
+		make_communication.return_value = {"name": "COMM-RAW", "emails_not_sent_to": ""}
+		communication = MagicMock()
+		communication.get_outgoing_email_account.return_value = MagicMock()
+		communication.sendmail_input_dict.return_value = {
+			"recipients": ["recipient@example.com"],
+			"subject": "Builder message",
+			"content": "<!doctype html><html><body>Builder</body></html>",
+			"communication": "COMM-RAW",
+		}
+		get_doc.return_value = communication
+
+		result = send_communication_email(
+			doctype="Contact",
+			name="CONTACT-1",
+			recipients="recipient@example.com",
+			subject="Builder message",
+			content="<!doctype html><html><body>Builder</body></html>",
+			send_email=1,
+			raw_html=1,
+			add_css=0,
+		)
+
+		self.assertEqual(result["name"], "COMM-RAW")
+		self.assertFalse(make_communication.call_args.kwargs["send_email"])
+		communication.sendmail_input_dict.assert_called_once()
+		sendmail.assert_called_once_with(
+			raw_html=True,
+			add_css=False,
+			now=False,
+			recipients=["recipient@example.com"],
+			subject="Builder message",
+			content="<!doctype html><html><body>Builder</body></html>",
+			communication="COMM-RAW",
+		)
+
+	@patch("frappe.email.doctype.email_queue.email_queue.QueueBuilder.process", autospec=True)
+	def test_v15_raw_queue_keeps_single_complete_html_document(self, process):
+		source = "<!doctype html><html><head></head><body><main>Builder</main></body></html>"
+		compat_sendmail(
+			recipients=["recipient@example.com"],
+			sender="sender@example.com",
+			subject="Builder message",
+			content=source,
+			raw_html=True,
+			add_css=False,
+			delayed=True,
+		)
+
+		builder = process.call_args.args[0]
+		with patch.object(builder, "unsubscribe_message", return_value=None):
+			html = builder.email_html_content()
+		self.assertEqual(html.lower().count("<html"), 1)
+		self.assertIn("<main>Builder</main>", html)
 
 	def test_render_preview_uses_same_metadata_size_guard_as_save(self):
 		oversized_metadata = "{" + " " * (MAX_METADATA_BYTES + 1)
@@ -1311,7 +1374,7 @@ class TestEmailTemplateBuilder(IntegrationTestCase):
 		window_number = 987654321
 		cache_key = frappe.cache.make_key(f"email-builder-test:{frappe.session.user}:{window_number}")
 		frappe.cache.delete_value(cache_key, make_keys=False)
-		with patch("finbyzreach.email_template_builder.api.time.time", return_value=window_number * 600), patch("finbyzreach.email_template_builder.api.frappe.sendmail"):
+		with patch("finbyzreach.email_template_builder.api.time.time", return_value=window_number * 600), patch("finbyzreach.email_template_builder.api.sendmail"):
 			for index in range(10):
 				send_test_email(template.name, schema, metadata, recipient=f"rate-{index}@example.com")
 			with self.assertRaises(frappe.RateLimitExceededError):

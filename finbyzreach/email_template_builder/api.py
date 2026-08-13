@@ -7,12 +7,12 @@ from urllib.parse import quote
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import frappe
-from frappe.email.email_body import get_formatted_html
 from frappe import _
 from frappe.utils import cint, get_datetime, get_system_timezone, validate_email_address
 from frappe.utils.jinja import validate_template
 
 from .compiler import compile_schema
+from .compat import format_email_html, sendmail
 from .constants import MAX_COMPONENT_BYTES, MAX_METADATA_BYTES
 from .reference_fields import (
 	is_permitted_reference_path,
@@ -266,7 +266,7 @@ def _format_preview_html(subject, html_content):
 	formatting path whenever the asset manifest is available.
 	"""
 	add_css = getattr(frappe.local, "bundled_assets", None) is not None
-	return get_formatted_html(subject, html_content, raw_html=True, add_css=add_css)
+	return format_email_html(subject, html_content, raw_html=True, add_css=add_css)
 
 
 def _manual_html_state(doc):
@@ -396,7 +396,7 @@ def list_builder_images(template_name, scope="template", search="", start=0, pag
 			filters=filters,
 			fields=fields,
 			order_by="modified desc",
-			offset=row_start,
+			start=row_start,
 			limit=batch_size,
 		)
 		if not batch:
@@ -654,7 +654,7 @@ def send_test_email(template_name, schema, metadata=None, recipient=None, refere
 		reference_doctype=reference_doctype,
 		reference_name=reference_name,
 	)
-	frappe.sendmail(
+	sendmail(
 		recipients=[recipient],
 		subject=state["subject"],
 		content=state["html_content"],
@@ -664,6 +664,94 @@ def send_test_email(template_name, schema, metadata=None, recipient=None, refere
 		reference_name=template.name,
 	)
 	return {"status": "queued", "recipient": recipient, "warnings": state["compiled"]["warnings"], "issues": state["compiled"]["issues"]}
+
+
+@frappe.whitelist(methods=["POST"])
+def send_communication_email(
+	doctype=None,
+	name=None,
+	content=None,
+	subject=None,
+	sender=None,
+	sender_full_name=None,
+	recipients=None,
+	cc=None,
+	bcc=None,
+	send_email=True,
+	print_html=None,
+	print_format=None,
+	attachments=None,
+	send_me_a_copy=False,
+	read_receipt=None,
+	print_letterhead=True,
+	email_template=None,
+	communication_type=None,
+	send_after=None,
+	print_language=None,
+	now=False,
+	raw_html=False,
+	add_css=True,
+):
+	"""Send composer mail with Frappe 16 raw-HTML semantics on Frappe 15.
+
+	Communication creation remains delegated to Frappe so its permission checks,
+	attachment handling, recipient exclusions, and audit trail stay unchanged. Only
+	the final queue builder is replaced when a complete raw HTML document is sent.
+	"""
+	from frappe.core.doctype.communication.email import make as make_communication
+
+	is_raw_html = bool(cint(raw_html))
+	result = make_communication(
+		doctype=doctype,
+		name=name,
+		content=content,
+		subject=subject,
+		sender=sender,
+		sender_full_name=sender_full_name,
+		recipients=recipients,
+		cc=cc,
+		bcc=bcc,
+		send_email=cint(send_email) and not is_raw_html,
+		print_html=print_html,
+		print_format=print_format,
+		attachments=attachments,
+		send_me_a_copy=send_me_a_copy,
+		read_receipt=read_receipt,
+		print_letterhead=print_letterhead,
+		email_template=email_template,
+		communication_type=communication_type,
+		send_after=send_after,
+		print_language=print_language,
+		now=now,
+	)
+	if not (cint(send_email) and is_raw_html):
+		return result
+
+	communication = frappe.get_doc("Communication", result["name"])
+	if not communication.get_outgoing_email_account():
+		frappe.throw(
+			_(
+				"Unable to send mail because of a missing email account. Please setup default Email Account from Settings > Email Account"
+			),
+			exc=frappe.OutgoingEmailError,
+		)
+
+	mail_args = communication.sendmail_input_dict(
+		print_html=print_html,
+		print_format=print_format,
+		send_me_a_copy=cint(send_me_a_copy),
+		print_letterhead=print_letterhead,
+		print_language=print_language,
+	)
+	if mail_args:
+		sendmail(
+			raw_html=True,
+			add_css=bool(cint(add_css)),
+			now=bool(cint(now)),
+			**mail_args,
+		)
+
+	return result
 
 
 @frappe.whitelist(methods=["GET"])
@@ -677,7 +765,7 @@ def list_components(start=0, page_length=20, category=None):
 		"Email Builder Component",
 		filters=filters,
 		fields=["name", "component_name", "component_type", "category", "schema_version", "modified"],
-		offset=max(0, cint(start)),
+		start=max(0, cint(start)),
 		limit=max(1, min(cint(page_length) or 20, 50)),
 		order_by="modified desc",
 	)
@@ -702,7 +790,7 @@ def list_revisions(template_name, start=0, page_length=50):
 		"Email Builder Revision",
 		filters={"template": template_name},
 		fields=["name", "revision_number", "subject", "preheader", "save_note", "creation", "content_hash", "html_bytes"],
-		offset=max(0, cint(start)),
+		start=max(0, cint(start)),
 		limit=max(1, min(cint(page_length) or 50, 50)),
 		order_by="revision_number desc",
 	)

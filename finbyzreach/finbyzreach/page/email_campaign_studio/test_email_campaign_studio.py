@@ -2,12 +2,18 @@ from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 import frappe
-from frappe.tests import UnitTestCase
+from frappe.model.base_document import import_controller
 
-from finbyzreach.page.email_campaign_studio.email_campaign_studio import (
+try:
+	from frappe.tests import UnitTestCase
+except ImportError:  # Frappe 15
+	from unittest import TestCase as UnitTestCase
+
+from finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio import (
 	_campaign_values,
 	_audience_context,
 	_campaign_for_studio,
+	_ensure_utm_campaign,
 	_frozen_preview_response,
 	_frozen_recipient_preview_rows,
 	_lead_names,
@@ -19,9 +25,111 @@ from finbyzreach.page.email_campaign_studio.email_campaign_studio import (
 	preview_email,
 	send_test,
 )
+from finbyzreach.overrides.email_campaign import (
+	Campaign as CampaignOverride,
+	EmailCampaign as EmailCampaignOverride,
+)
 
 
 class TestEmailCampaignStudio(UnitTestCase):
+	def test_v15_uses_studio_campaign_controller_overrides(self):
+		campaign_controller = import_controller("Campaign")
+		email_campaign_controller = import_controller("Email Campaign")
+
+		self.assertTrue(issubclass(campaign_controller, CampaignOverride))
+		self.assertTrue(issubclass(email_campaign_controller, EmailCampaignOverride))
+
+	@patch(
+		"finbyzreach.email_marketing._is_email_broadcast",
+		return_value=True,
+	)
+	def test_studio_recipient_does_not_require_legacy_campaign_schedule(self, _is_broadcast):
+		email_campaign_controller = import_controller("Email Campaign")
+		recipient = email_campaign_controller(
+			{
+				"doctype": "Email Campaign",
+				"__islocal": 1,
+				"campaign_name": "Studio Campaign",
+				"recipient": "LEAD-1",
+				"custom_delivery_status": "Skipped",
+				"custom_scheduled_at": "2026-08-11 18:02:01",
+			}
+		)
+
+		recipient.validate()
+
+		self.assertEqual(recipient.email_campaign_for, "Lead")
+		self.assertEqual(recipient.status, "Completed")
+		self.assertEqual(recipient.start_date, recipient.end_date)
+
+	@patch(
+		"erpnext.crm.doctype.email_campaign.email_campaign.EmailCampaign.validate",
+		autospec=True,
+	)
+	@patch(
+		"finbyzreach.email_marketing._is_email_broadcast",
+		return_value=False,
+	)
+	def test_standard_email_campaign_keeps_erpnext_validation(self, _is_broadcast, native_validate):
+		email_campaign_controller = import_controller("Email Campaign")
+		recipient = email_campaign_controller(
+			{
+				"doctype": "Email Campaign",
+				"__islocal": 1,
+				"campaign_name": "Standard Campaign",
+			}
+		)
+
+		recipient.validate()
+
+		native_validate.assert_called_once_with(recipient)
+
+	@patch(
+		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio.frappe.new_doc"
+	)
+	@patch(
+		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio.load_doctype_module",
+		side_effect=ImportError("No module named frappe.core.doctype.utm_campaign"),
+	)
+	@patch(
+		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio.frappe.db.exists",
+		return_value=True,
+	)
+	def test_v15_skips_orphaned_utm_campaign_doctype(self, exists, load_module, new_doc):
+		_ensure_utm_campaign("Studio Campaign")
+
+		exists.assert_called_once_with("DocType", "UTM Campaign")
+		load_module.assert_called_once_with("UTM Campaign")
+		new_doc.assert_not_called()
+
+	@patch(
+		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio.frappe.new_doc"
+	)
+	@patch(
+		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio.load_doctype_module"
+	)
+	@patch(
+		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio.frappe.db.exists",
+		side_effect=[True, False],
+	)
+	def test_v16_creates_supported_utm_campaign(self, exists, load_module, new_doc):
+		utm = MagicMock()
+		new_doc.return_value = utm
+
+		_ensure_utm_campaign("Studio Campaign")
+
+		self.assertEqual(
+			exists.call_args_list,
+			[
+				(("DocType", "UTM Campaign"),),
+				(("UTM Campaign", "Studio Campaign"),),
+			],
+		)
+		load_module.assert_called_once_with("UTM Campaign")
+		new_doc.assert_called_once_with("UTM Campaign")
+		self.assertEqual(utm.name, "Studio Campaign")
+		utm.insert.assert_called_once_with(ignore_permissions=True)
+
 	def test_invalid_json_is_reported_as_campaign_validation(self):
 		with self.assertRaises(frappe.ValidationError):
 			_parse_payload("{invalid")
@@ -30,7 +138,7 @@ class TestEmailCampaignStudio(UnitTestCase):
 			_audience_context("[invalid")
 
 	@patch(
-		"finbyzreach.page.email_campaign_studio.email_campaign_studio.frappe.get_list",
+		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio.frappe.get_list",
 		return_value=[frappe._dict(name="LEAD-1", lead_name="Ada", company_name="Example")],
 	)
 	def test_frozen_recipient_rows_query_lead_with_valid_call_shape(self, get_list):
@@ -48,23 +156,23 @@ class TestEmailCampaignStudio(UnitTestCase):
 		)
 
 	@patch(
-		"finbyzreach.page.email_campaign_studio.email_campaign_studio.nowdate",
+		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio.nowdate",
 		return_value="2026-07-22",
 	)
 	@patch(
-		"finbyzreach.page.email_campaign_studio.email_campaign_studio.now_datetime",
+		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio.now_datetime",
 		return_value=datetime(2026, 7, 22, 10, 0, 0),
 	)
 	@patch(
-		"finbyzreach.page.email_campaign_studio.email_campaign_studio._campaign_for_studio",
+		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio._campaign_for_studio",
 		return_value=None,
 	)
 	@patch(
-		"finbyzreach.page.email_campaign_studio.email_campaign_studio.frappe.get_list",
+		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio.frappe.get_list",
 		side_effect=[[], []],
 	)
 	@patch(
-		"finbyzreach.page.email_campaign_studio.email_campaign_studio._check_permission"
+		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio._check_permission"
 	)
 	def test_bootstrap_has_no_application_delivery_limits(
 		self, _permission, _get_list, _campaign, _now, _today
@@ -74,15 +182,15 @@ class TestEmailCampaignStudio(UnitTestCase):
 		self.assertNotIn("delivery_limits", result)
 
 	@patch(
-		"finbyzreach.page.email_campaign_studio.email_campaign_studio.email_marketing.decorate_campaign_links",
+		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio.email_marketing.decorate_campaign_links",
 		return_value='<p><a href="https://example.com/?utm_source=newsletter">Hello Ada</a></p>',
 	)
 	@patch(
-		"finbyzreach.page.email_campaign_studio.email_campaign_studio.render_campaign_snapshot",
+		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio.render_campaign_snapshot",
 		return_value=frappe._dict(subject="Hello Ada", html="<p>Hello Ada</p>"),
 	)
 	@patch(
-		"finbyzreach.page.email_campaign_studio.email_campaign_studio.get_campaign_snapshot",
+		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio.get_campaign_snapshot",
 		return_value=frappe._dict(
 			mode="Visual",
 			subject="Hello {{ doc.lead_name }}",
@@ -91,10 +199,10 @@ class TestEmailCampaignStudio(UnitTestCase):
 		),
 	)
 	@patch(
-		"finbyzreach.page.email_campaign_studio.email_campaign_studio.frappe.get_doc"
+		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio.frappe.get_doc"
 	)
 	@patch(
-		"finbyzreach.page.email_campaign_studio.email_campaign_studio._check_permission"
+		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio._check_permission"
 	)
 	def test_email_preview_renders_without_queuing_mail(
 		self, _permission, get_doc, _snapshot, render, decorate
@@ -123,10 +231,10 @@ class TestEmailCampaignStudio(UnitTestCase):
 		decorate.assert_called_once()
 
 	@patch(
-		"finbyzreach.page.email_campaign_studio.email_campaign_studio.frappe.get_doc"
+		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio.frappe.get_doc"
 	)
 	@patch(
-		"finbyzreach.page.email_campaign_studio.email_campaign_studio._check_permission"
+		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio._check_permission"
 	)
 	def test_frozen_email_preview_never_falls_back_to_browser_content(
 		self, _permission, get_doc
@@ -154,10 +262,10 @@ class TestEmailCampaignStudio(UnitTestCase):
 			)
 
 	@patch(
-		"finbyzreach.page.email_campaign_studio.email_campaign_studio._frozen_recipient_preview_rows"
+		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio._frozen_recipient_preview_rows"
 	)
 	@patch(
-		"finbyzreach.page.email_campaign_studio.email_campaign_studio.frappe.get_all"
+		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio.frappe.get_all"
 	)
 	def test_frozen_preview_reads_scheduled_recipients_not_live_filters(
 		self, get_all, preview_rows
@@ -193,14 +301,14 @@ class TestEmailCampaignStudio(UnitTestCase):
 		)
 
 	@patch(
-		"finbyzreach.page.email_campaign_studio.email_campaign_studio.email_marketing.test_recipient_exclusion",
+		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio.email_marketing.test_recipient_exclusion",
 		return_value="Unsubscribed from topic Frozen Topic",
 	)
 	@patch(
-		"finbyzreach.page.email_campaign_studio.email_campaign_studio.frappe.get_doc"
+		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio.frappe.get_doc"
 	)
 	@patch(
-		"finbyzreach.page.email_campaign_studio.email_campaign_studio._check_permission"
+		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio._check_permission"
 	)
 	def test_frozen_test_uses_saved_topic_not_browser_payload(
 		self, _permission, get_doc, recipient_exclusion
@@ -230,11 +338,11 @@ class TestEmailCampaignStudio(UnitTestCase):
 		)
 
 	@patch(
-		"finbyzreach.page.email_campaign_studio.email_campaign_studio.email_marketing.test_recipient_exclusion",
+		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio.email_marketing.test_recipient_exclusion",
 		return_value="Unsubscribed from topic Product Updates",
 	)
 	@patch(
-		"finbyzreach.page.email_campaign_studio.email_campaign_studio._check_permission"
+		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio._check_permission"
 	)
 	def test_send_test_cannot_bypass_recipient_suppression(
 		self, _check_permission, _recipient_exclusion
@@ -247,7 +355,7 @@ class TestEmailCampaignStudio(UnitTestCase):
 			)
 
 	@patch(
-		"finbyzreach.page.email_campaign_studio.email_campaign_studio.frappe.get_list"
+		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio.frappe.get_list"
 	)
 	def test_audience_query_is_distinct_for_child_table_joins(self, get_list):
 		get_list.return_value = ["LEAD-1"]
@@ -259,7 +367,7 @@ class TestEmailCampaignStudio(UnitTestCase):
 		self.assertTrue(get_list.call_args.kwargs["distinct"])
 
 	@patch(
-		"finbyzreach.page.email_campaign_studio.email_campaign_studio.email_marketing.resolve_campaign_audience",
+		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio.email_marketing.resolve_campaign_audience",
 		return_value=[],
 	)
 	def test_empty_resolved_filter_remains_a_valid_zero_recipient_preview(self, resolve_audience):
@@ -294,7 +402,7 @@ class TestEmailCampaignStudio(UnitTestCase):
 		self.assertEqual(response["eligible_total_pages"], 1)
 
 	@patch(
-		"finbyzreach.page.email_campaign_studio.email_campaign_studio._lead_preview_rows"
+		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio._lead_preview_rows"
 	)
 	def test_preview_response_paginates_eligible_leads(self, preview_rows):
 		resolved = [
@@ -316,7 +424,7 @@ class TestEmailCampaignStudio(UnitTestCase):
 		self.assertEqual(capped["eligible_page_length"], 1000)
 
 	@patch(
-		"finbyzreach.page.email_campaign_studio.email_campaign_studio.frappe.get_list"
+		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio.frappe.get_list"
 	)
 	def test_preview_response_identifies_topic_unsubscribed_leads(self, get_list):
 		get_list.return_value = [
@@ -421,7 +529,7 @@ class TestEmailCampaignStudio(UnitTestCase):
 		self.assertEqual(values["custom_repeat_unit"], "Weeks")
 
 	@patch(
-		"finbyzreach.page.email_campaign_studio.email_campaign_studio.frappe.get_doc"
+		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio.frappe.get_doc"
 	)
 	def test_campaign_for_studio_returns_existing_campaign_values(self, get_doc):
 		campaign = frappe._dict(
@@ -470,28 +578,28 @@ class TestEmailCampaignStudio(UnitTestCase):
 		campaign.check_permission.assert_called_once_with("read")
 
 	@patch(
-		"finbyzreach.page.email_campaign_studio.email_campaign_studio._ensure_utm_campaign"
+		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio._ensure_utm_campaign"
 	)
 	@patch(
-		"finbyzreach.page.email_campaign_studio.email_campaign_studio.email_marketing.schedule_campaign"
+		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio.email_marketing.schedule_campaign"
 	)
 	@patch(
-		"finbyzreach.page.email_campaign_studio.email_campaign_studio.frappe.get_doc"
+		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio.frappe.get_doc"
 	)
 	@patch(
-		"finbyzreach.page.email_campaign_studio.email_campaign_studio._campaign_values"
+		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio._campaign_values"
 	)
 	@patch(
-		"finbyzreach.page.email_campaign_studio.email_campaign_studio._preview_response"
+		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio._preview_response"
 	)
 	@patch(
-		"finbyzreach.page.email_campaign_studio.email_campaign_studio._resolved_studio_audience"
+		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio._resolved_studio_audience"
 	)
 	@patch(
-		"finbyzreach.page.email_campaign_studio.email_campaign_studio._audience_context"
+		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio._audience_context"
 	)
 	@patch(
-		"finbyzreach.page.email_campaign_studio.email_campaign_studio._check_permission"
+		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio._check_permission"
 	)
 	def test_schedule_creates_one_core_campaign_without_hidden_segment(
 		self,
@@ -534,28 +642,28 @@ class TestEmailCampaignStudio(UnitTestCase):
 		schedule_campaign.assert_called_once_with(campaign.name)
 
 	@patch(
-		"finbyzreach.page.email_campaign_studio.email_campaign_studio._ensure_utm_campaign"
+		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio._ensure_utm_campaign"
 	)
 	@patch(
-		"finbyzreach.page.email_campaign_studio.email_campaign_studio.email_marketing.schedule_campaign"
+		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio.email_marketing.schedule_campaign"
 	)
 	@patch(
-		"finbyzreach.page.email_campaign_studio.email_campaign_studio.frappe.get_doc"
+		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio.frappe.get_doc"
 	)
 	@patch(
-		"finbyzreach.page.email_campaign_studio.email_campaign_studio._campaign_values"
+		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio._campaign_values"
 	)
 	@patch(
-		"finbyzreach.page.email_campaign_studio.email_campaign_studio._preview_response"
+		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio._preview_response"
 	)
 	@patch(
-		"finbyzreach.page.email_campaign_studio.email_campaign_studio._resolved_studio_audience"
+		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio._resolved_studio_audience"
 	)
 	@patch(
-		"finbyzreach.page.email_campaign_studio.email_campaign_studio._audience_context"
+		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio._audience_context"
 	)
 	@patch(
-		"finbyzreach.page.email_campaign_studio.email_campaign_studio._check_permission"
+		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio._check_permission"
 	)
 	def test_save_existing_campaign_updates_in_place(
 		self,
@@ -604,24 +712,24 @@ class TestEmailCampaignStudio(UnitTestCase):
 		schedule_campaign.assert_not_called()
 
 	@patch(
-		"finbyzreach.page.email_campaign_studio.email_campaign_studio._ensure_utm_campaign"
+		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio._ensure_utm_campaign"
 	)
 	@patch(
-		"finbyzreach.page.email_campaign_studio.email_campaign_studio.frappe.get_doc"
+		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio.frappe.get_doc"
 	)
 	@patch(
-		"finbyzreach.page.email_campaign_studio.email_campaign_studio._preview_response",
+		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio._preview_response",
 		return_value={"eligible_count": 0},
 	)
 	@patch(
-		"finbyzreach.page.email_campaign_studio.email_campaign_studio._resolved_studio_audience",
+		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio._resolved_studio_audience",
 		return_value=[],
 	)
 	@patch(
-		"finbyzreach.page.email_campaign_studio.email_campaign_studio._audience_context"
+		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio._audience_context"
 	)
 	@patch(
-		"finbyzreach.page.email_campaign_studio.email_campaign_studio._check_permission"
+		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio._check_permission"
 	)
 	def test_draft_can_be_saved_before_audience_and_content_are_complete(
 		self, _permission, audience_context, _resolved, _preview, get_doc, _ensure_utm_campaign
@@ -651,7 +759,7 @@ class TestEmailCampaignStudio(UnitTestCase):
 		self.assertIsNone(values["custom_subscription_topic"])
 
 	@patch(
-		"finbyzreach.page.email_campaign_studio.email_campaign_studio._check_permission"
+		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio._check_permission"
 	)
 	def test_create_campaign_rejects_unknown_launch_action(self, _check_permission):
 		with self.assertRaises(frappe.ValidationError):

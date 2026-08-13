@@ -8,6 +8,7 @@ from email.utils import formataddr
 
 import frappe
 from frappe import _
+from frappe.modules.utils import load_doctype_module
 from frappe.query_builder.functions import Count
 from frappe.utils import (
 	cint,
@@ -20,6 +21,7 @@ from frappe.utils import (
 )
 
 from finbyzreach.email_template_builder.api import _check_test_email_rate_limit
+from finbyzreach.email_template_builder.compat import sendmail
 from finbyzreach.email_template_builder.services import (
 	get_campaign_snapshot,
 	render_campaign_snapshot,
@@ -488,14 +490,18 @@ def _default_if_blank(value, default):
 def _ensure_utm_campaign(campaign_name):
 	"""Create the UTM Campaign that ERPNext's Campaign controller expects to exist.
 
-	Campaign.after_insert / on_change resolve ``UTM Campaign`` by campaign name via
-	frappe.get_doc and only construct it inside an ``except DoesNotExistError`` branch.
-	get_doc records the "... not found" message before raising, so the swallowed
-	exception surfaces as a phantom error client-side. Ensuring the record exists first
-	makes the lookup succeed; after_insert then simply reuses it. UTM Campaign is named
-	by the user with no mandatory fields, so the name alone is enough.
+	Frappe/ERPNext 16's Campaign hooks resolve ``UTM Campaign`` by campaign name.
+	Frappe 15 has no such controller, and a site downgraded from 16 can retain orphaned
+	DocType metadata that makes ``frappe.new_doc`` fail with a module import error.
+	Only apply the v16 workaround when the DocType and its controller are both present.
 	"""
-	if not campaign_name or frappe.db.exists("UTM Campaign", campaign_name):
+	if not campaign_name or not frappe.db.exists("DocType", "UTM Campaign"):
+		return
+	try:
+		load_doctype_module("UTM Campaign")
+	except (ImportError, frappe.DoesNotExistError):
+		return
+	if frappe.db.exists("UTM Campaign", campaign_name):
 		return
 	utm = frappe.new_doc("UTM Campaign")
 	utm.name = campaign_name
@@ -697,7 +703,7 @@ def send_test(payload=None, recipient=None, sample_lead=None):
 		(campaign.custom_sender_name if frozen else payload.get("sender_name")) or ""
 	).strip()
 	sender = formataddr((sender_name, account.email_id)) if sender_name else account.email_id
-	queue = frappe.sendmail(
+	queue = sendmail(
 		recipients=[recipient],
 		sender=sender,
 		reply_to=reply_to or None,
@@ -710,4 +716,3 @@ def send_test(payload=None, recipient=None, sample_lead=None):
 		add_unsubscribe_link=0,
 	)
 	return {"status": "queued", "email_queue": queue.name if queue else None}
-																														

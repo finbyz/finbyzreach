@@ -29,6 +29,7 @@ from frappe.utils import (
 )
 from frappe.utils.verified_command import get_signed_params, verify_request
 
+from finbyzreach.email_template_builder.compat import sendmail
 from finbyzreach.email_template_builder.services import (
 	get_campaign_snapshot,
 	render_campaign_snapshot,
@@ -121,75 +122,6 @@ def _ensure_raw_html_delivery_markers(html):
 	if re.search(r"</body\s*>", html, flags=re.IGNORECASE):
 		return re.sub(r"</body\s*>", footer + "</body>", html, count=1, flags=re.IGNORECASE)
 	return html + footer
-
-
-class CampaignEmailBroadcastMixin:
-	def validate(self):
-		if _is_email_broadcast(self):
-			validate_campaign(self)
-		parent_validate = getattr(super(), "validate", None)
-		if parent_validate:
-			return parent_validate()
-
-
-class EmailCampaignBroadcastMixin:
-	def before_insert(self):
-		# Keep ERPNext's standard Email Campaign workflow untouched.  Only rows
-		# belonging to a Studio broadcast must be created by our frozen-audience
-		# scheduler.
-		if not self.campaign_name or not _is_email_broadcast(self.campaign_name):
-			parent_before_insert = getattr(super(), "before_insert", None)
-			if parent_before_insert:
-				return parent_before_insert()
-			return None
-		if not frappe.flags.get(SCHEDULER_RECIPIENT_INSERT_FLAG):
-			frappe.throw(
-				_(
-					"Direct Email Campaign creation is disabled. "
-					"Create and schedule campaigns from Email Campaign Studio."
-				),
-				frappe.PermissionError,
-			)
-
-	def validate(self):
-		if not self.campaign_name or not _is_email_broadcast(self.campaign_name):
-			return super().validate()
-		if not self.is_new():
-			frappe.throw(
-				_(
-					"Email Campaign recipient records are read-only delivery logs. "
-					"Manage the campaign from Email Campaign Studio."
-				),
-				frappe.PermissionError,
-			)
-		self.email_campaign_for = "Lead"
-		if not self.campaign_name or not self.recipient:
-			frappe.throw(_("Campaign and Lead are required for a broadcast recipient"))
-		delivery_status = self.custom_delivery_status or "Planned"
-		scheduled_at = self.custom_scheduled_at or now_datetime()
-		self.start_date = getdate(scheduled_at)
-		self.end_date = self.start_date
-		self.status = (
-			"Completed"
-			if delivery_status in TERMINAL_DELIVERY_STATUSES
-			else "Scheduled"
-		)
-		if delivery_status not in ("Skipped", "Cancelled"):
-			email = self.custom_recipient_email or frappe.db.get_value("Lead", self.recipient, "email_id")
-			if not _normalized_email(email):
-				frappe.throw(_("Lead {0} has no valid email address").format(self.recipient))
-
-	def update_status(self):
-		if not self.campaign_name or not _is_email_broadcast(self.campaign_name):
-			return super().update_status()
-		delivery_status = self.custom_delivery_status or "Planned"
-		expected = (
-			"Completed"
-			if delivery_status in TERMINAL_DELIVERY_STATUSES
-			else "Scheduled"
-		)
-		if self.status != expected:
-			self.db_set("status", expected, update_modified=False)
 
 
 def _is_email_broadcast(campaign):
@@ -1273,7 +1205,7 @@ def _dispatch_recipient(recipient, campaign):
 			{"link_doctype": "Campaign", "link_name": campaign.name},
 		)
 		communication.save(ignore_permissions=True)
-	queue = frappe.sendmail(
+	queue = sendmail(
 		recipients=[recipient.custom_recipient_email],
 		sender=_sender(campaign),
 		reply_to=campaign.custom_reply_to or None,
@@ -1741,7 +1673,7 @@ def send_campaign_test(campaign_name, recipient, sample_lead):
 		)
 	rendered = render_campaign_snapshot(snapshot.subject, snapshot.html, lead)
 	html = decorate_campaign_links(rendered.html, campaign, "test", track_clicks=0)
-	queue = frappe.sendmail(
+	queue = sendmail(
 		recipients=[recipient],
 		sender=_sender(campaign),
 		reply_to=campaign.custom_reply_to or None,

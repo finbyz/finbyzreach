@@ -9,7 +9,7 @@ add_to_apps_screen = [
         "name": app_name,
         "logo": "/assets/finbyzreach/images/logo.jpg",
         "title": app_title,
-        "route": "/desk",
+        "route": "/app",
     }
 ]
 
@@ -19,7 +19,7 @@ add_to_apps_screen = [
 # include js, css files in header of desk.html
 # app_include_css = "/assets/finbyzreach/css/finbyzreach.css"
 app_include_js = [
-    "/assets/finbyzreach/js/email_builder_composer.js?v=20260716.1",
+    "/assets/finbyzreach/js/email_builder_composer.js?v=20260811.1",
 ]
 
 # include js, css files in header of web template
@@ -135,17 +135,9 @@ after_install = "finbyzreach.install.after_install"
 # ---------------
 # Override standard doctype classes
 
-# override_doctype_class = {
-# 	"ToDo": "custom_app.overrides.CustomToDo"
-# }
-
-extend_doctype_class = {
-	"Campaign": [
-		"finbyzreach.email_marketing.CampaignEmailBroadcastMixin",
-	],
-	"Email Campaign": [
-		"finbyzreach.email_marketing.EmailCampaignBroadcastMixin",
-	],
+override_doctype_class = {
+	"Campaign": "finbyzreach.overrides.email_campaign.Campaign",
+	"Email Campaign": "finbyzreach.overrides.email_campaign.EmailCampaign",
 }
 
 # Document Events

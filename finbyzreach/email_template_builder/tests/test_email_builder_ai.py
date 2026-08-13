@@ -4,7 +4,11 @@ import json
 from unittest.mock import patch
 
 import frappe
-from frappe.tests import IntegrationTestCase
+
+try:
+	from frappe.tests import IntegrationTestCase
+except ImportError:  # Frappe 15
+	from frappe.tests.utils import FrappeTestCase as IntegrationTestCase
 
 from .. import ai
 from ..ai import accept_ai_proposal, generate_ai_rewrite, get_builder_ai_settings
@@ -258,4 +262,3 @@ class TestEmailBuilderAI(IntegrationTestCase):
 		with patch.object(ai, "_settings", return_value=ENABLED_SETTINGS):
 			with self.assertRaises(frappe.exceptions.ValidationError):
 				generate_ai_rewrite(self.template.name, json.dumps(_schema()), prompt="x", scope="section", section_id="missing")
-

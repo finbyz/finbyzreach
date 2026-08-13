@@ -5,7 +5,7 @@ frappe.listview_settings["Campaign"] = {
 			() => {
 				frappe.route_options = {};
 				const session = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-				window.history.pushState(null, null, "/desk/email-campaign-studio?new=" + session);
+				window.history.pushState(null, null, "/app/email-campaign-studio?new=" + session);
 				frappe.router.route();
 			}
 		);

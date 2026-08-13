@@ -117,7 +117,7 @@ function open_email_campaign_studio(frm) {
 }
 
 function route_to_email_campaign_studio(campaignName) {
-	const path = "/desk/email-campaign-studio";
+	const path = "/app/email-campaign-studio";
 	const session = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 	const query = campaignName
 		? "?studio_campaign=" + encodeURIComponent(campaignName) + "&studio_session=" + session

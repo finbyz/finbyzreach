@@ -426,7 +426,7 @@ class EmailCampaignStudio {
 	openNewCampaign() {
 		const session = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 		frappe.route_options = {};
-		window.history.pushState(null, null, "/desk/email-campaign-studio?new=" + session);
+		window.history.pushState(null, null, "/app/email-campaign-studio?new=" + session);
 		frappe.router.route();
 	}
 
@@ -1315,7 +1315,7 @@ class EmailCampaignStudio {
 		const params = new URLSearchParams(window.location.search || "");
 		const session = params.get("studio_session") || params.get("new") ||
 			(Date.now().toString(36) + Math.random().toString(36).slice(2, 8));
-		const path = "/desk/email-campaign-studio?studio_campaign=" + encodeURIComponent(campaign) +
+		const path = "/app/email-campaign-studio?studio_campaign=" + encodeURIComponent(campaign) +
 			"&studio_session=" + encodeURIComponent(session);
 		window.history.replaceState(window.history.state, "", path);
 		this.routeKey = "campaign:" + campaign + ":" + session;
