@@ -4,7 +4,7 @@ import hashlib
 import json
 import re
 from collections import Counter
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone as datetime_timezone
 from email.utils import formataddr
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -670,7 +670,7 @@ def _normalize_local_datetime(value, timezone):
 		value = value.replace(tzinfo=timezone)
 	else:
 		value = value.astimezone(timezone)
-	return value.astimezone(UTC).astimezone(timezone)
+	return value.astimezone(datetime_timezone.utc).astimezone(timezone)
 
 
 def _next_valid_slot(value, campaign, timezone):
