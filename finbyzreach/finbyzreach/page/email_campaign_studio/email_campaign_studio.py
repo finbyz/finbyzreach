@@ -12,12 +12,14 @@ from frappe.query_builder.functions import Count
 from frappe.utils import (
 	cint,
 	get_datetime,
+	get_url,
 	now_datetime,
 	nowdate,
 	slug,
 	strip_html,
 	validate_email_address,
 )
+from frappe.utils.verified_command import get_signed_params
 
 from finbyzreach.email_template_builder.api import _check_test_email_rate_limit
 from finbyzreach.email_template_builder.services import (
@@ -25,6 +27,7 @@ from finbyzreach.email_template_builder.services import (
 	render_campaign_snapshot,
 )
 from finbyzreach import email_marketing
+from finbyzreach.segments import get_segment_filters
 
 
 MAX_EXCLUSION_LISTS = 50
@@ -74,32 +77,36 @@ def _parse_json_list(value, label):
 
 
 def _lead_names(filters_json):
-	filters = frappe.parse_json(filters_json)
-	if not filters:
-		return []
-	names = frappe.get_list(
-		"Lead",
-		filters=filters,
-		pluck="name",
-		distinct=True,
-		order_by="name asc",
-		limit=0,
-	)
-	return names
+	return email_marketing._lead_names_from_filter_groups(filters_json)
 
 
 def _audience_context(
-	filters, exclude_filters=None, exclude_email_groups=None, require_filters=True
+	filters, exclude_filters=None, exclude_email_groups=None, require_filters=True,
+	segment_name=None,
 ):
 	def filter_payload(value):
 		return value if isinstance(value, str) else json.dumps(value or [])
 
-	include_filters_json = email_marketing.validate_lead_filters(
+	segment_name = str(segment_name or "").strip()
+	static_leads = None
+	if segment_name:
+		segment = frappe.get_doc("Reach Segment", segment_name)
+		segment.check_permission("read")
+		if segment.segment_type == "Static":
+			static_leads = frappe.parse_json(segment.static_leads_json or "[]")
+		else:
+			filters = get_segment_filters(segment_name)["filters"]
+	include_filters_json = email_marketing.validate_lead_filter_groups(
 		filter_payload(filters), require_filters=require_filters
 	)
-	exclude_filters_json = email_marketing.validate_lead_filters(
-		filter_payload(exclude_filters)
-	)
+	if exclude_filters:
+		exclude_filters_json = email_marketing.validate_lead_filter_groups(
+			filter_payload(exclude_filters)
+		)
+		exclude_leads = email_marketing._lead_names_from_filter_groups(exclude_filters_json)
+	else:
+		exclude_filters_json = "[]"
+		exclude_leads = []
 	email_groups = email_marketing.validate_excluded_email_groups(
 		json.dumps(_parse_json_list(exclude_email_groups, _("blacklist email groups")))
 	)
@@ -107,8 +114,9 @@ def _audience_context(
 		include_filters_json=include_filters_json,
 		exclude_filters_json=exclude_filters_json,
 		email_groups=email_groups,
-		include_leads=_lead_names(include_filters_json),
+		include_leads=static_leads if static_leads is not None else _lead_names(include_filters_json),
 		exclude_leads=_lead_names(exclude_filters_json),
+		segment_name=segment_name,
 	)
 
 
@@ -158,19 +166,87 @@ def _frozen_recipient_preview_rows(recipients, limit):
 			or row.recipient,
 			company_name=(leads_by_name.get(row.recipient) or {}).get("company_name"),
 			email_id=row.custom_recipient_email or "",
+			reason=row.get("custom_excluded_reason") or row.get("reason") or "",
 		)
 		for row in recipients
 	]
 
 
+def _clean_audience_search(search_text):
+	return str(search_text or "").strip()[:140]
+
+
+def _filter_resolved_by_search(resolved, search_text):
+	search_text = _clean_audience_search(search_text)
+	resolved = list(resolved or [])
+	if not search_text or not resolved:
+		return resolved, search_text
+
+	lead_names = list(dict.fromkeys(row.lead for row in resolved if row.get("lead")))
+	if not lead_names:
+		return [], search_text
+
+	pattern = f"%{search_text}%"
+	matching_names = set(
+		frappe.get_all(
+			"Lead",
+			filters=[["name", "in", lead_names]],
+			or_filters=[
+				["name", "like", pattern],
+				["lead_name", "like", pattern],
+				["company_name", "like", pattern],
+				["email_id", "like", pattern],
+			],
+			pluck="name",
+			limit=0,
+		)
+	)
+	return [row for row in resolved if row.lead in matching_names], search_text
+
+
+def _frozen_audience_query(campaign_name, search_text):
+	recipient = frappe.qb.DocType("Email Campaign")
+	lead = frappe.qb.DocType("Lead")
+	query = (
+		frappe.qb.from_(recipient)
+		.left_join(lead)
+		.on(lead.name == recipient.recipient)
+		.where(recipient.campaign_name == campaign_name)
+	)
+	search_text = _clean_audience_search(search_text)
+	if search_text:
+		pattern = f"%{search_text}%"
+		query = query.where(
+			(recipient.recipient.like(pattern))
+			| (recipient.custom_recipient_email.like(pattern))
+			| (lead.lead_name.like(pattern))
+			| (lead.company_name.like(pattern))
+			| (lead.email_id.like(pattern))
+		)
+	return query, recipient, search_text
+
+
+def _query_count(query, table):
+	result = query.select(Count(table.name)).run()
+	return cint(result[0][0]) if result else 0
+
+
 def _preview_response(
-	resolved, subscription_topic=None, eligible_page=1, eligible_page_length=8
+	resolved,
+	subscription_topic=None,
+	eligible_page=1,
+	eligible_page_length=8,
+	excluded_page=1,
+	search_text=None,
 ):
+	resolved, search_text = _filter_resolved_by_search(resolved, search_text)
 	reasons = Counter(row.reason for row in resolved if row.reason)
 	eligible_names = [row.lead for row in resolved if row.eligible]
+	excluded_names = [row.lead for row in resolved if not row.eligible]
 	page_length = min(
 		max(cint(eligible_page_length) or 8, 1), MAX_AUDIENCE_HEALTH_PAGE_LENGTH
 	)
+
 	total_pages = (
 		(len(eligible_names) + page_length - 1) // page_length if eligible_names else 0
 	)
@@ -179,6 +255,21 @@ def _preview_response(
 		page = min(page, total_pages)
 	offset = (page - 1) * page_length
 	samples = _lead_preview_rows(eligible_names[offset : offset + page_length], page_length)
+
+	excluded_total_pages = (
+		(len(excluded_names) + page_length - 1) // page_length if excluded_names else 0
+	)
+	exc_page = max(cint(excluded_page) or 1, 1)
+	if excluded_total_pages:
+		exc_page = min(exc_page, excluded_total_pages)
+	exc_offset = (exc_page - 1) * page_length
+	excluded_samples = _lead_preview_rows(
+		excluded_names[exc_offset : exc_offset + page_length], page_length
+	)
+	resolved_by_lead = {row.lead: row for row in resolved}
+	for sample in excluded_samples:
+		sample.reason = resolved_by_lead[sample.name].reason
+
 	topic_reason = (
 		_("Unsubscribed from topic {0}").format(subscription_topic)
 		if subscription_topic
@@ -195,56 +286,93 @@ def _preview_response(
 	)
 	return {
 		"candidate_count": len(resolved),
-		"eligible_count": sum(1 for row in resolved if row.eligible),
-		"excluded_count": sum(1 for row in resolved if not row.eligible),
+		"eligible_count": len(eligible_names),
+		"excluded_count": len(excluded_names),
 		"excluded_reasons": dict(reasons),
 		"eligible_samples": samples,
 		"eligible_page": page,
 		"eligible_page_length": page_length,
 		"eligible_total_pages": total_pages,
+		"excluded_samples": excluded_samples,
+		"excluded_page": exc_page,
+		"excluded_total_pages": excluded_total_pages,
 		"subscription_topic": subscription_topic or "",
 		"topic_unsubscribed_count": len(topic_unsubscribed_names),
 		"topic_unsubscribed_samples": topic_unsubscribed_samples,
 		"topic_unsubscribed_more": max(
 			0, len(topic_unsubscribed_names) - len(topic_unsubscribed_samples)
 		),
+		"search_text": search_text,
 	}
 
 
-def _frozen_preview_response(campaign, eligible_page=1, eligible_page_length=8):
-	"""Return the scheduled recipient snapshot instead of recalculating live Lead filters."""
+def _frozen_preview_response(
+	campaign,
+	eligible_page=1,
+	eligible_page_length=8,
+	excluded_page=1,
+	search_text=None,
+):
+	"""Return the scheduled recipient snapshot without recalculating live Lead filters."""
 	page_length = min(
 		max(cint(eligible_page_length) or 8, 1), MAX_AUDIENCE_HEALTH_PAGE_LENGTH
 	)
-	eligible_count = cint(campaign.custom_eligible_count)
-	total_pages = (eligible_count + page_length - 1) // page_length if eligible_count else 0
+	base_query, recipient, search_text = _frozen_audience_query(campaign.name, search_text)
+
+	eligible_query = base_query.where(recipient.custom_batch_number > 0)
+	actual_eligible_count = _query_count(eligible_query, recipient)
+	eligible_count = actual_eligible_count if search_text else cint(campaign.custom_eligible_count)
+	total_pages = (
+		(actual_eligible_count + page_length - 1) // page_length
+		if actual_eligible_count else 0
+	)
 	page = max(cint(eligible_page) or 1, 1)
 	if total_pages:
 		page = min(page, total_pages)
 	offset = (page - 1) * page_length
-	recipients = frappe.get_all(
-		"Email Campaign",
-		filters={
-			"campaign_name": campaign.name,
-			"custom_batch_number": [">", 0],
-		},
-		fields=["recipient", "custom_recipient_email"],
-		order_by="custom_batch_number asc, name asc",
-		start=offset,
-		page_length=page_length,
+	recipients = (
+		eligible_query
+		.select(recipient.recipient, recipient.custom_recipient_email)
+		.orderby(recipient.custom_batch_number)
+		.orderby(recipient.name)
+		.offset(offset)
+		.limit(page_length)
+	).run(as_dict=True)
+
+	excluded_query = base_query.where(recipient.custom_batch_number == 0)
+	actual_excluded_count = _query_count(excluded_query, recipient)
+	excluded_count = actual_excluded_count if search_text else cint(campaign.custom_excluded_count)
+	excluded_total_pages = (
+		(actual_excluded_count + page_length - 1) // page_length
+		if actual_excluded_count else 0
 	)
-	reason_rows = frappe.get_all(
-		"Email Campaign",
-		filters={
-			"campaign_name": campaign.name,
-			"custom_batch_number": 0,
-			"custom_excluded_reason": ["is", "set"],
-		},
-		fields=["custom_excluded_reason", {"COUNT": "name", "as": "count"}],
-		group_by="custom_excluded_reason",
-		limit=0,
-	)
+	exc_page = max(cint(excluded_page) or 1, 1)
+	if excluded_total_pages:
+		exc_page = min(exc_page, excluded_total_pages)
+	exc_offset = (exc_page - 1) * page_length
+	excluded_recipients = (
+		excluded_query
+		.select(
+			recipient.recipient,
+			recipient.custom_recipient_email,
+			recipient.custom_excluded_reason,
+		)
+		.orderby(recipient.name)
+		.offset(exc_offset)
+		.limit(page_length)
+	).run(as_dict=True)
+
+	reason_rows = (
+		excluded_query
+		.where(recipient.custom_excluded_reason != "")
+		.select(
+			recipient.custom_excluded_reason,
+			Count(recipient.name).as_("count"),
+		)
+		.groupby(recipient.custom_excluded_reason)
+	).run(as_dict=True)
 	reasons = {row.custom_excluded_reason: cint(row.count) for row in reason_rows}
+
 	topic_reason = (
 		_("Unsubscribed from topic {0}").format(campaign.custom_subscription_topic)
 		if campaign.custom_subscription_topic
@@ -253,40 +381,39 @@ def _frozen_preview_response(campaign, eligible_page=1, eligible_page_length=8):
 	topic_names = []
 	topic_count = 0
 	if topic_reason:
-		recipient_table = frappe.qb.DocType("Email Campaign")
-		topic_count = cint(
-			(
-				frappe.qb.from_(recipient_table)
-				.select(Count(recipient_table.name))
-				.where(recipient_table.campaign_name == campaign.name)
-				.where(
-					(recipient_table.custom_excluded_reason == topic_reason)
-					| (recipient_table.custom_unsubscribed == 1)
-				)
-			).run()[0][0]
+		topic_query = base_query.where(
+			(recipient.custom_excluded_reason == topic_reason)
+			| (recipient.custom_unsubscribed == 1)
 		)
-		topic_names = frappe.get_all(
-			"Email Campaign",
-			filters={
-				"campaign_name": campaign.name,
-			},
-			or_filters={
-				"custom_excluded_reason": topic_reason,
-				"custom_unsubscribed": 1,
-			},
-			fields=["recipient", "custom_recipient_email"],
-			order_by="custom_unsubscribed desc, name asc",
-			limit=MAX_TOPIC_OPTOUT_SAMPLES + 1,
-		)
+		topic_count = _query_count(topic_query, recipient)
+		topic_names = (
+			topic_query
+			.select(
+				recipient.recipient,
+				recipient.custom_recipient_email,
+				recipient.custom_excluded_reason,
+			)
+			.orderby(recipient.name)
+			.limit(MAX_TOPIC_OPTOUT_SAMPLES + 1)
+		).run(as_dict=True)
+
+	candidate_count = (
+		actual_eligible_count + actual_excluded_count
+		if search_text
+		else cint(campaign.custom_candidate_count)
+	)
 	return {
-		"candidate_count": cint(campaign.custom_candidate_count),
+		"candidate_count": candidate_count,
 		"eligible_count": eligible_count,
-		"excluded_count": cint(campaign.custom_excluded_count),
+		"excluded_count": excluded_count,
 		"excluded_reasons": reasons,
 		"eligible_samples": _frozen_recipient_preview_rows(recipients, page_length),
 		"eligible_page": page,
 		"eligible_page_length": page_length,
 		"eligible_total_pages": total_pages,
+		"excluded_samples": _frozen_recipient_preview_rows(excluded_recipients, page_length),
+		"excluded_page": exc_page,
+		"excluded_total_pages": excluded_total_pages,
 		"subscription_topic": campaign.custom_subscription_topic or "",
 		"topic_unsubscribed_count": topic_count,
 		"topic_unsubscribed_samples": _frozen_recipient_preview_rows(
@@ -294,9 +421,9 @@ def _frozen_preview_response(campaign, eligible_page=1, eligible_page_length=8):
 		),
 		"topic_unsubscribed_more": max(
 			0,
-			topic_count
-			- min(len(topic_names), MAX_TOPIC_OPTOUT_SAMPLES),
+			topic_count - min(len(topic_names), MAX_TOPIC_OPTOUT_SAMPLES),
 		),
+		"search_text": search_text,
 		"frozen": 1,
 		"broadcast_status": campaign.custom_broadcast_status,
 	}
@@ -312,7 +439,7 @@ def _campaign_for_studio(campaign_name):
 		"name": campaign.name,
 		"campaign_title": campaign.campaign_name or campaign.name,
 		"broadcast_status": campaign.custom_broadcast_status or "Draft",
-		"editable": (campaign.custom_broadcast_status or "Draft") == "Draft",
+		"editable": (campaign.custom_broadcast_status or "Draft") == "Draft" and not campaign.custom_queued,
 		"email_template": campaign.custom_email_template,
 		"subject_override": campaign.custom_subject_override,
 		"subscription_topic": campaign.custom_subscription_topic,
@@ -389,9 +516,12 @@ def preview_audience(
 	exclude_filters=None,
 	exclude_email_groups=None,
 	subscription_topic=None,
+	segment_name=None,
 	eligible_page=1,
 	eligible_page_length=8,
+	excluded_page=1,
 	campaign_name=None,
+	search_text=None,
 ):
 	_check_permission("read")
 	if campaign_name:
@@ -399,14 +529,18 @@ def preview_audience(
 		campaign.check_permission("read")
 		if (campaign.custom_broadcast_status or "Draft") != "Draft":
 			return _frozen_preview_response(
-				campaign, eligible_page, eligible_page_length
+				campaign, eligible_page, eligible_page_length, excluded_page, search_text
 			)
-	context = _audience_context(filters, exclude_filters, exclude_email_groups)
+	context = _audience_context(
+		filters, exclude_filters, exclude_email_groups, segment_name=segment_name
+	)
 	return _preview_response(
 		_resolved_studio_audience(context, subscription_topic),
 		subscription_topic,
 		eligible_page,
 		eligible_page_length,
+		excluded_page,
+		search_text
 	)
 
 
@@ -448,7 +582,12 @@ def preview_email(payload=None, sample_lead=None):
 		utm_medium = str(payload.get("utm_medium") or "email").strip()
 		utm_campaign = slug(campaign_title)
 
-	rendered = render_campaign_snapshot(snapshot.subject, snapshot.html, lead)
+	rendered = render_campaign_snapshot(
+		snapshot.subject,
+		snapshot.html,
+		lead,
+		extra_context={"email_preview_url": "#"},
+	)
 	preheader = ""
 	if snapshot.get("preheader"):
 		preheader = render_campaign_snapshot(
@@ -576,6 +715,7 @@ def create_campaign(payload=None, launch="schedule"):
 		payload.get("exclude_filters"),
 		payload.get("exclude_email_groups"),
 		require_filters=require_ready,
+		segment_name=payload.get("segment_name"),
 	)
 	preview = _preview_response(
 		_resolved_studio_audience(context, payload.get("subscription_topic")),
@@ -603,7 +743,14 @@ def create_campaign(payload=None, launch="schedule"):
 	else:
 		campaign = frappe.get_doc(values).insert()
 	if launch == "schedule":
-		email_marketing.schedule_campaign(campaign.name)
+		campaign.db_set("custom_queued", 1)
+		frappe.enqueue(
+			"finbyzreach.email_marketing.schedule_campaign",
+			campaign_name=campaign.name,
+			queue="long",
+			timeout=1500,
+			now=frappe.flags.in_test
+		)
 		status = "Scheduled"
 	else:
 		status = "Draft"
@@ -664,12 +811,23 @@ def send_test(payload=None, recipient=None, sample_lead=None):
 			subject=campaign.custom_snapshot_subject,
 			html=campaign.custom_snapshot_html,
 		)
+	test_params = {"is_test": "1"}
+	if campaign:
+		test_params["campaign"] = campaign.name
 	else:
-		snapshot = get_campaign_snapshot(
-			_required(payload, "email_template", _("Email Template")),
-			payload.get("subject_override"),
-		)
-	rendered = render_campaign_snapshot(snapshot.subject, snapshot.html, lead)
+		test_params["template"] = payload.get("email_template")
+		if payload.get("subject_override"):
+			test_params["subject_override"] = payload.get("subject_override")
+	if lead and hasattr(lead, "name"):
+		test_params["lead"] = lead.name
+	preview_url = get_url(f"/view_email?{get_signed_params(test_params)}")
+
+	rendered = render_campaign_snapshot(
+		snapshot.subject,
+		snapshot.html,
+		lead,
+		extra_context={"email_preview_url": preview_url},
+	)
 	tracking_context = frappe._dict(
 		custom_enable_click_tracking=0,
 		custom_utm_source=str(

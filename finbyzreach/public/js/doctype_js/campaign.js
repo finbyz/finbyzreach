@@ -94,6 +94,12 @@ frappe.ui.form.on("Campaign", {
 });
 
 function set_campaign_form_mode(frm, isBroadcast) {
+	if (frm.doc.custom_queued) {
+		frm.disable_save();
+		frm.set_read_only();
+		return;
+	}
+
 	const frozen = isBroadcast && (frm.doc.custom_broadcast_status || "Draft") !== "Draft";
 	if (frozen) frm.disable_save();
 	[

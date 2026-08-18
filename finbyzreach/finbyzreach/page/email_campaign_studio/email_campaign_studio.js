@@ -28,6 +28,7 @@ class EmailCampaignStudio {
 		this.method = "finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio.";
 		this.preview = null;
 		this.previewRequest = 0;
+		this.healthPreviewRequest = 0;
 		this.previewQueuedKey = null;
 		this.previewInFlight = null;
 		this.previewInFlightKey = null;
@@ -46,7 +47,9 @@ class EmailCampaignStudio {
 		this.emailGroupOptions = [];
 		this.presetFilters = null;
 		this.applyingAudiencePreset = false;
+		this.applyingSegmentSelection = false;
 		this.applyingBootstrap = false;
+		this.activeStaticSegment = false;
 		this.editable = true;
 		this.render();
 		this.makeForms();
@@ -121,6 +124,7 @@ class EmailCampaignStudio {
 			".ecs-reasons{margin-top:12px;display:grid;gap:6px}.ecs-reason{display:flex;justify-content:space-between;gap:8px;font-size:11.5px;padding:6px 8px;border-radius:7px;background:var(--subtle-fg,#f7f8fa)}",
 			".ecs-preview-card{flex:0 0 auto;display:flex;flex-direction:column}.ecs-preview-card .ecs-card-head{flex:0 0 auto;padding:14px}.ecs-preview-card .ecs-card-body{display:flex;flex-direction:column;gap:10px;padding:14px;overflow:visible}.ecs-preview-card .ecs-step{background:#dcfce7;color:#15803d}.ecs-preview-card .ecs-metrics,.ecs-preview-card .ecs-reasons{flex:0 0 auto}.ecs-health-action{padding:0 14px 14px}.ecs-health-action .btn{width:100%;min-height:34px;border-radius:8px!important;font-weight:650}.ecs-health-dialog{display:grid;gap:16px;padding:2px 0 6px}.ecs-health-dialog .ecs-metrics{gap:10px}.ecs-health-dialog .ecs-metric{padding:16px 8px}.ecs-health-section{min-width:0;border:1px solid var(--border-color,#d7dce2);border-radius:11px;overflow:hidden;background:var(--card-bg,#fff)}.ecs-health-section-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 13px;background:var(--subtle-fg,#f7f8fa);border-bottom:1px solid var(--border-color,#e5e7eb)}.ecs-health-section-head h4{margin:0;font-size:12px;font-weight:720}.ecs-health-section-head span{color:var(--text-muted);font-size:10.5px}.ecs-health-list{max-height:260px;overflow-y:auto;padding:0 13px}.ecs-health-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(150px,42%);align-items:center;gap:14px;min-width:0;padding:10px 0;color:var(--text-color)!important;text-decoration:none!important}.ecs-health-row+.ecs-health-row{border-top:1px solid var(--border-color,#e5e7eb)}.ecs-health-row span,.ecs-health-row strong,.ecs-health-row small{min-width:0}.ecs-health-row strong,.ecs-health-row small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ecs-health-row small{color:var(--text-muted);text-align:right}.ecs-health-empty{padding:14px;color:var(--text-muted);font-size:11px}.ecs-topic-optouts{flex:0 0 auto;min-width:0;margin-top:0;border:1px solid #fed7aa;border-radius:10px;background:#fffaf5;overflow:hidden}.ecs-topic-optouts summary{display:flex;align-items:center;justify-content:space-between;gap:10px;min-width:0;padding:9px 10px;color:#9a3412;font-size:10.5px;font-weight:700;cursor:pointer;list-style:none}.ecs-topic-optouts summary span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ecs-topic-optouts summary::-webkit-details-marker{display:none}.ecs-topic-optouts summary:after{content:'›';flex:0 0 auto;font-size:16px;line-height:1;transition:transform .15s}.ecs-topic-optouts[open] summary:after{transform:rotate(90deg)}.ecs-topic-optouts summary strong{flex:0 0 auto;margin-left:auto;padding:2px 6px;border-radius:999px;background:#ffedd5;color:#c2410c;font-size:9.5px}.ecs-optout-list{padding:0 10px 7px;border-top:1px solid #fed7aa}.ecs-optout-context{padding:7px 0 4px;color:#9a6a50;font-size:9.5px}.ecs-optout-row{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0;padding:7px 0;color:var(--text-color)!important;text-decoration:none!important}.ecs-optout-row+.ecs-optout-row{border-top:1px solid rgba(254,215,170,.7)}.ecs-optout-row span{min-width:0;overflow:hidden}.ecs-optout-row strong,.ecs-optout-row small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ecs-optout-row strong{font-size:10.5px}.ecs-optout-row small{margin-top:1px;color:var(--text-muted);font-size:9.5px}.ecs-optout-open{flex:0 0 auto;color:#c2410c;font-size:12px}.ecs-optout-more{padding:7px 0 2px;color:#9a6a50;font-size:9.5px;font-weight:650}",
 			".ecs-health-pagination{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 13px;border-top:1px solid var(--border-color,#e5e7eb);background:var(--subtle-fg,#f8fafc)}.ecs-health-pagination>span{color:var(--text-muted);font-size:10.5px}.ecs-health-pagination>div{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}.ecs-page-size{display:flex;align-items:center;gap:6px;margin:0 4px 0 0;color:var(--text-muted);font-size:10.5px;font-weight:500}.ecs-page-size select{width:66px;min-height:30px;padding:4px 22px 4px 8px;border-radius:7px}.ecs-health-pagination strong{min-width:82px;text-align:center;font-size:10.5px}.ecs-health-pagination .btn{border-radius:7px!important}",
+			".ecs-health-toolbar{position:sticky;top:0;z-index:4;display:flex;align-items:center;gap:10px;padding:10px 0 12px;background:var(--modal-bg,var(--card-bg,#fff));border-bottom:1px solid var(--border-color,#e5e7eb)}.ecs-health-search-wrap{position:relative;flex:1 1 320px;min-width:180px}.ecs-health-search-wrap .form-control{height:36px;padding-right:36px;border-radius:8px}.ecs-health-search-clear{position:absolute;right:5px;top:50%;transform:translateY(-50%);display:none;width:26px;height:26px;padding:0!important;border:0!important;border-radius:6px!important;background:transparent!important;color:var(--text-muted)!important;font-size:17px;line-height:26px}.ecs-health-search-wrap.has-value .ecs-health-search-clear{display:block}.ecs-health-toolbar .ecs-page-size{flex:0 0 auto;margin:0}.ecs-health-results{position:relative;min-height:120px;padding-top:14px}.ecs-health-results.ecs-loading{pointer-events:none;opacity:.68}.ecs-health-filter-note{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;padding:9px 11px;border:1px solid #dbeafe;border-radius:9px;background:#f8fbff;color:#36516f;font-size:10.5px}.ecs-health-filter-note strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#1d4ed8}.ecs-health-dialog .ecs-health-section+.ecs-health-section{margin-top:12px}@media(max-width:580px){.ecs-health-toolbar{align-items:stretch;flex-direction:column}.ecs-health-toolbar .ecs-page-size{justify-content:space-between}.ecs-health-toolbar .ecs-page-size select{width:86px}}",
 			".ecs-summary-card{flex:0 0 auto;display:flex;min-height:0}.ecs-summary{flex:1 1 auto;display:flex;flex-direction:column;min-width:0;min-height:0;padding:16px}.ecs-summary-title{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}.ecs-summary-title span{order:2;flex:0 0 auto;padding:4px 7px;border-radius:999px;background:#ecfdf5;color:#15803d;font-size:9px;font-weight:750;text-transform:uppercase;letter-spacing:.045em}.ecs-summary h3{min-width:0;font-size:14px;margin:0}.ecs-summary-row{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;min-width:0;padding:8px 0;font-size:11.5px;border-bottom:1px solid var(--border-color)}.ecs-summary-row:last-child{border:0}.ecs-summary-row span{flex:0 0 auto;color:var(--text-muted)}.ecs-summary-row strong{min-width:0;max-width:64%;overflow-wrap:anywhere;white-space:normal;line-height:1.35;text-align:right}",
 			".ecs-launch-note{position:relative;font-size:10.5px;color:#36516f;line-height:1.45;padding:11px 11px 11px 33px;border:1px solid #dbeafe;border-radius:10px;background:#f0f7ff;margin-top:12px}.ecs-launch-note:before{content:'i';position:absolute;left:11px;top:11px;display:grid;place-items:center;width:15px;height:15px;border-radius:50%;background:#dbeafe;color:#1d4ed8;font-size:9px;font-weight:800}.ecs-side-actions{display:grid;grid-template-columns:1fr;gap:8px;margin-top:13px}.ecs-side-actions .btn{width:100%;min-height:34px;border-radius:8px!important;font-weight:650;white-space:normal;line-height:1.2}.ecs-side-actions #ecs-launch-btn{min-height:38px;background:#1d4ed8!important;border-color:#1d4ed8!important}",
 			".ecs-days-wrap{margin:0 7px 4px;padding:15px;border:1px solid rgba(203,213,225,.72);border-radius:13px;background:linear-gradient(180deg,var(--card-bg,#fff),rgba(248,250,252,.55))}.ecs-days-header{display:flex;align-items:center;gap:11px;margin-bottom:14px}.ecs-days-icon{display:grid;place-items:center;flex:0 0 38px;width:38px;height:38px;border-radius:11px;background:#eff6ff;color:#2563eb;box-shadow:inset 0 0 0 1px rgba(37,99,235,.08)}.ecs-days-icon svg{width:20px;height:20px;stroke:currentColor}.ecs-days-copy{min-width:0}.ecs-days-copy h4{margin:0 0 2px;font-size:13px;font-weight:740;color:var(--text-color)}.ecs-days-copy p{margin:0;color:var(--text-muted);font-size:10.5px;line-height:1.35}.ecs-days-count{margin-left:auto;padding:4px 8px;border-radius:999px;background:#eff6ff;color:#1d4ed8;font-size:9.5px;font-weight:750;white-space:nowrap}.ecs-day-picker{display:grid;grid-template-columns:repeat(7,minmax(76px,1fr));gap:8px}.ecs-day-pill{position:relative;appearance:none;display:grid;align-content:center;justify-items:center;gap:3px;min-height:78px;border:1px solid var(--border-color,#d7dce2);border-radius:11px;padding:13px 7px 10px;background:var(--card-bg,#fff);color:var(--text-muted);cursor:pointer;box-shadow:0 1px 2px rgba(15,23,42,.025);transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease,background .16s ease,color .16s ease}.ecs-day-pill:hover{transform:translateY(-1px);border-color:#93c5fd;color:#1d4ed8;box-shadow:0 5px 12px rgba(37,99,235,.08)}.ecs-day-pill:focus-visible{outline:0;border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.13)}.ecs-day-pill strong{font-size:12px;font-weight:780;line-height:1;text-transform:uppercase;letter-spacing:.055em}.ecs-day-pill small{font-size:9.5px;color:inherit;opacity:.76}.ecs-day-check{position:absolute;display:grid;place-items:center;right:8px;top:8px;width:17px;height:17px;border:1.5px solid #cbd5e1;border-radius:50%;background:var(--card-bg,#fff);color:transparent;font-size:10px;font-weight:850;line-height:1;transition:.16s ease}.ecs-day-pill.active{border-color:#60a5fa;background:linear-gradient(145deg,#eff6ff,#f8fbff);color:#1d4ed8;box-shadow:0 0 0 2px rgba(37,99,235,.07),0 5px 12px rgba(37,99,235,.06)}.ecs-day-pill.active .ecs-day-check{border-color:#2563eb;background:#2563eb;color:#fff;box-shadow:0 2px 5px rgba(37,99,235,.25)}.ecs-days-note{display:flex;align-items:center;gap:8px;margin-top:13px;padding-top:11px;border-top:1px solid var(--border-color,#e5e7eb);color:var(--text-muted);font-size:10.5px;line-height:1.35}.ecs-days-note i{display:grid;place-items:center;flex:0 0 18px;width:18px;height:18px;border-radius:50%;background:#eff6ff;color:#2563eb;font-size:10px;font-style:normal;font-weight:800}.ecs-days-note.warn{color:#b45309}.ecs-days-note.warn i{background:#fff7ed;color:#c2410c}.ecs-window-note{margin:0 7px 11px;padding:9px 11px;border-radius:9px;background:var(--subtle-fg,#f7f8fa);color:var(--text-muted);font-size:10.5px}.ecs-tracking-note{display:flex;align-items:center;gap:13px;margin:0 7px 2px;padding:11px 13px;border:1px solid #dbeafe;border-radius:10px;background:linear-gradient(90deg,#eff6ff,rgba(239,246,255,.35));font-size:10.5px}.ecs-tracking-note strong{flex:0 0 auto;color:#1d4ed8}.ecs-tracking-note span{color:#52647a;line-height:1.4}.ecs-toggle-stack{display:grid;gap:9px;padding:0 7px}.ecs-toggle-card{appearance:none;display:flex;align-items:center;gap:11px;width:100%;border:1px solid var(--border-color,#d7dce2);border-radius:11px;padding:10px 11px;background:var(--subtle-fg,#f8fafc);color:var(--text-color);text-align:left;cursor:pointer;transition:.16s ease}.ecs-toggle-card:hover{border-color:#93c5fd;background:#f8fbff}.ecs-toggle-icon{display:grid;place-items:center;flex:0 0 30px;width:30px;height:30px;border-radius:9px;background:var(--card-bg,#fff);color:#64748b;font-size:14px;font-style:normal;font-weight:760}.ecs-toggle-copy{display:grid;gap:2px;min-width:0}.ecs-toggle-copy strong{font-size:11.5px;font-weight:700}.ecs-toggle-copy small{color:var(--text-muted);font-size:9.5px;line-height:1.35}.ecs-switch{position:relative;flex:0 0 34px;width:34px;height:19px;margin-left:auto;border-radius:999px;background:#cbd5e1;box-shadow:inset 0 0 0 1px rgba(15,23,42,.05);transition:.16s}.ecs-switch i{position:absolute;left:3px;top:3px;width:13px;height:13px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(15,23,42,.25);transition:.16s}.ecs-toggle-card.active{border-color:#93c5fd;background:#eff6ff}.ecs-toggle-card.active .ecs-toggle-icon{background:#dbeafe;color:#1d4ed8}.ecs-toggle-card.active .ecs-switch{background:#2563eb}.ecs-toggle-card.active .ecs-switch i{transform:translateX(15px)}",
@@ -138,13 +142,13 @@ class EmailCampaignStudio {
 			"<nav class='ecs-flow' aria-label='" + __("Campaign steps") + "'><button type='button' data-scroll-step='1'><b>1</b><span>" + __("Audience") + "</span></button><button type='button' data-scroll-step='2'><b>2</b><span>" + __("Content") + "</span></button><button type='button' data-scroll-step='3'><b>3</b><span>" + __("Sender") + "</span></button><button type='button' data-scroll-step='4'><b>4</b><span>" + __("Delivery") + "</span></button><button type='button' data-scroll-step='5'><b>5</b><span>" + __("Tracking") + "</span></button></nav></section>",
 			"<div class='ecs-state-banner' id='ecs-state-banner'></div>",
 			"<div class='ecs-grid'><main class='ecs-main'>",
-			this.card("1", __("Build your audience"), __("Choose who should receive this email, then remove anyone who should not."), "<div class='ecs-audience-intro'><div class='ecs-presets'><span class='ecs-presets-label'>" + __("Quick start") + "</span><button class='btn btn-sm ecs-preset-card' data-audience-preset='active-email'><span class='ecs-preset-mark'>✓</span><span>" + __("Active leads with email") + "</span></button><button class='btn btn-sm ecs-preset-card' data-audience-preset='all-email'><span class='ecs-preset-mark'>@</span><span>" + __("All leads with email") + "</span></button><button class='btn btn-sm ecs-preset-clear' data-audience-preset='clear'>" + __("Reset") + "</button></div><div class='ecs-safety-note'><span class='ecs-safety-icon'>i</span><span>" + __("A Lead must match an include rule. Compliance and topic opt-outs are always checked again before sending.") + "</span></div></div><div class='ecs-audience-columns'><section class='ecs-target-panel ecs-include-panel'><div class='ecs-target-head'><div class='ecs-target-title'><span class='ecs-target-icon'>+</span><div><h4>" + __("Include Leads") + "</h4><p>" + __("Who should receive this campaign?") + "</p></div></div><span class='ecs-count-pill' id='ecs-filter-count'>0 " + __("filters") + "</span></div><div id='ecs-filter-builder'></div></section><section class='ecs-target-panel ecs-exclude-panel'><div class='ecs-target-head'><div class='ecs-target-title'><span class='ecs-target-icon'>−</span><div><h4>" + __("Exclude and suppress") + "</h4><p>" + __("Remove matching Leads or existing Email Groups.") + "</p></div></div><div class='ecs-target-badges'><span class='ecs-count-pill' id='ecs-exclude-filter-count'>0 " + __("rules") + "</span><span class='ecs-optional-pill'>" + __("Optional") + "</span></div></div><div id='ecs-exclude-filter-builder'></div><div class='ecs-blacklist-divider'><span>" + __("Email Group blacklist") + "</span></div><div id='ecs-blacklist-form'></div></section></div><div class='ecs-audience-footer'><div class='ecs-audience-state'><span class='ecs-audience-state-dot' id='ecs-audience-state-dot'></span><span id='ecs-audience-state-text'>" + __("Choose a preset or add at least one include filter.") + "</span></div><div class='ecs-audience-actions'><button class='btn btn-primary btn-sm' id='ecs-preview-btn' disabled>" + __("Preview Audience") + "</button></div></div>"),
+			this.card("1", __("Build your audience"), __("Choose who should receive this email, then remove anyone who should not."), "<section class='ecs-target-panel' style='margin-bottom: 20px; border-radius: 8px; border: 1px solid var(--border-color); background: rgba(248,250,252,.52);'><div class='ecs-target-head' style='margin-bottom: 8px;'><div class='ecs-target-title'><span class='ecs-target-icon' style='background: #e0e7ff; color: #4338ca;'>★</span><div><h4>" + __("Audience Segment") + "</h4><p>" + __("Load an existing saved segment") + "</p></div></div></div><div id='ecs-segment-form'></div></section><div class='ecs-audience-intro'><div class='ecs-presets'><span class='ecs-presets-label'>" + __("Quick start") + "</span><button class='btn btn-sm ecs-preset-card' data-audience-preset='active-email'><span class='ecs-preset-mark'>✓</span><span>" + __("Active leads with email") + "</span></button><button class='btn btn-sm ecs-preset-card' data-audience-preset='all-email'><span class='ecs-preset-mark'>@</span><span>" + __("All leads with email") + "</span></button><button class='btn btn-sm ecs-preset-clear' data-audience-preset='clear'>" + __("Reset") + "</button></div><div class='ecs-safety-note'><span class='ecs-safety-icon'>i</span><span>" + __("Rules inside a group use AND. Add another group to include Leads matching either group.") + "</span></div></div><div class='ecs-audience-columns'><section class='ecs-target-panel ecs-include-panel'><div class='ecs-target-head'><div class='ecs-target-title'><span class='ecs-target-icon'>+</span><div><h4>" + __("Include Leads") + "</h4><p>" + __("Who should receive this campaign?") + "</p></div></div><div style='display: flex; gap: 8px; align-items: center;'><span class='ecs-count-pill' id='ecs-filter-count'>0 " + __("filters") + "</span><button class='btn btn-default btn-sm' id='ecs-save-segment-btn'>" + __("Save as Segment") + "</button></div></div><div id='ecs-filter-builder'><div id='ecs-filter-groups'></div><button type='button' class='btn btn-default btn-sm' id='ecs-add-or-group'>" + __("Add OR group") + "</button></div></section><section class='ecs-target-panel ecs-exclude-panel'><div class='ecs-target-head'><div class='ecs-target-title'><span class='ecs-target-icon'>−</span><div><h4>" + __("Exclude and suppress") + "</h4><p>" + __("Remove matching Leads.") + "</p></div></div><div class='ecs-target-badges'><span class='ecs-count-pill' id='ecs-exclude-filter-count'>0 " + __("rules") + "</span><span class='ecs-optional-pill'>" + __("Optional") + "</span></div></div><div id='ecs-exclude-filter-builder'><div id='ecs-exclude-filter-groups'></div><button type='button' class='btn btn-default btn-sm' id='ecs-add-exclude-or-group'>" + __("Add OR group") + "</button></div></section></div><div class='ecs-audience-footer'><div class='ecs-audience-state'><span class='ecs-audience-state-dot' id='ecs-audience-state-dot'></span><span id='ecs-audience-state-text'>" + __("Choose a preset or add at least one include filter.") + "</span></div><div class='ecs-audience-actions'><button class='btn btn-primary btn-sm' id='ecs-preview-btn' disabled>" + __("Preview Audience") + "</button></div></div>"),
 			this.card("2", __("Campaign and email"), __("Name the campaign and select a standard or visual-builder Email Template."), "<div id='ecs-content-form'></div>"),
 			this.card("3", __("Sender identity"), __("Choose the outgoing account recipients should see."), "<div id='ecs-sender-form'></div>"),
 			this.card("4", __("Delivery plan"), __("Set the send time, batch size, cadence, weekdays and optional sending hours."), "<div id='ecs-schedule-form'></div>"),
 			this.card("5", __("Tracking"), __("UTM tags are added automatically; opens and signed clicks feed campaign metrics."), "<div id='ecs-tracking-form'></div>"),
 			"</main><aside class='ecs-side'>",
-			"<section class='ecs-card ecs-preview-card'><div class='ecs-card-head'><div class='ecs-step'>✓</div><div><h3>" + __("Audience health") + "</h3><p><span class='ecs-status-dot' id='ecs-preview-dot'></span><span id='ecs-preview-status'>" + __("Waiting for filters") + "</span></p></div></div><div class='ecs-card-body' id='ecs-preview-panel'><div class='ecs-preview-empty'>" + __("Add Lead filters, then preview the campaign audience.") + "</div></div><div class='ecs-health-action'><button class='btn btn-default btn-sm' id='ecs-health-btn' disabled>" + __("View Full Audience Health") + "</button></div></section>",
+			"<section class='ecs-card ecs-preview-card'><div class='ecs-card-head'><div class='ecs-step'>✓</div><div><h3>" + __("Audience health") + "</h3><p><span class='ecs-status-dot' id='ecs-preview-dot'></span><span id='ecs-preview-status'>" + __("Waiting for filters") + "</span></p></div></div><div class='ecs-card-body' id='ecs-preview-panel'><div class='ecs-preview-empty'>" + __("Add Lead filters or select a segment, then preview the campaign audience.") + "</div></div><div class='ecs-health-action'><button class='btn btn-default btn-sm' id='ecs-health-btn' disabled>" + __("View Full Audience Health") + "</button></div></section>",
 			"<section class='ecs-card ecs-summary-card'><div class='ecs-summary'><div class='ecs-summary-title'><span>" + __("Ready check") + "</span><h3>" + __("Launch summary") + "</h3></div><div id='ecs-summary-rows'></div><div class='ecs-launch-note'>" + __("Scheduling freezes recipients, recipient email addresses, Email Template content and the batch plan. Personalization uses the Lead data current when each email is queued.") + "</div><div class='ecs-side-actions'><button class='btn btn-primary btn-sm' id='ecs-launch-btn'>" + __("Review & Schedule") + "</button><button class='btn btn-default btn-sm' id='ecs-email-preview-btn'>" + __("Preview Email") + "</button><button class='btn btn-default btn-sm' id='ecs-test-btn'>" + __("Send Test") + "</button><button class='btn btn-default btn-sm' id='ecs-draft-btn'>" + __("Save Draft") + "</button></div></div></section>",
 			"</aside></div></div>",
 		].join(""));
@@ -166,22 +170,22 @@ class EmailCampaignStudio {
 			this.updateSummary();
 			this.queuePreview();
 		};
-		this.blacklistForm = this.makeForm("#ecs-blacklist-form", [
+		this.segmentForm = this.makeForm("#ecs-segment-form", [
 			{
-				fieldname: "exclude_email_groups",
-				label: __("Blacklist Email Groups"),
-				fieldtype: "MultiSelectList",
-				options: "Email Group",
-				placeholder: __("Select Email Groups to exclude (optional)"),
-				description: __("Anyone in these groups will be suppressed even if they match the include rules."),
-				get_data: (txt) => {
-					const term = (txt || "").toLowerCase();
-					return this.emailGroupOptions.filter((option) =>
-						!term || `${option.label} ${option.value}`.toLowerCase().includes(term));
-				},
+				fieldname: "segment_name",
+				label: "",
+				fieldtype: "Link",
+				options: "Reach Segment",
+				description: __("Optional. Selecting a segment replaces your current rules."),
 				change: () => {
-					if (this.applyingBootstrap) return;
-					this.handleAudienceRuleChange(true);
+					if (this.applyingBootstrap || this.applyingSegmentSelection) return;
+					const segment = this.segmentForm.get_value("segment_name");
+					if (segment) {
+						this.loadSegment(segment);
+					} else {
+						this.activeStaticSegment = false;
+						this.handleAudienceRuleChange(true);
+					}
 				},
 			},
 		]);
@@ -396,6 +400,9 @@ class EmailCampaignStudio {
 		this.page.add_inner_button(__("Campaign List"), () => frappe.set_route("List", "Campaign"));
 		this.updateCampaignNavigation();
 		this.$root.on("click", "#ecs-preview-btn", () => this.previewAudience());
+		this.$root.on("click", "#ecs-add-or-group", () => this.addIncludeFilterGroup());
+		this.$root.on("click", "#ecs-add-exclude-or-group", () => this.addExcludeFilterGroup());
+		this.$root.on("click", "#ecs-save-segment-btn", () => this.showSaveSegmentDialog());
 		this.$root.on("click", "#ecs-health-btn", () => this.showAudienceHealth());
 		this.$root.on("click", "#ecs-launch-btn", () => this.reviewAndSchedule());
 		this.$root.on("click", "#ecs-draft-btn", () => this.createCampaign("draft"));
@@ -406,7 +413,7 @@ class EmailCampaignStudio {
 		});
 		this.$root.on(
 			"click change input",
-			"#ecs-filter-builder .filter-box :input, #ecs-filter-builder .add-filter, #ecs-filter-builder .clear-filters, #ecs-filter-builder .remove-filter",
+			"#ecs-filter-builder .filter-box :input, #ecs-filter-builder .add-filter, #ecs-filter-builder .clear-filters, #ecs-filter-builder .remove-filter, #ecs-exclude-filter-builder .filter-box :input, #ecs-exclude-filter-builder .add-filter, #ecs-exclude-filter-builder .clear-filters, #ecs-exclude-filter-builder .remove-filter",
 			(event) => {
 				if (event.originalEvent) this.handleAudienceRuleChange();
 			}
@@ -431,7 +438,7 @@ class EmailCampaignStudio {
 	}
 
 	applyAudiencePreset(preset) {
-		if (!this.filterGroup) return;
+		if (!this.filterGroups) return;
 		const presets = {
 			"active-email": [
 				["Lead", "disabled", "=", 0],
@@ -442,19 +449,13 @@ class EmailCampaignStudio {
 		};
 		const presetFilters = (presets[preset] || []).map((filter) => filter.slice());
 		this.applyingAudiencePreset = true;
-		this.presetFilters = preset === "clear" ? null : presetFilters;
-		this.filterGroup.clear_filters();
-		this.filterGroup.toggle_empty_filters(preset === "clear");
+		this.presetFilters = preset === "clear" ? null : [presetFilters];
+		this.clearSelectedSegment();
 		this.$root.find("[data-audience-preset]").removeClass("active");
 		if (preset !== "clear") {
 			this.$root.find(`[data-audience-preset="${preset}"]`).addClass("active");
 		}
-		if (!presetFilters.length) {
-			this.applyingAudiencePreset = false;
-			this.handleAudienceRuleChange(true);
-			return Promise.resolve();
-		}
-		return this.filterGroup.add_filters(presetFilters).then(
+		return this.applyIncludeFilterGroups(presetFilters.length ? [presetFilters] : []).then(
 			() => {
 				this.applyingAudiencePreset = false;
 				this.handleAudienceRuleChange(true);
@@ -476,15 +477,62 @@ class EmailCampaignStudio {
 	makeLeadFilters() {
 		this.filtersReady = new Promise((resolve) => frappe.model.with_doctype("Lead", () => {
 			const onFilterChange = () => this.handleAudienceRuleChange();
-			this.filterGroup = this.makeEmbeddedFilterGroup("#ecs-filter-builder", onFilterChange);
-			this.excludeFilterGroup = this.makeEmbeddedFilterGroup("#ecs-exclude-filter-builder", onFilterChange);
+			this.filterGroups = [];
+			this.excludeFilterGroups = [];
+			this.addIncludeFilterGroup([], onFilterChange);
+			this.addExcludeFilterGroup([], onFilterChange);
 			this.updateFilterCount();
 			resolve();
 		}));
 	}
 
+	normalizeFilterGroups(filters) {
+		if (!Array.isArray(filters) || !filters.length) return [];
+		if (Array.isArray(filters[0]) && typeof filters[0][0] === "string") return [filters];
+		return filters.filter((group) => Array.isArray(group));
+	}
+
+	addIncludeFilterGroup(filters = [], onChange) {
+		const callback = onChange || (() => this.handleAudienceRuleChange());
+		const $group = $("<section class='ecs-filter-rule-group mb-4'><div class='flex justify-between items-center mb-2'><strong>" + __("Group") + " " + ((this.filterGroups || []).length + 1) + "</strong><button type='button' class='btn btn-xs btn-default ecs-remove-group-btn'>" + __("Remove") + "</button></div><div class='ecs-filter-rule-group-body'></div></section>");
+		this.$root.find("#ecs-filter-groups").append($group);
+		const filterGroup = this.makeEmbeddedFilterGroup($group.find(".ecs-filter-rule-group-body"), callback);
+		this.filterGroups.push({ filterGroup, $group });
+		$group.find(".ecs-remove-group-btn").on("click", () => {
+			if (this.filterGroups.length === 1) return;
+			this.filterGroups = this.filterGroups.filter((item) => item.filterGroup !== filterGroup);
+			$group.remove();
+			this.handleAudienceRuleChange();
+		});
+		if (!filters.length) return Promise.resolve(filterGroup);
+		this.applyingAudiencePreset = true;
+		return filterGroup.add_filters(filters).then(() => filterGroup).finally(() => {
+			this.applyingAudiencePreset = false;
+		});
+	}
+
+	addExcludeFilterGroup(filters = [], onChange) {
+		const callback = onChange || (() => this.handleAudienceRuleChange());
+		const $group = $("<section class='ecs-filter-rule-group mb-4'><div class='flex justify-between items-center mb-2'><strong>" + __("Group") + " " + ((this.excludeFilterGroups || []).length + 1) + "</strong><button type='button' class='btn btn-xs btn-default ecs-remove-group-btn'>" + __("Remove") + "</button></div><div class='ecs-filter-rule-group-body'></div></section>");
+		this.$root.find("#ecs-exclude-filter-groups").append($group);
+		const filterGroup = this.makeEmbeddedFilterGroup($group.find(".ecs-filter-rule-group-body"), callback);
+		this.excludeFilterGroups.push({ filterGroup, $group });
+		$group.find(".ecs-remove-group-btn").on("click", () => {
+			if (this.excludeFilterGroups.length === 1) return;
+			this.excludeFilterGroups = this.excludeFilterGroups.filter((item) => item.filterGroup !== filterGroup);
+			$group.remove();
+			this.handleAudienceRuleChange();
+		});
+		if (!filters.length) return Promise.resolve(filterGroup);
+		this.applyingAudiencePreset = true;
+		return filterGroup.add_filters(filters).then(() => filterGroup).finally(() => {
+			this.applyingAudiencePreset = false;
+		});
+	}
+
 	handleAudienceRuleChange(preservePreset = false) {
 		if (this.applyingBootstrap || this.applyingAudiencePreset) return;
+		if (!preservePreset) this.clearSelectedSegment();
 		// FilterGroup emits its own callback and embedded controls bubble DOM events.
 		// Coalesce both so one edit produces one preview after controls settle.
 		if (this.audienceChangeFrame) return;
@@ -498,9 +546,23 @@ class EmailCampaignStudio {
 		});
 	}
 
+	clearSelectedSegment() {
+		this.activeStaticSegment = false;
+		if (
+			!this.segmentForm
+			|| !this.segmentForm.get_value("segment_name")
+			|| this.applyingSegmentSelection
+		) return;
+		this.applyingSegmentSelection = true;
+		Promise.resolve(this.segmentForm.set_value("segment_name", "")).then(
+			() => { this.applyingSegmentSelection = false; },
+			() => { this.applyingSegmentSelection = false; }
+		);
+	}
+
 	makeEmbeddedFilterGroup(selector, onChange) {
 		const filterGroup = new frappe.ui.FilterGroup({
-			parent: this.$root.find(selector),
+			parent: typeof selector === "string" ? this.$root.find(selector) : selector,
 			doctype: "Lead",
 			on_change: onChange,
 		});
@@ -652,6 +714,9 @@ class EmailCampaignStudio {
 		this.applyingBootstrap = true;
 		try {
 			await this.runBootstrapStep(__("Preparing workspace controls"), () => this.setEditableState(true, "Draft"));
+			await this.runBootstrapStep(__("Loading campaign segment"), () => this.setBootstrapFormValues(this.segmentForm, {
+				segment_name: "",
+			}));
 			await this.runBootstrapStep(__("Loading campaign content"), () => this.setBootstrapFormValues(this.contentForm, {
 				campaign_title: "",
 				subscription_topic: "",
@@ -686,9 +751,8 @@ class EmailCampaignStudio {
 				utm_source: "newsletter",
 				utm_medium: "email",
 			}));
-			await this.runBootstrapStep(__("Loading exclusions"), () => this.blacklistForm.set_value("exclude_email_groups", []));
-			await this.runBootstrapStep(__("Loading audience filters"), () => this.applyFilters(this.filterGroup, []));
-			await this.runBootstrapStep(__("Loading exclusion filters"), () => this.applyFilters(this.excludeFilterGroup, []));
+			await this.runBootstrapStep(__("Loading filters"), () => this.applyIncludeFilterGroups([]));
+			await this.runBootstrapStep(__("Loading exclusions"), () => this.applyExcludeFilterGroups([]));
 		} finally {
 			this.applyingBootstrap = false;
 		}
@@ -703,14 +767,14 @@ class EmailCampaignStudio {
 		this.updateCampaignNavigation();
 		const editable = Boolean(campaign.editable);
 		const status = campaign.broadcast_status || "Draft";
-		// Populate controls while writable. Frappe Link and Filter controls may validate
-		// asynchronously; refreshing them into read-only mode first can reject their
-		// pending setters and previously left the cached Desk page behind its loader.
 		this.presetFilters = null;
 		this.$root.find("[data-audience-preset]").removeClass("active");
 		this.applyingBootstrap = true;
 		try {
 			await this.runBootstrapStep(__("Preparing workspace controls"), () => this.setEditableState(true, status));
+			await this.runBootstrapStep(__("Loading campaign segment"), () => this.setBootstrapFormValues(this.segmentForm, {
+				segment_name: campaign.segment_name || "",
+			}));
 			await this.runBootstrapStep(__("Loading campaign content"), () => this.setBootstrapFormValues(this.contentForm, {
 				campaign_title: campaign.campaign_title || "",
 				subscription_topic: campaign.subscription_topic || "",
@@ -745,9 +809,8 @@ class EmailCampaignStudio {
 				utm_source: campaign.utm_source || "newsletter",
 				utm_medium: campaign.utm_medium || "email",
 			}));
-			await this.runBootstrapStep(__("Loading exclusions"), () => this.blacklistForm.set_value("exclude_email_groups", campaign.exclude_email_groups || []));
-			await this.runBootstrapStep(__("Loading audience filters"), () => this.applyFilters(this.filterGroup, campaign.filters || []));
-			await this.runBootstrapStep(__("Loading exclusion filters"), () => this.applyFilters(this.excludeFilterGroup, campaign.exclude_filters || []));
+			await this.runBootstrapStep(__("Loading filters"), () => this.applyIncludeFilterGroups(campaign.filters || []));
+			await this.runBootstrapStep(__("Loading exclusions"), () => this.applyExcludeFilterGroups(campaign.exclude_filters || []));
 			await this.runBootstrapStep(__("Freezing scheduled campaign controls"), () => this.setEditableState(editable, status));
 		} finally {
 			this.applyingBootstrap = false;
@@ -773,7 +836,7 @@ class EmailCampaignStudio {
 				"</span>"
 			);
 		}
-		[this.contentForm, this.senderForm, this.scheduleForm, this.trackingForm, this.blacklistForm]
+		[this.segmentForm, this.contentForm, this.senderForm, this.scheduleForm, this.trackingForm]
 			.filter(Boolean)
 			.forEach((form) => (form.fields_list || []).forEach((field) => {
 				if (!field.df.fieldname || ["HTML", "Section Break", "Column Break"].includes(field.df.fieldtype)) return;
@@ -798,6 +861,102 @@ class EmailCampaignStudio {
 		});
 	}
 
+	applyIncludeFilterGroups(groups) {
+		this.$root.find("#ecs-filter-groups").empty();
+		this.filterGroups = [];
+		if (!groups || !groups.length) groups = [[]];
+		return groups.reduce(
+			(promise, group) => promise.then(() => this.addIncludeFilterGroup(group)),
+			Promise.resolve()
+		).then(() => this.updateFilterCount());
+	}
+
+	applyExcludeFilterGroups(groups) {
+		this.$root.find("#ecs-exclude-filter-groups").empty();
+		this.excludeFilterGroups = [];
+		if (!groups || !groups.length) groups = [[]];
+		return groups.reduce(
+			(promise, group) => promise.then(() => this.addExcludeFilterGroup(group)),
+			Promise.resolve()
+		).then(() => this.updateFilterCount());
+	}
+
+	loadSegment(segmentName) {
+		return frappe.call({
+			method: "finbyzreach.segments.get_segment_filters",
+			args: { segment_name: segmentName },
+		}).then((response) => {
+			const segment = response.message || {};
+			this.presetFilters = null;
+			this.activeStaticSegment = segment.segment_type === "Static";
+			return this.applyIncludeFilterGroups(segment.filters || []).then(() => {
+				return this.applyExcludeFilterGroups(segment.exclude_filters || []);
+			}).then(() => {
+				frappe.show_alert({
+					message: __("Loaded {0} segment", [segment.segment_type || __("saved")]),
+					indicator: "blue",
+				}, 3);
+				this.handleAudienceRuleChange(true);
+			});
+		}).finally(() => {
+			this.applyingSegmentSelection = false;
+		});
+	}
+
+	showSaveSegmentDialog() {
+		const filters = this.getFilters();
+		if (!filters.length) {
+			frappe.msgprint(__("Add at least one include filter before saving a segment."));
+			return;
+		}
+		const exclude_filters = this.getExcludeFilters();
+		const exclude_email_groups = this.exclude_email_groups || [];
+
+		const dialog = new frappe.ui.Dialog({
+			title: __("Save Audience as Segment"),
+			fields: [
+				{
+					fieldname: "segment_name",
+					label: __("Segment Name"),
+					fieldtype: "Data",
+					reqd: 1,
+				},
+				{
+					fieldname: "segment_type",
+					label: __("Segment Type"),
+					fieldtype: "Select",
+					options: "Active\nStatic",
+					default: "Active",
+					description: __("Active evaluates rules when used. Static keeps the Leads matching these rules now."),
+				},
+			],
+			primary_action_label: __("Save Segment"),
+			primary_action: (values) => {
+				dialog.get_primary_btn().prop("disabled", true);
+				frappe.call({
+					method: "finbyzreach.segments.create_segment",
+					type: "POST",
+					args: {
+						segment_name: values.segment_name,
+						segment_type: values.segment_type,
+						filter_groups: JSON.stringify(filters),
+						exclude_filters: JSON.stringify(exclude_filters),
+						exclude_email_groups: JSON.stringify(exclude_email_groups),
+					},
+					freeze: true,
+					freeze_message: __("Saving segment…"),
+				}).then((response) => {
+					const segment = response.message || {};
+					dialog.hide();
+					return this.segmentForm.set_value("segment_name", segment.name).then(() => {
+						frappe.show_alert({ message: __("Segment saved"), indicator: "green" }, 4);
+					});
+				}).always(() => dialog.get_primary_btn().prop("disabled", false));
+			},
+		});
+		dialog.show();
+	}
+
 	syncCustomControls() {
 		this.setupScheduleDayPicker();
 		this.setupOptionToggles();
@@ -807,52 +966,75 @@ class EmailCampaignStudio {
 
 	getFilters() {
 		if (this.presetFilters !== null) {
-			return this.presetFilters.map((filter) => filter.slice());
+			return this.presetFilters.map((group) => group.map((filter) => filter.slice()));
 		}
-		return this.filterGroup ? this.filterGroup.get_filters() : [];
+		const filters = (this.filterGroups || []).map((item) => item.filterGroup.get_filters()).filter((group) => group.length);
+		if (!filters.length && this.activeStaticSegment) {
+			const segmentName = this.segmentForm.get_value("segment_name");
+			if (segmentName) {
+				return [[["Lead", "name", "in", ["#STATIC_SEGMENT#", segmentName]]]];
+			}
+		}
+		return filters;
 	}
 
 	getExcludeFilters() {
-		return this.excludeFilterGroup ? this.excludeFilterGroup.get_filters() : [];
+		return (this.excludeFilterGroups || []).map((item) => item.filterGroup.get_filters()).filter((group) => group.length);
 	}
 
 	getBlacklistValues() {
 		return {
 			exclude_filters: this.getExcludeFilters(),
-			exclude_email_groups: this.blacklistForm.get_value("exclude_email_groups") || [],
+			exclude_email_groups: [],
 		};
 	}
 
 	updateFilterCount() {
-		const count = this.getFilters().length;
-		const excludeCount = this.getExcludeFilters().length;
-		const emailGroupCount = this.blacklistForm ? (this.blacklistForm.get_value("exclude_email_groups") || []).length : 0;
+		const groups = this.getFilters();
+		const count = groups.reduce((total, group) => total + group.length, 0);
+		const excludeGroups = this.getExcludeFilters();
+		const excludeCount = excludeGroups.reduce((total, group) => total + group.length, 0);
+		const emailGroupCount = 0;
 		const totalExclusions = excludeCount + emailGroupCount;
-		this.$root.find("#ecs-filter-count").text(count + " " + (count === 1 ? __("filter") : __("filters")));
+		const displayCount = this.activeStaticSegment ? 0 : count;
+		this.$root.find("#ecs-filter-count").text(displayCount + " " + (displayCount === 1 ? __("filter") : __("filters")));
 		this.$root.find("#ecs-exclude-filter-count").text(totalExclusions + " " + (totalExclusions === 1 ? __("rule") : __("rules")));
-		this.$root.find("#ecs-preview-btn").prop("disabled", count === 0);
-		this.$root.find("#ecs-health-btn").prop("disabled", count === 0);
-		this.$root.find("#ecs-audience-state-dot").toggleClass("ready", count > 0).removeClass("warn");
+		const hasAudience = count > 0 || this.activeStaticSegment;
+		this.$root.find("#ecs-preview-btn").prop("disabled", !hasAudience);
+		this.$root.find("#ecs-health-btn").prop("disabled", !hasAudience);
+		this.$root.find("#ecs-filter-builder").toggle(!this.activeStaticSegment);
+		this.$root.find("#ecs-save-segment-btn").prop("disabled", this.activeStaticSegment);
+		this.$root.find("#ecs-audience-state-dot").toggleClass("ready", hasAudience).removeClass("warn");
 		let state = __("Choose a preset or add at least one include filter.");
-		if (count && totalExclusions) {
-			state = __("Ready to preview: {0} include and {1} exclusion rules.", [count, totalExclusions]);
+		if (this.activeStaticSegment) {
+			state = __("Targeting static segment. Visual filters are disabled for performance.");
+		} else if (count && totalExclusions) {
+			state = __("Ready to preview: {0} conditions in {1} OR group(s), plus {2} exclusions.", [count, groups.length, totalExclusions]);
 		} else if (count) {
 			state = __("Ready to preview. No optional exclusions are applied.");
 		}
 		this.$root.find("#ecs-audience-state-text").text(state);
 	}
 
+
 	getAudiencePreviewRequest(pagination) {
 		const filters = this.getFilters();
-		if (!filters.length) return null;
+		const segmentName = this.segmentForm ? (this.segmentForm.get_value("segment_name") || "") : "";
+		const frozenCampaign = !this.editable && Boolean(this.sourceCampaign);
+		if (!filters.length && !segmentName && !frozenCampaign) return null;
 		const blacklist = this.getBlacklistValues();
+		const pageState = pagination || {};
+		const searchText = String(pageState.search_text ?? pageState.searchText ?? "").trim().slice(0, 140);
 		const args = {
 			filters: JSON.stringify(filters),
+			segment_name: segmentName,
 			exclude_filters: JSON.stringify(blacklist.exclude_filters),
 			exclude_email_groups: JSON.stringify(blacklist.exclude_email_groups),
 			subscription_topic: this.contentForm.get_value("subscription_topic"),
-			eligible_page: Number((pagination && pagination.page) || 1),
-			eligible_page_length: Number((pagination && pagination.pageLength) || 8),
+			eligible_page: Math.max(1, Number(pageState.page || pageState.eligible_page || 1) || 1),
+			eligible_page_length: Math.max(1, Number(pageState.pageLength || pageState.eligible_page_length || 8) || 8),
+			excluded_page: Math.max(1, Number(pageState.excluded_page || pageState.excludedPage || 1) || 1),
+			search_text: searchText,
 			campaign_name: this.editable ? "" : (this.sourceCampaign || ""),
 		};
 		return { args, key: JSON.stringify(args) };
@@ -898,7 +1080,7 @@ class EmailCampaignStudio {
 			this.preview = null;
 			this.previewFailed = false;
 			this.setPreviewLoading(false);
-			if (!silent) frappe.msgprint(__("Add at least one Lead filter first."));
+			if (!silent) frappe.msgprint(__("Add at least one Lead filter or select a segment first."));
 			this.renderPreview(null);
 			return Promise.resolve(null);
 		}
@@ -936,15 +1118,37 @@ class EmailCampaignStudio {
 		return call;
 	}
 
+
+	fetchAudienceHealth(pagination) {
+		const request = this.getAudiencePreviewRequest(pagination);
+		if (!request) {
+			frappe.msgprint(__("Add at least one Lead filter or select a segment first."));
+			return Promise.resolve(null);
+		}
+		const requestId = ++this.healthPreviewRequest;
+		return frappe.call({
+			method: this.method + "preview_audience",
+			type: "POST",
+			args: request.args,
+		}).then((response) => {
+			if (requestId !== this.healthPreviewRequest) return undefined;
+			return response.message || {};
+		}, () => {
+			if (requestId !== this.healthPreviewRequest) return undefined;
+			return null;
+		});
+	}
+
 	setPreviewLoading(loading) {
+		const hasAudience = Boolean(this.getAudiencePreviewRequest());
 		this.$root.find("#ecs-preview-panel").toggleClass("ecs-loading", loading);
 		this.$root.find("#ecs-preview-btn")
-			.prop("disabled", loading || !this.getFilters().length)
+			.prop("disabled", loading || !hasAudience)
 			.text(loading ? __("Calculating…") : __("Preview Audience"));
 		this.$root.find("#ecs-health-btn")
-			.prop("disabled", loading || !this.getFilters().length)
+			.prop("disabled", loading || !hasAudience)
 			.text(loading ? __("Checking Audience…") : __("View Full Audience Health"));
-		let status = this.getFilters().length ? __("Ready to preview") : __("Waiting for filters");
+		let status = hasAudience ? __("Ready to preview") : __("Waiting for filters");
 		if (this.preview) {
 			status = Number(this.preview.eligible_count) > 0 ? __("Audience ready") : __("No eligible recipients");
 		} else if (this.previewFailed) {
@@ -974,7 +1178,7 @@ class EmailCampaignStudio {
 		const $dot = this.$root.find("#ecs-preview-dot");
 		$dot.removeClass("ready warn");
 		if (!data) {
-			$panel.html("<div class='ecs-preview-empty'>" + __("Add Lead filters, then preview the campaign audience.") + "</div>");
+			$panel.html("<div class='ecs-preview-empty'>" + __("Add Lead filters or select a segment, then preview the campaign audience.") + "</div>");
 			this.$root.find("#ecs-preview-status").text(__("Waiting for filters"));
 			this.updateFilterCount();
 			return;
@@ -998,9 +1202,10 @@ class EmailCampaignStudio {
 		);
 	}
 
+
 	showAudienceHealth() {
-		if (!this.getFilters().length) {
-			frappe.msgprint(__("Add at least one Lead filter first."));
+		if (!this.getAudiencePreviewRequest()) {
+			frappe.msgprint(__("Add at least one Lead filter or select a segment first."));
 			return Promise.resolve(null);
 		}
 		const dialog = new frappe.ui.Dialog({
@@ -1012,44 +1217,133 @@ class EmailCampaignStudio {
 		});
 		const $details = dialog.get_field("health_details").$wrapper;
 		let currentPageLength = 10;
-		const loadPage = (page, pageLength) => {
-			currentPageLength = Number(pageLength || currentPageLength || 10);
-			$details.addClass("ecs-loading").html("<div class='ecs-preview-empty'>" + __("Checking the current audience…") + "</div>");
-			return this.previewAudience(false, { page: page, pageLength: currentPageLength }).then((data) => {
+		let currentSearchText = "";
+		let currentEligiblePage = 1;
+		let currentExcludedPage = 1;
+		let searchTimeout = null;
+		let loadingTimeout = null;
+
+		const pageLengthOptions = [10, 25, 50, 100, 500, 1000].map((option) => {
+			return "<option value='" + option + "' " + (currentPageLength === option ? "selected" : "") + ">" + option + "</option>";
+		}).join("");
+		$details.html(
+			"<div class='ecs-health-toolbar'>" +
+				"<div class='ecs-health-search-wrap'><input type='search' class='form-control input-sm' id='ecs-health-search-input' autocomplete='off' placeholder='" + __("Search by lead, company, or email…") + "'><button type='button' class='btn btn-xs ecs-health-search-clear' data-health-search-clear aria-label='" + __("Clear search") + "'>×</button></div>" +
+				"<label class='ecs-page-size'><span>" + __("Rows per page") + "</span><select class='form-control input-xs' data-health-page-length>" + pageLengthOptions + "</select></label>" +
+			"</div>" +
+			"<div class='ecs-health-results' id='ecs-health-results'><div class='ecs-preview-empty'>" + __("Checking the current audience…") + "</div></div>"
+		);
+		const $results = $details.find("#ecs-health-results");
+		const $search = $details.find("#ecs-health-search-input");
+		const $searchWrap = $details.find(".ecs-health-search-wrap");
+
+		const syncSearchClear = () => {
+			$searchWrap.toggleClass("has-value", Boolean(String($search.val() || "")));
+		};
+		const setLoading = (loading) => {
+			$results.toggleClass("ecs-loading", loading);
+			dialog.$wrapper.find("[data-health-page],[data-excluded-page],[data-health-page-length]").prop("disabled", loading);
+		};
+		const loadPage = () => {
+			setLoading(true);
+			if (loadingTimeout) clearTimeout(loadingTimeout);
+			loadingTimeout = setTimeout(() => {
+				if ($results.children().length) $results.css("opacity", "0.55");
+			}, 250);
+
+			return this.fetchAudienceHealth({
+				page: currentEligiblePage,
+				pageLength: currentPageLength,
+				excluded_page: currentExcludedPage,
+				search_text: currentSearchText,
+			}).then((data) => {
+				if (typeof data === "undefined") return;
+				if (loadingTimeout) clearTimeout(loadingTimeout);
+				$results.css("opacity", "");
+				setLoading(false);
 				if (!data) {
-					$details.removeClass("ecs-loading").html("<div class='ecs-preview-empty'>" + __("Audience health could not be loaded. Please try again.") + "</div>");
+					$results.html("<div class='ecs-preview-empty'>" + __("Audience health could not be loaded. Please review the filters and try again.") + "</div>");
 					return;
 				}
 				currentPageLength = Number(data.eligible_page_length || currentPageLength);
-				$details.removeClass("ecs-loading").html(this.audienceHealthDetails(data));
+				currentEligiblePage = Number(data.eligible_page || currentEligiblePage);
+				currentExcludedPage = Number(data.excluded_page || currentExcludedPage);
+				$results.html(this.audienceHealthDetails(data, currentSearchText));
 			});
 		};
+
 		dialog.$wrapper.on("click.ecs-health-page", "[data-health-page]", (event) => {
-			const page = Number($(event.currentTarget).data("health-page"));
-			if (page > 0) loadPage(page, currentPageLength);
+			if ($(event.currentTarget).prop("disabled")) return;
+			const nextPage = Number($(event.currentTarget).data("health-page"));
+			if (nextPage > 0) {
+				currentEligiblePage = nextPage;
+				loadPage();
+			}
+		});
+		dialog.$wrapper.on("click.ecs-health-page", "[data-excluded-page]", (event) => {
+			if ($(event.currentTarget).prop("disabled")) return;
+			const nextPage = Number($(event.currentTarget).data("excluded-page"));
+			if (nextPage > 0) {
+				currentExcludedPage = nextPage;
+				loadPage();
+			}
 		});
 		dialog.$wrapper.on("change.ecs-health-page", "[data-health-page-length]", (event) => {
-			loadPage(1, Number($(event.currentTarget).val()));
+			currentPageLength = Math.max(1, Number($(event.currentTarget).val()) || 10);
+			currentEligiblePage = 1;
+			currentExcludedPage = 1;
+			loadPage();
 		});
-		dialog.$wrapper.on("hidden.bs.modal", () => dialog.$wrapper.off(".ecs-health-page"));
+		dialog.$wrapper.on("input.ecs-health-page", "#ecs-health-search-input", () => {
+			syncSearchClear();
+			if (searchTimeout) clearTimeout(searchTimeout);
+			searchTimeout = setTimeout(() => {
+				currentSearchText = String($search.val() || "").trim().slice(0, 140);
+				currentEligiblePage = 1;
+				currentExcludedPage = 1;
+				loadPage();
+			}, 350);
+		});
+		dialog.$wrapper.on("click.ecs-health-page", "[data-health-search-clear]", () => {
+			if (searchTimeout) clearTimeout(searchTimeout);
+			$search.val("");
+			currentSearchText = "";
+			currentEligiblePage = 1;
+			currentExcludedPage = 1;
+			syncSearchClear();
+			$search.trigger("focus");
+			loadPage();
+		});
+		dialog.$wrapper.on("hidden.bs.modal", () => {
+			if (searchTimeout) clearTimeout(searchTimeout);
+			if (loadingTimeout) clearTimeout(loadingTimeout);
+			this.healthPreviewRequest += 1;
+			dialog.$wrapper.off(".ecs-health-page");
+		});
+
 		dialog.show();
-		return loadPage(1);
+		syncSearchClear();
+		return loadPage();
 	}
 
-	audienceHealthDetails(data) {
+	audienceHealthDetails(data, currentSearchText = "") {
 		const escape = (value) => frappe.utils.escape_html(String(value || ""));
+		const searchText = String(currentSearchText || "").trim();
+		const filterNote = searchText
+			? "<div class='ecs-health-filter-note'><span>" + __("Filtered audience results") + "</span><strong title='" + escape(searchText) + "'>“" + escape(searchText) + "”</strong></div>"
+			: "";
 		const metricHtml =
 			"<div class='ecs-metrics'><div class='ecs-metric'><strong>" + Number(data.candidate_count || 0) + "</strong><span>" + __("Candidates") + "</span></div><div class='ecs-metric eligible'><strong>" + Number(data.eligible_count || 0) + "</strong><span>" + __("Eligible") + "</span></div><div class='ecs-metric excluded'><strong>" + Number(data.excluded_count || 0) + "</strong><span>" + __("Excluded") + "</span></div></div>";
 		const reasonRows = Object.entries(data.excluded_reasons || {}).map(([reason, count]) => {
 			return "<div class='ecs-health-row'><strong>" + escape(reason) + "</strong><small>" + Number(count || 0) + " " + __("Leads") + "</small></div>";
 		}).join("");
-		const reasons = "<section class='ecs-health-section'><div class='ecs-health-section-head'><h4>" + __("Exclusion breakdown") + "</h4><span>" + Number(data.excluded_count || 0) + " " + __("excluded") + "</span></div><div class='ecs-health-list'>" + (reasonRows || "<div class='ecs-health-empty'>" + __("No compliance or blacklist exclusions were found.") + "</div>") + "</div></section>";
+		const reasons = "<section class='ecs-health-section'><div class='ecs-health-section-head'><h4>" + __("Exclusion breakdown") + "</h4><span>" + Number(data.excluded_count || 0) + " " + __("excluded") + "</span></div><div class='ecs-health-list'>" + (reasonRows || "<div class='ecs-health-empty'>" + (searchText ? __("No exclusion reasons match this search.") : __("No compliance or blacklist exclusions were found.")) + "</div>") + "</div></section>";
 		const recipientRows = (data.eligible_samples || []).map((row) => {
 			const route = "/app/lead/" + encodeURIComponent(row.name);
 			const label = escape(row.lead_name || row.name);
 			const company = escape(row.company_name || "");
 			const email = escape(row.email_id || "");
-			return "<a class='ecs-health-row' href='" + route + "'><span><strong>" + label + "</strong>" + (company ? "<small style='text-align:left'>" + company + "</small>" : "") + "</span><small title='" + email + "'>" + email + "</small></a>";
+			return "<a class='ecs-health-row' href='" + route + "'><span><strong>" + label + "</strong>" + (company ? "<small style='text-align:left'>" + company + "</small>" : "") + "</span><small title='" + email + "'>" + (email || "—") + "</small></a>";
 		}).join("");
 		const currentPage = Number(data.eligible_page || 1);
 		const totalPages = Number(data.eligible_total_pages || 0);
@@ -1057,25 +1351,42 @@ class EmailCampaignStudio {
 		const eligibleCount = Number(data.eligible_count || 0);
 		const firstResult = eligibleCount ? ((currentPage - 1) * pageLength) + 1 : 0;
 		const lastResult = Math.min(currentPage * pageLength, eligibleCount);
-		const pageLengthOptions = [10, 25, 50, 100, 500, 1000].map((option) => {
-			return "<option value='" + option + "' " + (pageLength === option ? "selected" : "") + ">" + option + "</option>";
-		}).join("");
 		const pagination = eligibleCount
-			? "<div class='ecs-health-pagination'><span>" + __("Showing {0}–{1} of {2}", [firstResult, lastResult, eligibleCount]) + "</span><div><label class='ecs-page-size'><span>" + __("Rows per page") + "</span><select class='form-control input-xs' data-health-page-length>" + pageLengthOptions + "</select></label><button type='button' class='btn btn-default btn-sm' data-health-page='" + (currentPage - 1) + "' " + (currentPage <= 1 ? "disabled" : "") + ">" + __("Previous") + "</button><strong>" + __("Page {0} of {1}", [currentPage, Math.max(totalPages, 1)]) + "</strong><button type='button' class='btn btn-default btn-sm' data-health-page='" + (currentPage + 1) + "' " + (currentPage >= totalPages ? "disabled" : "") + ">" + __("Next") + "</button></div></div>"
+			? "<div class='ecs-health-pagination'><span>" + __("Showing {0}–{1} of {2}", [firstResult, lastResult, eligibleCount]) + "</span><div><button type='button' class='btn btn-default btn-sm' data-health-page='" + (currentPage - 1) + "' " + (currentPage <= 1 ? "disabled" : "") + ">" + __("Previous") + "</button><strong>" + __("Page {0} of {1}", [currentPage, Math.max(totalPages, 1)]) + "</strong><button type='button' class='btn btn-default btn-sm' data-health-page='" + (currentPage + 1) + "' " + (currentPage >= totalPages ? "disabled" : "") + ">" + __("Next") + "</button></div></div>"
 			: "";
-		const recipients = "<section class='ecs-health-section'><div class='ecs-health-section-head'><h4>" + __("Eligible recipients") + "</h4><span>" + eligibleCount + " " + __("eligible") + "</span></div><div class='ecs-health-list'>" + (recipientRows || "<div class='ecs-health-empty'>" + __("No eligible recipients are available.") + "</div>") + "</div>" + pagination + "</section>";
+		const recipients = "<section class='ecs-health-section'><div class='ecs-health-section-head'><h4>" + __("Eligible recipients") + "</h4><span>" + eligibleCount + " " + __("eligible") + "</span></div><div class='ecs-health-list'>" + (recipientRows || "<div class='ecs-health-empty'>" + (searchText ? __("No eligible recipients match this search.") : __("No eligible recipients are available.")) + "</div>") + "</div>" + pagination + "</section>";
+
+		const excludedRows = (data.excluded_samples || []).map((row) => {
+			const route = "/app/lead/" + encodeURIComponent(row.name);
+			const label = escape(row.lead_name || row.name);
+			const company = escape(row.company_name || "");
+			const email = escape(row.email_id || "");
+			const reason = escape(row.reason || __("Excluded by audience rules"));
+			return "<a class='ecs-health-row' href='" + route + "'><span><strong>" + label + "</strong>" + (company ? "<small style='text-align:left'>" + company + "</small>" : "") + "<small style='text-align:left'>" + reason + "</small></span><small title='" + email + "'>" + (email || "—") + "</small></a>";
+		}).join("");
+		const currentExcludedPage = Number(data.excluded_page || 1);
+		const totalExcludedPages = Number(data.excluded_total_pages || 0);
+		const excludedCount = Number(data.excluded_count || 0);
+		const firstExcludedResult = excludedCount ? ((currentExcludedPage - 1) * pageLength) + 1 : 0;
+		const lastExcludedResult = Math.min(currentExcludedPage * pageLength, excludedCount);
+		const excludedPagination = excludedCount
+			? "<div class='ecs-health-pagination'><span>" + __("Showing {0}–{1} of {2}", [firstExcludedResult, lastExcludedResult, excludedCount]) + "</span><div><button type='button' class='btn btn-default btn-sm' data-excluded-page='" + (currentExcludedPage - 1) + "' " + (currentExcludedPage <= 1 ? "disabled" : "") + ">" + __("Previous") + "</button><strong>" + __("Page {0} of {1}", [currentExcludedPage, Math.max(totalExcludedPages, 1)]) + "</strong><button type='button' class='btn btn-default btn-sm' data-excluded-page='" + (currentExcludedPage + 1) + "' " + (currentExcludedPage >= totalExcludedPages ? "disabled" : "") + ">" + __("Next") + "</button></div></div>"
+			: "";
+		const excludedRecipients = (excludedCount || searchText)
+			? "<section class='ecs-health-section'><div class='ecs-health-section-head'><h4>" + __("Excluded recipients") + "</h4><span>" + excludedCount + " " + __("excluded") + "</span></div><div class='ecs-health-list'>" + (excludedRows || "<div class='ecs-health-empty'>" + __("No excluded recipients match this search.") + "</div>") + "</div>" + excludedPagination + "</section>"
+			: "";
 		const topicCount = Number(data.topic_unsubscribed_count || 0);
 		const topicRows = (data.topic_unsubscribed_samples || []).map((row) => {
 			const route = "/app/lead/" + encodeURIComponent(row.name);
 			const label = escape(row.lead_name || row.name);
 			const email = escape(row.email_id || "");
-			return "<a class='ecs-health-row' href='" + route + "'><strong>" + label + "</strong><small title='" + email + "'>" + email + "</small></a>";
+			return "<a class='ecs-health-row' href='" + route + "'><strong>" + label + "</strong><small title='" + email + "'>" + (email || "—") + "</small></a>";
 		}).join("");
 		const topicMore = Number(data.topic_unsubscribed_more || 0);
 		const topicSection = topicCount
 			? "<section class='ecs-health-section'><div class='ecs-health-section-head'><h4>" + __("Topic unsubscribes") + "</h4><span>" + topicCount + " · " + escape(data.subscription_topic) + "</span></div><div class='ecs-health-list'>" + topicRows + (topicMore ? "<div class='ecs-health-empty'>+ " + topicMore + " " + __("more Leads") + "</div>" : "") + "</div></section>"
 			: "";
-		return "<div class='ecs-health-dialog'>" + metricHtml + reasons + topicSection + recipients + "</div>";
+		return "<div class='ecs-health-dialog'>" + filterNote + metricHtml + reasons + topicSection + recipients + excludedRecipients + "</div>";
 	}
 
 	formValues(form, validateRequired) {
@@ -1105,6 +1416,7 @@ class EmailCampaignStudio {
 		}
 		return Object.assign({}, content, sender, schedule, tracking, this.getBlacklistValues(), {
 			filters: filters,
+			segment_name: this.segmentForm ? (this.segmentForm.get_value("segment_name") || "") : "",
 			source_campaign: this.sourceCampaign || "",
 		});
 	}

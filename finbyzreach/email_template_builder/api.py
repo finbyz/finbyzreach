@@ -9,7 +9,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import frappe
 from frappe.email.email_body import get_formatted_html
 from frappe import _
-from frappe.utils import cint, get_datetime, get_system_timezone, validate_email_address
+from frappe.utils import cint, get_datetime, get_system_timezone, get_url, validate_email_address
+from frappe.utils.verified_command import get_signed_params
 from frappe.utils.jinja import validate_template
 
 from .compiler import compile_schema
@@ -202,7 +203,15 @@ def _compile_builder_request(schema, metadata=None, *, fallback_subject="", refe
 	}
 
 
-def _render_builder_request(schema, metadata=None, *, fallback_subject="", reference_doctype=None, reference_name=None):
+def _render_builder_request(
+	schema,
+	metadata=None,
+	*,
+	fallback_subject="",
+	reference_doctype=None,
+	reference_name=None,
+	email_preview_url=None,
+):
 	state = _compile_builder_request(
 		schema,
 		metadata,
@@ -210,7 +219,11 @@ def _render_builder_request(schema, metadata=None, *, fallback_subject="", refer
 		reference_doctype=reference_doctype,
 		reference_name=reference_name,
 	)
-	context = state["context"]
+	context = frappe._dict(state["context"])
+	if email_preview_url is not None:
+		context["email_preview_url"] = email_preview_url
+	elif "email_preview_url" not in context:
+		context["email_preview_url"] = "#"
 	state["subject"] = frappe.render_template(state["compiled_subject"], context)
 	state["html_content"] = frappe.render_template(state["compiled"]["html"], context)
 	state["plain_text"] = frappe.render_template(state["compiled"]["plain_text"], context)
@@ -647,12 +660,19 @@ def send_test_email(template_name, schema, metadata=None, recipient=None, refere
 		frappe.throw(_("Send a test to one email address at a time"))
 	validate_email_address(recipient, throw=True)
 	_check_test_email_rate_limit()
+	test_params = {"is_test": "1", "template": template.name}
+	if reference_doctype:
+		test_params["reference_doctype"] = reference_doctype
+		if reference_name:
+			test_params["reference_name"] = reference_name
+	preview_url = get_url(f"/view_email?{get_signed_params(test_params)}")
 	state = _render_builder_request(
 		schema,
 		metadata,
 		fallback_subject=_subject_source(template),
 		reference_doctype=reference_doctype,
 		reference_name=reference_name,
+		email_preview_url=preview_url,
 	)
 	frappe.sendmail(
 		recipients=[recipient],

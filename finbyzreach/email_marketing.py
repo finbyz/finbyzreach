@@ -72,6 +72,7 @@ WEEKDAY_FIELDS = (
 TERMINAL_DELIVERY_STATUSES = ("Sent", "Failed", "Skipped", "Cancelled")
 REPEAT_UNITS = ("Minutes", "Hours", "Days")
 MAX_AUDIENCE_FILTERS = 50
+MAX_AUDIENCE_FILTER_GROUPS = 25
 MAX_EXCLUDED_EMAIL_GROUPS = 50
 SCHEDULER_RECIPIENT_INSERT_FLAG = "email_campaign_scheduler_recipient_insert"
 # Mirror Frappe's Email Queue safety model at the campaign-release boundary:
@@ -394,6 +395,39 @@ def validate_lead_filters(filters_json, require_filters=False):
 	return json.dumps(normalized, separators=(",", ":"), ensure_ascii=False)
 
 
+def validate_lead_filter_groups(filters_json, require_filters=False):
+	"""Validate OR groups of regular Lead filters.
+
+	A legacy flat filter list remains valid and is treated as one AND group.
+	"""
+	try:
+		groups = frappe.parse_json(filters_json or "[]")
+	except (TypeError, ValueError):
+		frappe.throw(_("Lead Filter Groups must contain valid JSON"))
+	if not isinstance(groups, list):
+		frappe.throw(_("Lead Filter Groups must be a list"))
+	if groups and isinstance(groups[0], (list, tuple)) and len(groups[0]) >= 4 and isinstance(groups[0][0], str):
+		groups = [groups]
+	if len(groups) > MAX_AUDIENCE_FILTER_GROUPS:
+		frappe.throw(_("Use no more than {0} audience filter groups").format(MAX_AUDIENCE_FILTER_GROUPS))
+
+	normalized = []
+	filter_count = 0
+	for group in groups:
+		if not isinstance(group, list):
+			frappe.throw(_("Every audience filter group must be a list"))
+		if not group:
+			continue
+		filters = frappe.parse_json(validate_lead_filters(json.dumps(group)))
+		filter_count += len(filters)
+		if filter_count > MAX_AUDIENCE_FILTERS:
+			frappe.throw(_("Use no more than {0} audience filters").format(MAX_AUDIENCE_FILTERS))
+		normalized.append(filters)
+	if require_filters and not normalized:
+		frappe.throw(_("A dynamic segment needs at least one Lead filter group"))
+	return json.dumps(normalized, separators=(",", ":"), ensure_ascii=False)
+
+
 def validate_excluded_email_groups(groups_json):
 	try:
 		groups = frappe.parse_json(groups_json or "[]")
@@ -444,6 +478,21 @@ def _lead_names_from_filters(filters_json, require_filters=False):
 		order_by="name asc",
 	)
 	return names
+
+
+def _lead_names_from_filter_groups(filters_json, require_filters=False):
+	groups = frappe.parse_json(validate_lead_filter_groups(filters_json, require_filters=require_filters))
+	names = set()
+	for group in groups:
+		if len(group) == 1 and group[0][1] == "name" and group[0][2] == "in" and isinstance(group[0][3], list) and len(group[0][3]) > 0 and group[0][3][0] == "#STATIC_SEGMENT#":
+			segment_name = group[0][3][1] if len(group[0][3]) > 1 else ""
+			if segment_name:
+				segment = frappe.get_doc("Reach Segment", segment_name)
+				if segment.segment_type == "Static":
+					names.update(frappe.parse_json(segment.static_leads_json or "[]"))
+		else:
+			names.update(_lead_names_from_filters(json.dumps(group)))
+	return sorted(names)
 
 
 def _chunks(values, size=500):
@@ -605,12 +654,12 @@ def resolve_campaign_audience(campaign):
 	include_leads = set(campaign.get("studio_include_leads") or [])
 	if not include_leads:
 		include_leads.update(
-			_lead_names_from_filters(campaign.get("custom_lead_filters_json"), require_filters=True)
+			_lead_names_from_filter_groups(campaign.get("custom_lead_filters_json"), require_filters=True)
 		)
 	exclude_leads = set(campaign.get("studio_exclude_leads") or [])
 	if not exclude_leads and campaign.get("custom_exclude_filters_json"):
 		exclude_leads.update(
-			_lead_names_from_filters(campaign.get("custom_exclude_filters_json"))
+			_lead_names_from_filter_groups(campaign.get("custom_exclude_filters_json"))
 		)
 	exclude_emails = set()
 	for group_name in validate_excluded_email_groups(
@@ -893,9 +942,27 @@ def _reschedule_recipient_batches(recipients, batches, retry=False):
 			)
 		query.run()
 
-
-@frappe.whitelist(methods=["POST"])
 def schedule_campaign(campaign_name):
+    try:
+        _schedule_campaign_internal(campaign_name)
+
+    except Exception:
+        frappe.log_error(
+            title=f"Campaign Scheduling Failed: {campaign_name}",
+            message=frappe.get_traceback(),
+        )
+        raise
+
+    finally:
+        frappe.db.set_value(
+            "Campaign",
+            campaign_name,
+            "custom_queued",
+            0,
+            update_modified=False,
+        )
+
+def _schedule_campaign_internal(campaign_name):
 	campaign = frappe.get_doc("Campaign", campaign_name, for_update=True)
 	campaign.check_permission("write")
 	campaign.check_permission("email")
@@ -906,8 +973,8 @@ def schedule_campaign(campaign_name):
 			_("This campaign already has delivery history and cannot be scheduled again. Retry failed recipients or create a new campaign.")
 		)
 	validate_campaign(campaign, require_ready=True)
-	validate_lead_filters(campaign.custom_lead_filters_json, require_filters=True)
-	validate_lead_filters(campaign.custom_exclude_filters_json)
+	validate_lead_filter_groups(campaign.custom_lead_filters_json, require_filters=True)
+	validate_lead_filter_groups(campaign.custom_exclude_filters_json)
 	validate_excluded_email_groups(campaign.custom_exclude_email_groups_json)
 	start_slot = calculate_batch_slots(campaign, 1)[0]
 	if start_slot < now_datetime() - timedelta(minutes=1):
@@ -1104,7 +1171,7 @@ def decorate_campaign_links(html, campaign, recipient_name, track_clicks=None):
 	)
 	for index, link in enumerate(soup.find_all("a"), start=1):
 		href = str(link.get("href") or "").strip()
-		if CLICK_METHOD in href or UNSUBSCRIBE_METHOD in href:
+		if CLICK_METHOD in href or UNSUBSCRIBE_METHOD in href or "view_email" in href:
 			continue
 		final_url = _append_utm(
 			href,
@@ -1235,10 +1302,14 @@ def _dispatch_recipient(recipient, campaign):
 		)
 		return
 	lead = frappe.get_doc("Lead", recipient.recipient)
+	preview_url = get_url(
+		f"/view_email?{get_signed_params({'campaign_recipient': recipient.name})}"
+	)
 	rendered = render_campaign_snapshot(
 		campaign.custom_snapshot_subject,
 		campaign.custom_snapshot_html,
 		lead,
+		extra_context={"email_preview_url": preview_url},
 	)
 	html = decorate_campaign_links(rendered.html, campaign, recipient.name)
 	delivery_html = (																																	
@@ -1739,7 +1810,17 @@ def send_campaign_test(campaign_name, recipient, sample_lead):
 			campaign.custom_email_template,
 			campaign.custom_subject_override,
 		)
-	rendered = render_campaign_snapshot(snapshot.subject, snapshot.html, lead)
+	test_params = {"is_test": "1", "campaign": campaign.name}
+	if lead and hasattr(lead, "name"):
+		test_params["lead"] = lead.name
+	preview_url = get_url(f"/view_email?{get_signed_params(test_params)}")
+
+	rendered = render_campaign_snapshot(
+		snapshot.subject,
+		snapshot.html,
+		lead,
+		extra_context={"email_preview_url": preview_url},
+	)
 	html = decorate_campaign_links(rendered.html, campaign, "test", track_clicks=0)
 	queue = frappe.sendmail(
 		recipients=[recipient],

@@ -1,0 +1,452 @@
+{% extends "templates/web.html" %}
+
+{% block title %}{{ email_subject or "View Email" }}{% endblock %}
+
+{% block page_content %}
+<style>
+  :root {
+    --ve-bg: #f8fafc;
+    --ve-card-bg: #ffffff;
+    --ve-border: #e2e8f0;
+    --ve-text-main: #0f172a;
+    --ve-text-muted: #64748b;
+    --ve-accent: #2563eb;
+  }
+
+  body {
+    background: linear-gradient(180deg, #f1f5f9 0%, #f8fafc 100%);
+    min-height: 100vh;
+    font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--ve-text-main);
+    margin: 0;
+    padding: 0;
+  }
+
+  .ve-container {
+    max-width: 860px;
+    margin: 32px auto 64px;
+    padding: 0 16px;
+    transition: max-width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .ve-container.is-mobile {
+    max-width: 420px;
+  }
+
+  /* ── Main App Shell ────────────────────────────────────────── */
+  .ve-shell {
+    background: var(--ve-card-bg);
+    border: 1px solid var(--ve-border);
+    border-radius: 16px;
+    box-shadow: 0 20px 25px -5px rgba(15, 23, 42, 0.06), 0 8px 10px -6px rgba(15, 23, 42, 0.03);
+    overflow: hidden;
+  }
+
+  /* ── Window Titlebar ───────────────────────────────────────── */
+  .ve-titlebar {
+    background: #f8fafc;
+    border-bottom: 1px solid var(--ve-border);
+    padding: 12px 18px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .ve-titlebar-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .ve-dot {
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+  .ve-dot.is-red { background: #ff5f56; border: 1px solid #e0443e; }
+  .ve-dot.is-yellow { background: #ffbd2e; border: 1px solid #dea123; }
+  .ve-dot.is-green { background: #27c93f; border: 1px solid #1aab29; }
+
+  .ve-titlebar-tag {
+    margin-left: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #64748b;
+    background: #e2e8f0;
+    padding: 2px 8px;
+    border-radius: 6px;
+  }
+
+  .ve-titlebar-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .ve-btn {
+    background: #ffffff;
+    border: 1px solid var(--ve-border);
+    color: var(--ve-text-muted);
+    font-size: 12px;
+    font-weight: 500;
+    padding: 5px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    transition: all 0.15s ease;
+  }
+
+  .ve-btn:hover {
+    background: #f1f5f9;
+    color: var(--ve-text-main);
+    border-color: #cbd5e1;
+  }
+
+  .ve-btn.is-active {
+    background: #e0e7ff;
+    color: #3730a3;
+    border-color: #c7d2fe;
+    font-weight: 600;
+  }
+
+  /* ── Email Meta Section (Gmail Style) ──────────────────────── */
+  .ve-meta-card {
+    padding: 24px 28px 20px;
+    border-bottom: 1px solid #f1f5f9;
+  }
+
+  .ve-subject {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--ve-text-main);
+    margin: 0 0 16px;
+    line-height: 1.35;
+    letter-spacing: -0.01em;
+  }
+
+  .ve-sender-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+  }
+
+  .ve-sender-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .ve-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #3b82f6, #6366f1);
+    color: #ffffff;
+    font-weight: 700;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    box-shadow: 0 2px 4px rgba(59, 130, 246, 0.2);
+  }
+
+  .ve-sender-info {
+    font-size: 13px;
+    line-height: 1.4;
+  }
+
+  .ve-sender-name {
+    font-weight: 600;
+    color: var(--ve-text-main);
+  }
+
+  .ve-sender-email {
+    color: var(--ve-text-muted);
+    font-size: 12px;
+    margin-left: 4px;
+  }
+
+  .ve-to-badge {
+    color: #94a3b8;
+    font-size: 11px;
+    display: block;
+  }
+
+  .ve-preheader-box {
+    margin-top: 14px;
+    padding: 8px 12px;
+    background: #f8fafc;
+    border-left: 3px solid #3b82f6;
+    border-radius: 0 6px 6px 0;
+    font-size: 12px;
+    color: #475569;
+    font-style: italic;
+  }
+
+  /* ── Email Content Container ───────────────────────────────── */
+  .ve-content-box {
+    background: #ffffff;
+    min-height: 400px;
+    overflow: hidden;
+  }
+
+  .ve-content-box iframe {
+    display: block;
+    width: 100%;
+    border: none;
+    background: transparent;
+    transition: height 0.2s ease;
+  }
+
+  .ve-standard-render {
+    padding: 20px 24px;
+  }
+
+  /* ── Footer Info ───────────────────────────────────────────── */
+  .ve-footer {
+    text-align: center;
+    margin-top: 24px;
+    font-size: 12px;
+    color: #94a3b8;
+  }
+
+  /* ── Error State ───────────────────────────────────────────── */
+  .ve-error-card {
+    background: #ffffff;
+    border: 1px solid var(--ve-border);
+    border-radius: 16px;
+    padding: 64px 32px;
+    text-align: center;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05);
+  }
+
+  .ve-error-icon {
+    width: 56px;
+    height: 56px;
+    margin: 0 auto 20px;
+    background: #fee2e2;
+    color: #dc2626;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+  }
+
+  .ve-error-title {
+    font-size: 20px;
+    font-weight: 700;
+    color: #0f172a;
+    margin: 0 0 8px;
+  }
+
+  .ve-error-desc {
+    font-size: 14px;
+    color: #64748b;
+    max-width: 420px;
+    margin: 0 auto;
+    line-height: 1.5;
+  }
+
+  @media (max-width: 640px) {
+    .ve-container {
+      margin: 12px auto 32px;
+      padding: 0 8px;
+    }
+    .ve-meta-card {
+      padding: 16px;
+    }
+    .ve-subject {
+      font-size: 17px;
+    }
+  }
+</style>
+
+<div class="ve-container" id="ve-root">
+  {% if error_message %}
+  <!-- ── Error Card ── -->
+  <div class="ve-error-card">
+    <div class="ve-error-icon">⚠️</div>
+    <h1 class="ve-error-title">{{ _("Unable to display email") }}</h1>
+    <p class="ve-error-desc">{{ error_message }}</p>
+  </div>
+
+  {% else %}
+  <!-- ── Full Email Viewer Shell ── -->
+  <div class="ve-shell">
+    
+    <!-- Top Client Bar -->
+    <div class="ve-titlebar">
+      <div class="ve-titlebar-left">
+        <span class="ve-dot is-red"></span>
+        <span class="ve-dot is-yellow"></span>
+        <span class="ve-dot is-green"></span>
+        <span class="ve-titlebar-tag">{{ _("Web Version") }}</span>
+      </div>
+
+      <div class="ve-titlebar-actions">
+        <button type="button" class="ve-btn is-active" id="btn-desktop" onclick="setViewMode('desktop')">
+          💻 {{ _("Desktop") }}
+        </button>
+        <button type="button" class="ve-btn" id="btn-mobile" onclick="setViewMode('mobile')">
+          📱 {{ _("Mobile") }}
+        </button>
+        <button type="button" class="ve-btn" onclick="window.print()">
+          🖨️ {{ _("Print") }}
+        </button>
+      </div>
+    </div>
+
+    <!-- Email Header / Metadata -->
+    <div class="ve-meta-card">
+      <h1 class="ve-subject">{{ email_subject or _("(No Subject)") }}</h1>
+      
+      <div class="ve-sender-row">
+        <div class="ve-sender-left">
+          <div class="ve-avatar">
+            {{ avatar_label or "ME" }}
+          </div>
+          <div class="ve-sender-info">
+            <span class="ve-sender-name">{{ sender_name or "Megasol" }}</span>
+            {% if sender_email %}
+            <span class="ve-sender-email">&lt;{{ sender_email }}&gt;</span>
+            {% endif %}
+            <span class="ve-to-badge">
+              {{ _("to") }} {{ recipient_email or _("me") }}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {% if preheader %}
+      <div class="ve-preheader-box">
+        💬 {{ preheader }}
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Email Body Canvas -->
+    <div class="ve-content-box">
+      {% if is_visual_mode %}
+      <iframe
+        id="ve-frame"
+        sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
+        scrolling="no"
+        title="{{ email_subject | e }}"
+      ></iframe>
+
+      <script>
+        (function() {
+          var frame = document.getElementById('ve-frame');
+          var rawHtml = {{ email_html_json }};
+
+          // Inject builder fit styles for pixel-perfect display
+          var fitStyles = [
+            '<style id="ve-fit-styles">',
+            'html, body { height: auto !important; min-height: 0 !important; overflow: hidden !important; background: transparent !important; }',
+            'body { display: block !important; margin: 0 !important; padding: 0 !important; }',
+            'body > table[role="presentation"] { height: auto !important; min-height: 0 !important; background: transparent !important; }',
+            'table.etb-content { height: auto !important; min-height: 0 !important; }',
+            '</style>'
+          ].join('');
+
+          var previewHtml = (rawHtml && rawHtml.indexOf('</head>') !== -1)
+            ? rawHtml.replace('</head>', fitStyles + '</head>')
+            : fitStyles + (rawHtml || '');
+
+          var doc = frame.contentDocument || frame.contentWindow.document;
+          doc.open();
+          doc.write(previewHtml);
+          doc.close();
+
+          // Precise dynamic measurement matching BuilderDialogs
+          function measure() {
+            try {
+              var fDoc = frame.contentDocument || frame.contentWindow.document;
+              if (!fDoc || !fDoc.body) return;
+              
+              var body = fDoc.body;
+              var docEl = fDoc.documentElement;
+              var content = fDoc.querySelector('table.etb-content') || body.firstElementChild || body;
+              
+              var measuredHeight = Math.max(
+                content.scrollHeight || 0,
+                body.scrollHeight || 0,
+                docEl.scrollHeight || 0,
+                content.offsetHeight || 0
+              );
+              
+              if (measuredHeight > 50) {
+                frame.style.height = (measuredHeight + 10) + 'px';
+              }
+            } catch(e) {}
+          }
+
+          // Attach listeners to images for height calculation
+          doc.querySelectorAll('img').forEach(function(img) {
+            if (!img.complete) {
+              img.addEventListener('load', measure);
+              img.addEventListener('error', measure);
+            }
+          });
+
+          // Check on window resize & mutation
+          window.addEventListener('resize', measure);
+          if (window.ResizeObserver && doc.body) {
+            new ResizeObserver(measure).observe(doc.body);
+          }
+
+          [0, 50, 150, 350, 700, 1200].forEach(function(d) {
+            setTimeout(measure, d);
+          });
+        })();
+      </script>
+
+      {% else %}
+      <!-- Standard Mode: inline render -->
+      <div class="ve-standard-render">
+        {{ email_html }}
+      </div>
+      {% endif %}
+    </div>
+
+  </div>
+
+  <div class="ve-footer">
+    <p>{{ _("You received this email because you are a registered contact.") }}</p>
+  </div>
+  {% endif %}
+</div>
+
+<script>
+  function setViewMode(mode) {
+    var root = document.getElementById('ve-root');
+    var btnDesktop = document.getElementById('btn-desktop');
+    var btnMobile = document.getElementById('btn-mobile');
+
+    if (mode === 'mobile') {
+      root.classList.add('is-mobile');
+      btnMobile.classList.add('is-active');
+      btnDesktop.classList.remove('is-active');
+    } else {
+      root.classList.remove('is-mobile');
+      btnDesktop.classList.add('is-active');
+      btnMobile.classList.remove('is-active');
+    }
+
+    // Trigger frame resize measurement
+    var frame = document.getElementById('ve-frame');
+    if (frame && frame.contentWindow) {
+      frame.contentWindow.dispatchEvent(new Event('resize'));
+    }
+  }
+</script>
+{% endblock %}

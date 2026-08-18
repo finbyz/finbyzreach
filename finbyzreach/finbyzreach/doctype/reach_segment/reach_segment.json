@@ -1,0 +1,114 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "field:segment_name",
+ "creation": "2026-08-18 07:54:40.514817",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "segment_name",
+  "segment_type",
+  "member_count",
+  "filter_groups_json",
+  "static_leads_json"
+ ],
+ "fields": [
+  {
+   "fieldname": "segment_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Segment Name",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "default": "Active",
+   "fieldname": "segment_type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Segment Type",
+   "options": "Active\nStatic",
+   "reqd": 1
+  },
+  {
+   "fieldname": "member_count",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Size",
+   "read_only": 1
+  },
+  {
+   "fieldname": "filter_groups_json",
+   "fieldtype": "Code",
+   "label": "Filter Groups",
+   "options": "JSON",
+   "read_only": 1
+  },
+  {
+   "fieldname": "static_leads_json",
+   "fieldtype": "Code",
+   "label": "Static Leads",
+   "options": "JSON",
+   "read_only": 1
+  },
+  {
+   "fieldname": "exclude_filters_json",
+   "fieldtype": "Code",
+   "label": "Exclude Filters",
+   "options": "JSON",
+   "read_only": 1
+  },
+  {
+   "fieldname": "exclude_email_groups_json",
+   "fieldtype": "Code",
+   "label": "Exclude Email Groups",
+   "options": "JSON",
+   "read_only": 1
+  }
+ ],
+ "links": [],
+ "modified": "2026-08-18 09:53:15.984759",
+ "modified_by": "Administrator",
+ "module": "Finbyzreach",
+ "name": "Reach Segment",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Marketing Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "read": 1,
+   "role": "Sales User"
+  }
+ ],
+ "row_format": "Dynamic",
+ "search_fields": "segment_type",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}
