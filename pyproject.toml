@@ -4,7 +4,7 @@ authors = [
     { name = "Finbyz Tech Pvt Ltd", email = "info@finbyz.tech"}
 ]
 description = "AI-Powered Follow-ups and Smart Email Outreach"
-requires-python = ">=3.14"
+requires-python = ">=3.10"
 readme = "README.md"
 dynamic = ["version"]
 dependencies = [
