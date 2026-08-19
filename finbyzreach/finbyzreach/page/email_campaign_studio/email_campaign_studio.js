@@ -985,7 +985,7 @@ class EmailCampaignStudio {
 	getBlacklistValues() {
 		return {
 			exclude_filters: this.getExcludeFilters(),
-			exclude_email_groups: [],
+			exclude_email_groups: this.exclude_email_groups || [],
 		};
 	}
 

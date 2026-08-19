@@ -734,6 +734,8 @@ def create_campaign(payload=None, launch="schedule"):
 	if source_campaign:
 		campaign = frappe.get_doc("Campaign", source_campaign)
 		campaign.check_permission("write")
+		if campaign.custom_queued:
+			frappe.throw(_("Cannot edit campaign while it is being queued for scheduling."))
 		if (campaign.custom_broadcast_status or "Draft") not in EDITABLE_BROADCAST_STATUSES:
 			frappe.throw(_("Only draft campaigns can be edited in Studio. Delivery history is immutable."))
 		for fieldname, value in values.items():
@@ -749,7 +751,8 @@ def create_campaign(payload=None, launch="schedule"):
 			campaign_name=campaign.name,
 			queue="long",
 			timeout=1500,
-			now=frappe.flags.in_test
+			now=frappe.flags.in_test,
+			enqueue_after_commit=True
 		)
 		status = "Scheduled"
 	else:

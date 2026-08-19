@@ -172,7 +172,7 @@ def get_context(context):
 
 	context.email_subject = rendered.subject
 	context.email_html = rendered.html
-	context.email_html_json = json.dumps(rendered.html or "")
+	context.email_html_json = json.dumps(rendered.html or "").replace("<", "\\u003c")
 	context.is_visual_mode = (mode == "Visual")
 	context.title = rendered.subject
 	context.preheader = preheader or ""

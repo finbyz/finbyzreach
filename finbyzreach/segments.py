@@ -39,8 +39,17 @@ def create_segment(segment_name, segment_type, filter_groups, exclude_filters="[
 		if exclude_filters_json and exclude_filters_json != "[]":
 			exclude_leads.update(email_marketing._lead_names_from_filter_groups(exclude_filters_json))
 		if exclude_email_groups_json and exclude_email_groups_json != "[]":
+			exclude_emails = set()
 			for group_name in email_marketing.validate_excluded_email_groups(exclude_email_groups_json):
-				exclude_leads.update(email_marketing._email_group_addresses(group_name))
+				exclude_emails.update(email_marketing._email_group_addresses(group_name))
+			if exclude_emails:
+				excluded_by_email = frappe.get_all(
+					"Lead",
+					filters={"email_id": ("in", list(exclude_emails))},
+					pluck="name",
+					limit_page_length=0
+				)
+				exclude_leads.update(excluded_by_email)
 		member_names = sorted(list(include_leads - exclude_leads))
 		
 	doc = frappe.get_doc(

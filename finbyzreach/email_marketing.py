@@ -265,7 +265,7 @@ def _reset_duplicated_broadcast_state(doc):
 
 
 
-def validate_campaign(doc, require_ready=False):
+def validate_campaign(doc, require_ready=False, skip_queued_check=False):
 	apply_campaign_defaults(doc)
 	_reset_duplicated_broadcast_state(doc)
 	_system_zone()
@@ -283,6 +283,9 @@ def validate_campaign(doc, require_ready=False):
 	if require_ready and not doc.custom_email_account:
 		frappe.throw(_("Outgoing Email Account is required for an Email Broadcast"))
 	if not doc.is_new():
+		persisted_queued = frappe.db.get_value("Campaign", doc.name, "custom_queued")
+		if persisted_queued and not skip_queued_check:
+			frappe.throw(_("Cannot edit campaign while it is being queued for scheduling."))
 		persisted_status = frappe.db.get_value("Campaign", doc.name, "custom_broadcast_status")
 		if persisted_status and persisted_status != "Draft":
 			frappe.throw(
@@ -945,15 +948,22 @@ def _reschedule_recipient_batches(recipients, batches, retry=False):
 def schedule_campaign(campaign_name):
     try:
         _schedule_campaign_internal(campaign_name)
-
     except Exception:
+        frappe.db.rollback()
         frappe.log_error(
             title=f"Campaign Scheduling Failed: {campaign_name}",
             message=frappe.get_traceback(),
         )
+        frappe.db.set_value(
+            "Campaign",
+            campaign_name,
+            "custom_queued",
+            0,
+            update_modified=False,
+        )
+        frappe.db.commit()
         raise
-
-    finally:
+    else:
         frappe.db.set_value(
             "Campaign",
             campaign_name,
@@ -972,7 +982,7 @@ def _schedule_campaign_internal(campaign_name):
 		frappe.throw(
 			_("This campaign already has delivery history and cannot be scheduled again. Retry failed recipients or create a new campaign.")
 		)
-	validate_campaign(campaign, require_ready=True)
+	validate_campaign(campaign, require_ready=True, skip_queued_check=True)
 	validate_lead_filter_groups(campaign.custom_lead_filters_json, require_filters=True)
 	validate_lead_filter_groups(campaign.custom_exclude_filters_json)
 	validate_excluded_email_groups(campaign.custom_exclude_email_groups_json)
