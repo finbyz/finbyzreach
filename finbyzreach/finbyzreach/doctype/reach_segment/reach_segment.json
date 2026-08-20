@@ -10,6 +10,8 @@
   "segment_type",
   "member_count",
   "filter_groups_json",
+  "exclude_filters_json",
+  "exclude_email_groups_json",
   "static_leads_json"
  ],
  "fields": [
