@@ -3,12 +3,16 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "engines": {
+    "node": ">=18.18 <23",
+    "yarn": ">=1.22 <2"
+  },
   "scripts": {
     "dev": "vite",
     "typecheck": "tsc --noEmit -p tsconfig.app.json",
     "build": "yarn typecheck && vite build --base=/assets/finbyzreach/builder/ && yarn copy-html-entry",
     "lint": "oxlint",
-    "test": "tsc --noEmit -p tsconfig.test.json && node --test --experimental-transform-types src/lib/*.test.ts",
+    "test": "tsc --noEmit -p tsconfig.test.json && NODE_OPTIONS=--experimental-global-webcrypto tsx --test src/lib/*.test.ts",
     "preview": "vite preview",
     "copy-html-entry": "cp ../finbyzreach/public/builder/index.html ../finbyzreach/www/builder.html"
   },
@@ -18,16 +22,17 @@
     "@dnd-kit/utilities": "^3.2.2",
     "frappe-react-sdk": "^1.17.0",
     "lucide-react": "^1.24.0",
-    "react": "^19.2.7",
-    "react-dom": "^19.2.7"
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
-    "@types/node": "^24.13.2",
-    "@types/react": "^19.2.17",
-    "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^6.0.3",
-    "oxlint": "^1.71.0",
-    "typescript": "~6.0.2",
-    "vite": "^8.1.1"
+    "@types/node": "^18.19.76",
+    "@types/react": "^18.3.24",
+    "@types/react-dom": "^18.3.7",
+    "@vitejs/plugin-react": "^4.7.0",
+    "oxlint": "^0.15.15",
+    "tsx": "^4.20.6",
+    "typescript": "~5.9.3",
+    "vite": "^5.4.21"
   }
 }

@@ -3,6 +3,10 @@
   "version": "1.0.0",
   "description": "AI-Powered Follow-ups and Smart Email Outreach",
   "main": "index.js",
+  "engines": {
+    "node": ">=18.18 <23",
+    "yarn": ">=1.22 <2"
+  },
   "directories": {
     "doc": "docs"
   },
