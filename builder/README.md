@@ -1,6 +1,6 @@
 # Email Template Builder — Frontend
 
-React 19 + TypeScript single-page application that powers the visual email template builder. Built with Vite and served by Frappe at `/builder?template=<name>`.
+React 18 + TypeScript single-page application that powers the visual email template builder. Built with Vite and served by Frappe at `/builder?template=<name>`.
 
 > 📖 For full usage and developer documentation, see the [Technical Guide](../docs/EMAIL_BUILDER_TECHNICAL_GUIDE.md) and [User Guide](../docs/EMAIL_BUILDER_USER_GUIDE.md).
 
@@ -10,9 +10,9 @@ React 19 + TypeScript single-page application that powers the visual email templ
 
 | Library | Version | Purpose |
 |---------|---------|---------|
-| React | 19 | UI rendering |
-| TypeScript | ~6 | Type safety |
-| Vite | 8 | Build tool + dev server |
+| React | 18 | UI rendering |
+| TypeScript | ~5.9 | Type safety |
+| Vite | 5 | Build tool + dev server |
 | frappe-react-sdk | ^1.17 | Frappe API calls, auth, SWR |
 | @dnd-kit/core | ^6 | Drag-and-drop primitives |
 | @dnd-kit/sortable | ^10 | Sortable block/row lists |
@@ -62,7 +62,7 @@ src/
 
 ### Prerequisites
 
-- Node.js 18+
+- Node.js 18.18–22.x (20.19.2 recommended for Frappe v15)
 - Yarn
 - A running local Frappe bench (for API proxy)
 
@@ -100,7 +100,7 @@ Runs `tsc --noEmit` against `tsconfig.app.json`. No output means no errors.
 yarn test
 ```
 
-Runs TypeScript type check (`tsconfig.test.json`) then the Node built-in test runner against all `src/lib/*.test.ts` files.
+Runs TypeScript type check (`tsconfig.test.json`) then the Node test runner through `tsx` against all `src/lib/*.test.ts` files.
 
 **Test files:**
 

@@ -39,31 +39,46 @@ def research_company(party_type: str,party_name: str,**kwargs) -> str:
         message=frappe.as_json(result)
     )
 
-    doc.customer_details = result.company_overview
-    doc.industry = result.industry_type
+    if hasattr(result, "company_overview") and result.company_overview:
+        doc.customer_details = result.company_overview
 
-    if not doc.get("country"):
+    if hasattr(result, "industry_type") and result.industry_type:
+        raw_ind = str(result.industry_type).strip()
+        if frappe.db.exists("Industry Type", raw_ind):
+            doc.industry = raw_ind
+        else:
+            matched = frappe.db.get_value("Industry Type", {"name": ["like", f"%{raw_ind[:8]}%"]}, "name")
+            if matched:
+                doc.industry = matched
+
+    if hasattr(result, "country") and result.country and not doc.get("country"):
         doc.country = result.country
 
-    if not doc.get("state"):
+    if hasattr(result, "state") and result.state and not doc.get("state"):
         doc.state = result.state
 
-    if not doc.get("city"):
+    if hasattr(result, "city") and result.city and not doc.get("city"):
         doc.city = result.city
 
-    if not doc.get("website"):
+    if hasattr(result, "website") and result.website and not doc.get("website"):
         doc.website = result.website
 
-    if hasattr(doc, "designation") and not doc.get("designation"):
+    if hasattr(doc, "designation") and hasattr(result, "designation") and result.designation and not doc.get("designation"):
         doc.designation = result.designation
 
-    if hasattr(doc, "no_of_employees") and not doc.get("no_of_employees"):
+    if hasattr(doc, "no_of_employees") and hasattr(result, "no_of_employees") and result.no_of_employees and not doc.get("no_of_employees"):
         doc.no_of_employees = result.no_of_employees
 
-    if hasattr(doc, "type") and not doc.get("type"):
-        doc.type = result.lead_type
+    if hasattr(doc, "type") and hasattr(result, "lead_type") and result.lead_type and not doc.get("type"):
+        lead_meta = frappe.get_meta("Lead")
+        type_field = lead_meta.get_field("type")
+        allowed_types = [opt.strip() for opt in (type_field.options or "").split("\n") if opt.strip()] if type_field else []
+        matched_type = next((opt for opt in allowed_types if opt.lower() == str(result.lead_type).lower()), None)
+        if matched_type:
+            doc.type = matched_type
     
-    doc.save()
+    doc.save(ignore_permissions=True)
+    frappe.db.commit()
     return result
 
 
