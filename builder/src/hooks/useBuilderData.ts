@@ -90,5 +90,6 @@ export function useBuilderData(templateName: string, historyOpen = false, docume
     aiAccept: useFrappePostCall<ApiResponse<{ ok: boolean }>>(API_METHODS.aiAccept),
     aiClearChat: useFrappePostCall<ApiResponse<{ ok: boolean }>>(API_METHODS.aiClearChat),
     aiSaveSamplePrompt: useFrappePostCall<ApiResponse<{ name: string }>>(API_METHODS.aiSaveSamplePrompt),
+    aiRunPreview: useFrappePostCall<ApiResponse<AiRewriteProposal>>(API_METHODS.aiRunPreview),
   }
 }

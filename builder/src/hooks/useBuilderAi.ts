@@ -26,11 +26,17 @@ type AiState = {
   error: string
   scope: AiScope
   chatTurns: ChatTurn[]
+  liveStep: string | null
 }
 
 type AiAction =
   | { type: 'set-prompt'; value: string }
+  | { type: 'send-user-message'; text: string }
+  | { type: 'receive-proposal'; value: AiRewriteProposal }
+  | { type: 'receive-error'; value: string }
   | { type: 'set-proposal'; value: AiRewriteProposal; userText: string }
+  | { type: 'set-active-proposal'; value: AiRewriteProposal }
+  | { type: 'set-live-step'; value: string | null }
   | { type: 'set-error'; value: string; userText: string }
   | { type: 'clear-proposal' }
   | { type: 'set-scope'; scope: AiScope }
@@ -39,12 +45,54 @@ type AiAction =
   | { type: 'set-turns'; turns: ChatTurn[] }
   | { type: 'reset' }
 
-const INITIAL_AI_STATE: AiState = { prompt: '', proposal: null, error: '', scope: { type: 'template' }, chatTurns: [] }
+const INITIAL_AI_STATE: AiState = { prompt: '', proposal: null, error: '', scope: { type: 'template' }, chatTurns: [], liveStep: null }
 
 function aiReducer(state: AiState, action: AiAction): AiState {
   switch (action.type) {
     case 'set-prompt':
       return { ...state, prompt: action.value }
+    case 'send-user-message': {
+      const userTurn: ChatTurn = { id: `u-${Date.now()}`, role: 'user', text: action.text }
+      return {
+        ...state,
+        prompt: '',
+        proposal: null,
+        error: '',
+        liveStep: null,
+        chatTurns: [...state.chatTurns, userTurn],
+      }
+    }
+    case 'receive-proposal': {
+      const assistantTurn: ChatTurn = {
+        id: action.value.proposal_id || `a-${Date.now()}`,
+        role: 'assistant',
+        text: action.value.summary || 'Here is the updated design:',
+        proposal: action.value,
+        status: 'pending',
+      }
+      return {
+        ...state,
+        proposal: action.value,
+        error: '',
+        liveStep: null,
+        chatTurns: [...state.chatTurns, assistantTurn],
+      }
+    }
+    case 'receive-error': {
+      const errorTurn: ChatTurn = {
+        id: `e-${Date.now()}`,
+        role: 'assistant',
+        text: action.value,
+        isError: true,
+      }
+      return {
+        ...state,
+        error: action.value,
+        proposal: null,
+        liveStep: null,
+        chatTurns: [...state.chatTurns, errorTurn],
+      }
+    }
     case 'set-proposal': {
       const userTurn: ChatTurn = { id: `u-${Date.now()}`, role: 'user', text: action.userText }
       const assistantTurn: ChatTurn = {
@@ -59,20 +107,39 @@ function aiReducer(state: AiState, action: AiAction): AiState {
         prompt: '',
         proposal: action.value,
         error: '',
+        liveStep: null,
         chatTurns: [...state.chatTurns, userTurn, assistantTurn],
       }
     }
-    case 'set-error': {
-      const userTurn: ChatTurn = { id: `u-${Date.now()}`, role: 'user', text: action.userText }
+    case 'set-active-proposal':
       return {
         ...state,
-        error: action.value,
+        proposal: action.value,
+        error: '',
+      }
+    case 'set-live-step':
+      return {
+        ...state,
+        liveStep: action.value,
+      }
+    case 'set-error': {
+      const userTurn: ChatTurn = { id: `u-${Date.now()}`, role: 'user', text: action.userText }
+      const errorTurn: ChatTurn = {
+        id: `e-${Date.now()}`,
+        role: 'assistant',
+        text: action.value,
+        isError: true,
+      }
+      return {
+        ...state,
+        error: '',
         proposal: null,
-        chatTurns: [...state.chatTurns, userTurn],
+        liveStep: null,
+        chatTurns: [...state.chatTurns, userTurn, errorTurn],
       }
     }
     case 'clear-proposal':
-      return { ...state, proposal: null, error: '' }
+      return { ...state, proposal: null, error: '', liveStep: null }
     case 'set-scope':
       return { ...state, scope: action.scope, proposal: null, error: '' }
     case 'accept-proposal':
@@ -107,7 +174,7 @@ export function useBuilderAi({ document, sdk, templateName, notify, setModal, co
   const enabled = Boolean(sdk.aiSettings.data?.message?.enabled)
   const samplePrompts = sdk.aiSettings.data?.message?.sample_prompts ?? []
   const savedHistory = sdk.aiSettings.data?.message?.chat_history
-  const generating = sdk.aiRewrite.loading
+  const generating = sdk.aiRewrite.loading || sdk.aiRunPreview.loading
 
   useEffect(() => {
     if (savedHistory && Array.isArray(savedHistory)) {
@@ -138,8 +205,16 @@ export function useBuilderAi({ document, sdk, templateName, notify, setModal, co
     if (!document || isReadOnly) return
     const prompt = state.prompt.trim()
     if (!prompt) return
-    const chatHistory = state.chatTurns.map((turn) => ({ role: turn.role, text: turn.text }))
-    dispatch({ type: 'clear-proposal' })
+
+    // Optimistically push user message immediately so it renders on the right
+    dispatch({ type: 'send-user-message', text: prompt })
+    dispatch({ type: 'set-live-step', value: 'Generating response...' })
+
+    const chatHistory = [
+      ...state.chatTurns.map((turn) => ({ role: turn.role, text: turn.text })),
+      { role: 'user', text: prompt },
+    ]
+
     try {
       const response = await sdk.aiRewrite.call({
         template_name: templateName,
@@ -150,9 +225,9 @@ export function useBuilderAi({ document, sdk, templateName, notify, setModal, co
         section_id: state.scope.type === 'section' ? state.scope.sectionId : undefined,
         chat_history: JSON.stringify(chatHistory),
       })
-      dispatch({ type: 'set-proposal', value: response.message, userText: prompt })
+      dispatch({ type: 'receive-proposal', value: response.message })
     } catch (error) {
-      dispatch({ type: 'set-error', value: getErrorMessage(error, 'The AI rewrite could not be generated.'), userText: prompt })
+      dispatch({ type: 'receive-error', value: getErrorMessage(error, 'The AI rewrite could not be generated.') })
     }
   }, [document, isReadOnly, sdk.aiRewrite, state.chatTurns, state.prompt, state.scope, templateName])
 
@@ -169,8 +244,50 @@ export function useBuilderAi({ document, sdk, templateName, notify, setModal, co
     }
     dispatch({ type: 'accept-proposal', proposalId: proposal_id || undefined })
     dispatch({ type: 'clear-proposal' })
+    setModal(null)
     notify(state.proposal.scope === 'section' ? 'AI row changes applied. Undo to revert, or Save to keep them.' : 'AI changes applied. Undo to revert, or Save to keep them.', 'success')
-  }, [commit, isReadOnly, notify, sdk.aiAccept, state.proposal, templateName])
+  }, [commit, isReadOnly, notify, sdk.aiAccept, setModal, state.proposal, templateName])
+
+  const applyPastProposal = useCallback((proposal: AiRewriteProposal) => {
+    if (!proposal?.schema || isReadOnly) return
+    commit((next) => {
+      next.schema = proposal.schema
+      if (proposal.metadata?.subject) next.metadata.subject = proposal.metadata.subject
+      if (proposal.metadata?.preheader) next.metadata.preheader = proposal.metadata.preheader
+    }, true, '')
+    if (proposal.proposal_id) {
+      void sdk.aiAccept.call({ proposal_id: proposal.proposal_id, template_name: templateName }).catch(() => undefined)
+    }
+    dispatch({ type: 'accept-proposal', proposalId: proposal.proposal_id || undefined })
+    dispatch({ type: 'clear-proposal' })
+    setModal(null)
+    notify('Version restored and applied to template.', 'success')
+  }, [commit, isReadOnly, notify, sdk.aiAccept, setModal, templateName])
+
+  const loadProposalPreview = useCallback(async (proposalId: string) => {
+    if (!proposalId) return
+    // If we are already viewing this proposal, toggle it off (close preview)
+    if (state.proposal?.proposal_id === proposalId) {
+      dispatch({ type: 'clear-proposal' })
+      return
+    }
+    // Check if it's already in the chat turns memory with full HTML
+    const existingTurn = state.chatTurns.find(
+      (t) => t.proposal?.proposal_id === proposalId && t.proposal?.preview_html
+    )
+    if (existingTurn?.proposal) {
+      dispatch({ type: 'set-active-proposal', value: existingTurn.proposal })
+      return
+    }
+    try {
+      const res = await sdk.aiRunPreview.call({ proposal_id: proposalId })
+      if (res?.message) {
+        dispatch({ type: 'set-active-proposal', value: res.message })
+      }
+    } catch (err) {
+      notify(getErrorMessage(err, 'Could not load proposal preview.'), 'error')
+    }
+  }, [notify, sdk.aiRunPreview, state.chatTurns, state.proposal?.proposal_id])
 
   const discardProposal = useCallback(() => {
     if (state.proposal?.proposal_id) {
@@ -203,6 +320,12 @@ export function useBuilderAi({ document, sdk, templateName, notify, setModal, co
     }
   }, [notify, sdk.aiSaveSamplePrompt, sdk.aiSettings])
 
+  const handleAiStep = useCallback((event: { template_name?: string; step: { type: string; label: string; detail?: string } }) => {
+    if (event?.step?.label) {
+      dispatch({ type: 'set-live-step', value: event.step.label })
+    }
+  }, [])
+
   return {
     aiEnabled: enabled,
     aiSamplePrompts: samplePrompts,
@@ -210,6 +333,7 @@ export function useBuilderAi({ document, sdk, templateName, notify, setModal, co
     aiProposal: state.proposal,
     aiError: state.error,
     aiGenerating: generating,
+    aiLiveStep: state.liveStep,
     aiScope: state.scope,
     chatTurns: state.chatTurns,
     setAiPrompt,
@@ -219,6 +343,10 @@ export function useBuilderAi({ document, sdk, templateName, notify, setModal, co
     generateAiRewrite: runGenerate,
     acceptAiProposal: acceptProposal,
     discardAiProposal: discardProposal,
+    applyPastProposal,
+    loadProposalPreview,
+    clearAiProposal: () => dispatch({ type: 'clear-proposal' }),
+    handleAiStep,
     clearAiChat,
     saveAiSamplePrompt,
   }

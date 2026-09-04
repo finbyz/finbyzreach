@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import { AlertTriangle, CheckCircle2, Clock3, Eye, FileCode2, ImagePlus, MoreVertical, Monitor, RefreshCw, Reply, RotateCcw, Search, Smartphone, Sparkles, Star, Trash2, Upload, Wand2, Save } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Clock3, Eye, FileCode2, ImagePlus, MoreVertical, Monitor, RefreshCw, Reply, RotateCcw, Search, Smartphone, Sparkles, Star, Trash2, Upload, User, Wand2, Save } from 'lucide-react'
 
 import { useBuilder } from '../hooks/useBuilder'
 import { getErrorMessage } from '../lib/errors'
@@ -390,14 +390,22 @@ const AI_PROMPT_FALLBACK = [
   { title: 'Shorten it', prompt: 'Shorten the copy and add a clear headline' },
 ]
 
-function AiGeneratingOverlay({ label }: { label: string }) {
+function AiThinkingIndicator({ label }: { label?: string | null }) {
   return (
-    <div className="ai-generating" role="status" aria-live="polite">
-      <div className="ai-generating__aura"><Sparkles size={22} /></div>
-      <div className="ai-generating__lines">
-        <span /><span /><span /><span />
+    <div className="ai-chat-bubble ai-chat-bubble--assistant ai-chat-bubble--thinking">
+      <div className="ai-chat-bubble__avatar">
+        <Sparkles size={14} />
       </div>
-      <p>{label}</p>
+      <div className="ai-chat-bubble__content">
+        <div className="ai-thinking-indicator" role="status" aria-live="polite">
+          <div className="ai-thinking-dots">
+            <span />
+            <span />
+            <span />
+          </div>
+          <span className="ai-thinking-text">{label || 'Generating response...'}</span>
+        </div>
+      </div>
     </div>
   )
 }
@@ -407,8 +415,8 @@ function AiRewriteDialog() {
     document,
     aiPrompt,
     aiProposal,
-    aiError,
     aiGenerating,
+    aiLiveStep,
     aiScope,
     aiSamplePrompts,
     chatTurns,
@@ -417,6 +425,9 @@ function AiRewriteDialog() {
     generateAiRewrite,
     acceptAiProposal,
     discardAiProposal,
+    applyPastProposal,
+    loadProposalPreview,
+    clearAiProposal,
     clearAiChat,
     saveAiSamplePrompt,
   } = useBuilder()
@@ -435,7 +446,20 @@ function AiRewriteDialog() {
   const accent = document?.schema.settings.button_background || document?.schema.settings.link_color || ''
   const accentStyle = accent ? ({ ['--ai-accent']: accent } as CSSProperties) : undefined
 
-  const activeProposal = aiProposal || (chatTurns.length ? chatTurns[chatTurns.length - 1].proposal : null)
+  // Active proposal is set when a rewrite is generated OR when viewing a past turn
+  const activeProposal = aiProposal
+
+  const isHistorical = Boolean(
+    activeProposal &&
+      (activeProposal.status === 'accepted' ||
+        activeProposal.status === 'rejected' ||
+        chatTurns.some(
+          (t) =>
+            t.proposal?.proposal_id === activeProposal.proposal_id &&
+            t.status &&
+            t.status !== 'pending'
+        ))
+  )
 
   const [selection, setSelection] = useState<{
     text: string
@@ -473,7 +497,7 @@ function AiRewriteDialog() {
   }, [selection])
 
   return (
-    <Modal title={title} onClose={closeAiRewrite} width={activeProposal ? 1200 : 700}>
+    <Modal title={title} onClose={closeAiRewrite} width={activeProposal ? 1200 : 720}>
       <div className="ai-dialog" style={accentStyle} onMouseUp={handleMouseUp}>
         <div className={`ai-copilot-container ${activeProposal ? 'has-proposal' : ''}`}>
           {/* Left Column: Multi-turn Chat Thread */}
@@ -496,39 +520,64 @@ function AiRewriteDialog() {
                   </p>
                 </div>
               )}
-              {chatTurns.map((turn) => (
-                <div key={turn.id} className={`ai-chat-bubble ai-chat-bubble--${turn.role}`}>
-                  <div className="ai-chat-bubble__content">
-                    <p>{turn.text}</p>
-                    {turn.proposal?.change_notes && turn.proposal.change_notes.length > 0 && (
-                      <ul className="ai-change-notes">
-                        {turn.proposal.change_notes.map((note, index) => (
-                          <li key={index}>{note}</li>
-                        ))}
-                      </ul>
-                    )}
-                    {turn.proposal?.warnings && turn.proposal.warnings.length > 0 && (
-                      <div className="ai-warnings">
-                        {turn.proposal.warnings.map((warning, index) => (
-                          <span key={index}><AlertTriangle size={13} />{warning}</span>
-                        ))}
+              {chatTurns.map((turn) => {
+                const isUser = turn.role === 'user'
+                const proposalId = turn.proposal?.proposal_id || (turn.id.startsWith('u-') || turn.id.startsWith('e-') ? null : turn.id)
+                const isViewingThis = Boolean(proposalId && activeProposal?.proposal_id === proposalId)
+                const uniqueWarnings = turn.proposal?.warnings
+                  ? Array.from(new Set(turn.proposal.warnings.map((w) => w.trim()).filter(Boolean)))
+                  : []
+
+                return (
+                  <div key={turn.id} className={`ai-chat-bubble ai-chat-bubble--${turn.role}${turn.isError ? ' ai-chat-bubble--error' : ''}`}>
+                    <div className="ai-chat-bubble__avatar">
+                      {isUser ? <User size={14} /> : <Sparkles size={14} />}
+                    </div>
+                    <div className="ai-chat-bubble__content">
+                      <div className="ai-chat-bubble__header">
+                        <span className="ai-chat-bubble__author">{isUser ? 'You' : 'AI Copilot'}</span>
                       </div>
-                    )}
-                    {turn.status && turn.status !== 'pending' && (
-                      <span className={`ai-proposal-badge is-${turn.status}`}>
-                        {turn.status === 'accepted' ? '✓ Accepted' : '✕ Rejected'}
-                      </span>
-                    )}
+                      <p className="ai-chat-bubble__text">{turn.text}</p>
+                      {turn.proposal?.change_notes && turn.proposal.change_notes.length > 0 && (
+                        <ul className="ai-change-notes">
+                          {turn.proposal.change_notes.map((note, index) => (
+                            <li key={index}>{note}</li>
+                          ))}
+                        </ul>
+                      )}
+                      {uniqueWarnings.length > 0 && (
+                        <div className="ai-warnings">
+                          {uniqueWarnings.map((warning, index) => (
+                            <span key={index} className="ai-warning-tag">
+                              <AlertTriangle size={12} />
+                              {warning}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {proposalId && (
+                        <div className="ai-turn-actions">
+                          {turn.status && turn.status !== 'pending' && (
+                            <span className={`ai-proposal-badge is-${turn.status}`}>
+                              {turn.status === 'accepted' ? '✓ Accepted' : '✕ Rejected'}
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            className={`button--view-changes ${isViewingThis ? 'is-active' : ''}`}
+                            onClick={() => loadProposalPreview(proposalId)}
+                            title={isViewingThis ? 'Close side preview' : 'View before & after comparison'}
+                          >
+                            <Eye size={12} />
+                            <span>{isViewingThis ? 'Hide Changes' : 'View Changes'}</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
-              {aiGenerating && <AiGeneratingOverlay label={sectionMode ? 'Rewriting row…' : 'Designing your email…'} />}
-              {aiError && (
-                <div className="preview-error ai-error">
-                  <strong>The rewrite could not be generated</strong>
-                  <span>{aiError}</span>
-                </div>
-              )}
+                )
+              })}
+              {aiGenerating && <AiThinkingIndicator label={aiLiveStep} />}
             </div>
 
             {/* Prompt Input Pane */}
@@ -609,22 +658,51 @@ function AiRewriteDialog() {
                   )}
                 </section>
                 <section className="ai-pane ai-pane--after">
-                  <header>After · {sectionMode ? 'row proposal' : 'AI proposal'}</header>
+                  <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>After · {sectionMode ? 'row proposal' : 'AI proposal'}</span>
+                    <button
+                      type="button"
+                      className="button button--tertiary button--sm"
+                      onClick={clearAiProposal}
+                      title="Close side preview pane"
+                      style={{ padding: '2px 6px', fontSize: '11px', height: 'auto', lineHeight: 1 }}
+                    >
+                      ✕
+                    </button>
+                  </header>
                   <div className="preview-frame is-desktop">
                     <CompiledPreviewFrame html={activeProposal.preview_html} device="desktop" />
                   </div>
                 </section>
               </div>
               <div className="ai-proposal-actions">
-                <button type="button" className="button button--secondary" onClick={discardAiProposal}>
-                  Discard
-                </button>
-                <button type="button" className="button button--secondary" onClick={generateAiRewrite} disabled={aiGenerating}>
-                  <RefreshCw size={15} /> Regenerate
-                </button>
-                <button type="button" className="button button--primary" onClick={acceptAiProposal} disabled={!document}>
-                  <CheckCircle2 size={15} /> {sectionMode ? 'Accept Row' : 'Accept Changes'}
-                </button>
+                {isHistorical ? (
+                  <>
+                    <button type="button" className="button button--secondary" onClick={clearAiProposal}>
+                      Close Preview
+                    </button>
+                    <button
+                      type="button"
+                      className="button button--primary"
+                      onClick={() => activeProposal && applyPastProposal(activeProposal)}
+                      disabled={!document || !activeProposal.schema}
+                    >
+                      <RotateCcw size={15} /> Apply This Version
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button type="button" className="button button--secondary" onClick={discardAiProposal}>
+                      Discard
+                    </button>
+                    <button type="button" className="button button--secondary" onClick={generateAiRewrite} disabled={aiGenerating}>
+                      <RefreshCw size={15} /> Regenerate
+                    </button>
+                    <button type="button" className="button button--primary" onClick={acceptAiProposal} disabled={!document}>
+                      <CheckCircle2 size={15} /> {sectionMode ? 'Accept Row' : 'Accept Changes'}
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           )}

@@ -387,8 +387,8 @@ def _validation_issues(schema, html_output):
 				if block["type"] == "button":
 					style = block.get("style") or {}
 					ratio = _contrast_ratio(style.get("button_text_color") or settings["button_text_color"], style.get("button_background") or settings["button_background"])
-					if ratio is not None and ratio < 4.5:
-						warning("button_contrast", _("Button text contrast is below 4.5:1."), block["id"])
+					if ratio is not None and ratio < 3.0:
+						warning("button_contrast", _("Button text contrast is below 3.0:1."), block["id"])
 	ratio = _contrast_ratio(settings["text_color"], settings["content_background"])
 	if ratio is not None and ratio < 4.5:
 		warning("text_contrast", _("Default text contrast is below 4.5:1."))

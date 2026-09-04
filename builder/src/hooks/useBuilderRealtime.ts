@@ -43,6 +43,7 @@ type UseBuilderRealtimeOptions = {
   onRemoteSave?: (event: BuilderRealtimeEvent) => void
   onRevisionCreated?: (event: BuilderRealtimeEvent) => void
   onAssetsChanged?: (event: BuilderAssetEvent) => void
+  onAiStep?: (event: { template_name?: string; step: { type: string; label: string; detail?: string } }) => void
 }
 
 const EMAIL_TEMPLATE_DOCTYPE = 'Email Template'
@@ -72,6 +73,7 @@ export function useBuilderRealtime({
   onRemoteSave,
   onRevisionCreated,
   onAssetsChanged,
+  onAiStep,
 }: UseBuilderRealtimeOptions) {
   const frappe = useContext(FrappeContext)
   const socket = frappe?.socket as BuilderSocket | undefined
@@ -80,6 +82,7 @@ export function useBuilderRealtime({
   const remoteSaveRef = useLatestRef(onRemoteSave)
   const revisionCreatedRef = useLatestRef(onRevisionCreated)
   const assetsChangedRef = useLatestRef(onAssetsChanged)
+  const aiStepRef = useLatestRef(onAiStep)
   const clientId = useMemo(() => makeClientId(templateName), [templateName])
 
   const isOwnEvent = useCallback((event?: { client_id?: string }) => Boolean(event?.client_id && event.client_id === clientId), [clientId])
@@ -120,6 +123,10 @@ export function useBuilderRealtime({
       if (!isCurrentTemplate(event)) return
       startTransition(() => assetsChangedRef.current?.(event))
     }
+    const onAiStepHandler = (event: { template_name?: string; step: { type: string; label: string; detail?: string } }) => {
+      if (!isCurrentTemplate(event)) return
+      startTransition(() => aiStepRef.current?.(event))
+    }
 
     setStatus(socket.connected ? 'connected' : 'connecting')
     subscribe()
@@ -130,6 +137,7 @@ export function useBuilderRealtime({
     socket.on('email_builder_saved', onSaved)
     socket.on('email_builder_revision_created', onRevision)
     socket.on('email_builder_assets_changed', onAssets)
+    socket.on('email_builder_ai_step', onAiStepHandler)
     socket.io?.on('reconnect_attempt', onReconnectAttempt)
     socket.io?.on('reconnect', onConnect)
 
@@ -142,10 +150,11 @@ export function useBuilderRealtime({
       socket.off('email_builder_saved', onSaved)
       socket.off('email_builder_revision_created', onRevision)
       socket.off('email_builder_assets_changed', onAssets)
+      socket.off('email_builder_ai_step', onAiStepHandler)
       socket.io?.off('reconnect_attempt', onReconnectAttempt)
       socket.io?.off('reconnect', onConnect)
     }
-  }, [assetsChangedRef, enabled, isCurrentTemplate, isOwnEvent, remoteSaveRef, revisionCreatedRef, socket, templateName])
+  }, [aiStepRef, assetsChangedRef, enabled, isCurrentTemplate, isOwnEvent, remoteSaveRef, revisionCreatedRef, socket, templateName])
 
   return {
     clientId,

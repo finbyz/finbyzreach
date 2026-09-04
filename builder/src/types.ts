@@ -270,6 +270,8 @@ export type AiRewriteProposal = {
   before_html: string
   before_subject: string
   issues: ValidationIssue[]
+  status?: 'pending' | 'accepted' | 'rejected'
+  thinking_steps?: { type: string; label: string; detail?: string }[]
 }
 
 export type ChatTurn = {
@@ -278,4 +280,5 @@ export type ChatTurn = {
   text: string
   proposal?: AiRewriteProposal
   status?: 'pending' | 'accepted' | 'rejected'
+  isError?: boolean
 }

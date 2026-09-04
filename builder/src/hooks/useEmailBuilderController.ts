@@ -155,6 +155,11 @@ export function useEmailBuilderController() {
     generateAiRewrite,
     acceptAiProposal,
     discardAiProposal,
+    applyPastProposal,
+    loadProposalPreview,
+    clearAiProposal,
+    handleAiStep,
+    aiLiveStep,
     clearAiChat,
   } = useBuilderAi({ document, sdk, templateName, notify, setModal, commit, isReadOnly })
 
@@ -514,6 +519,7 @@ export function useEmailBuilderController() {
     onRemoteSave: handleRemoteSave,
     onRevisionCreated: handleRemoteRevision,
     onAssetsChanged: handleRemoteAssets,
+    onAiStep: handleAiStep,
   })
 
   const saveDocument = useCallback(async (silent = false, allowOverwrite = false) => {
@@ -857,6 +863,10 @@ export function useEmailBuilderController() {
     generateAiRewrite,
     acceptAiProposal,
     discardAiProposal,
+    applyPastProposal,
+    loadProposalPreview,
+    clearAiProposal,
+    aiLiveStep,
     clearAiChat,
   }
 }
