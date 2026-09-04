@@ -58,33 +58,81 @@ def parse_json(value, label="builder schema", max_bytes=None) -> dict:
 	return parsed
 
 
+NAMED_COLORS = {
+	"white": "#ffffff",
+	"black": "#000000",
+	"transparent": "transparent",
+	"gray": "#6b7280",
+	"grey": "#6b7280",
+	"red": "#ef4444",
+	"blue": "#3b82f6",
+	"green": "#10b981",
+	"yellow": "#f59e0b",
+	"purple": "#8b5cf6",
+	"indigo": "#6366f1",
+	"pink": "#ec4899",
+	"navy": "#1e3a8a",
+	"teal": "#14b8a6",
+	"orange": "#f97316",
+	"cyan": "#06b6d4",
+}
+
+
 def _node_id(value):
-	value = str(value or frappe.generate_hash(length=10))
-	if not NODE_ID.fullmatch(value):
-		frappe.throw(_("Builder node IDs may contain only letters, numbers, underscores, and hyphens"))
-	return value
+	if not value:
+		return frappe.generate_hash(length=10)
+	val_str = re.sub(r"[^A-Za-z0-9_-]", "-", str(value).strip())
+	if not val_str or not NODE_ID.fullmatch(val_str):
+		return frappe.generate_hash(length=10)
+	return val_str[:64]
+
+
+def _ensure_unique_id(node_id, seen_ids, prefix="node"):
+	clean_id = _node_id(node_id)
+	if clean_id in seen_ids:
+		clean_id = f"{prefix}-{frappe.generate_hash(length=8)}"
+	seen_ids.add(clean_id)
+	return clean_id
 
 
 def _css(value, kind="length", default="0px"):
-	value = str(value or default).strip()
+	raw = str(value if value not in (None, "") else default).strip()
 	pattern = CSS_COLOR if kind == "color" else CSS_LENGTH
-	if not pattern.fullmatch(value):
-		frappe.throw(_("Unsupported CSS value: {0}").format(value))
-	return value
+	if pattern.fullmatch(raw):
+		return raw
+	if kind == "color":
+		lower = raw.lower()
+		if lower in NAMED_COLORS:
+			return NAMED_COLORS[lower]
+		if re.fullmatch(r"[0-9a-f]{3,8}", lower):
+			return f"#{lower}"
+		return default if default != "0px" else "transparent"
+	else:
+		m = re.search(r"^[+-]?\d+(?:\.\d+)?(?:px|%|em|rem|pt)?", raw.lower())
+		if m and CSS_LENGTH.fullmatch(m.group(0)):
+			return m.group(0)
+		m_num = re.search(r"^[+-]?\d+(?:\.\d+)?", raw)
+		if m_num:
+			return f"{m_num.group(0)}px"
+		return default
 
 
 def _font_family(value):
 	value = str(value or DEFAULT_SETTINGS["font_family"]).strip()
 	if not FONT_FAMILY.fullmatch(value):
-		frappe.throw(_("Unsupported email font family"))
+		return DEFAULT_SETTINGS["font_family"]
 	return value
 
 
 def _url(value, allow_full_token=False):
-	value = validate_semantic_tokens(str(value or "").strip())
-	if value and not value.startswith(SAFE_URL_SCHEMES) and not (allow_full_token and is_semantic_token(value)):
-		frappe.throw(_("Only HTTP(S), mail, phone, SMS, anchors, or relative URLs are allowed"))
-	return value
+	raw = validate_semantic_tokens(str(value or "").strip())
+	if not raw:
+		return ""
+	if raw.startswith(SAFE_URL_SCHEMES) or (allow_full_token and is_semantic_token(raw)):
+		return raw
+	if raw.startswith("www.") or ("." in raw and not raw.startswith(("#", "/"))):
+		return f"https://{raw}"
+	return "#"
 
 
 def _is_private_url(value):
@@ -92,38 +140,39 @@ def _is_private_url(value):
 
 
 def _visibility(value):
-	if not value:
+	if not value or not isinstance(value, dict):
 		return {"device": "both", "match": "all", "conditions": []}
-	if not isinstance(value, dict):
-		frappe.throw(_("Visibility must be an object"))
 	device = value.get("device", "both")
 	if device not in DEVICE_VALUES:
-		frappe.throw(_("Invalid visibility device"))
+		device = "both"
 	match = value.get("match", "all")
 	if match not in {"all", "any"}:
-		frappe.throw(_("Visibility match must be all or any"))
+		match = "all"
 	conditions = value.get("conditions") or []
-	if not isinstance(conditions, list) or len(conditions) > 5:
-		frappe.throw(_("An item can have at most five visibility conditions"))
+	if not isinstance(conditions, list):
+		conditions = []
+	conditions = conditions[:5]
 	normalized = []
 	for condition in conditions:
 		if not isinstance(condition, dict):
-			frappe.throw(_("Visibility conditions must be objects"))
+			continue
 		fieldname = str(condition.get("fieldname") or "").strip()
 		operator = condition.get("operator")
-		if not REFERENCE_FIELD_PATH.fullmatch(fieldname):
-			frappe.throw(_("Invalid visibility field"))
-		if operator not in CONDITION_OPERATORS:
-			frappe.throw(_("Invalid visibility operator"))
+		if not REFERENCE_FIELD_PATH.fullmatch(fieldname) or operator not in CONDITION_OPERATORS:
+			continue
 		normalized.append({"fieldname": fieldname, "operator": operator, "value": str(condition.get("value") or "")[:500]})
 	return {"device": device, "match": match, "conditions": normalized}
 
 
 def _spacing(style):
 	style = style if isinstance(style, dict) else {}
-	result = {side: _css(style.get(side), default="0px") for side in ("top", "right", "bottom", "left")}
-	if "auto" in result.values():
-		frappe.throw(_("Spacing values cannot use auto"))
+	result = {}
+	for side in ("top", "right", "bottom", "left"):
+		val = style.get(side)
+		if str(val).strip().lower() in ("auto", "none"):
+			result[side] = "0px"
+		else:
+			result[side] = _css(val, default="0px")
 	return result
 
 
@@ -137,9 +186,10 @@ def _style(style):
 			result[key] = _css(style[key], "color")
 	for key in ("font_size", "line_height", "width", "height", "border_width", "radius", "button_padding_x", "button_padding_y"):
 		if style.get(key) not in (None, ""):
-			result[key] = _css(style[key])
-			if result[key] == "auto" and key not in {"width", "height"}:
-				frappe.throw(_("The CSS value auto is not supported for {0}").format(key.replace("_", " ")))
+			val = _css(style[key])
+			if val == "auto" and key not in {"width", "height"}:
+				val = "0px"
+			result[key] = val
 	if style.get("align") is not None:
 		result["align"] = style["align"] if style["align"] in ALIGNMENTS else "left"
 	if style.get("font_family"):
@@ -156,17 +206,33 @@ def _style(style):
 
 
 def _bounded_int(value, default, minimum, maximum):
-	try:
-		value = int(value if value not in (None, "") else default)
-	except (TypeError, ValueError):
-		frappe.throw(_("A numeric builder value is invalid"))
-	return max(minimum, min(maximum, value))
+	if value in (None, ""):
+		return default
+	if isinstance(value, (int, float)):
+		try:
+			if math.isnan(value) or math.isinf(value):
+				return default
+			return max(minimum, min(maximum, int(round(value))))
+		except Exception:
+			return default
+	val_str = str(value).strip().lower()
+	if val_str in ("auto", "none", "inherit", "initial", "unset"):
+		return default
+	match = re.search(r"^[+-]?\d+(?:\.\d+)?", val_str)
+	if match:
+		try:
+			return max(minimum, min(maximum, int(round(float(match.group(0))))))
+		except Exception:
+			return default
+	return default
 
 
 def _validate_block(block):
-	if not isinstance(block, dict) or block.get("type") not in BLOCK_TYPES:
-		frappe.throw(_("Unsupported email builder block"))
-	type_ = block["type"]
+	if not isinstance(block, dict):
+		block = {}
+	type_ = block.get("type")
+	if type_ not in BLOCK_TYPES:
+		type_ = "text"
 	content = block.get("content") if isinstance(block.get("content"), dict) else {}
 	normalized = {
 		"id": _node_id(block.get("id")),
@@ -188,14 +254,20 @@ def _validate_block(block):
 		out["decorative"] = bool(content.get("decorative"))
 		out["href"] = _url(content.get("href"), allow_full_token=True)
 		for key in ("width", "height"):
-			if content.get(key) not in (None, ""):
-				out[key] = _bounded_int(content[key], 1, 1, 2000)
+			val = content.get(key)
+			if val not in (None, ""):
+				val_str = str(val).strip().lower()
+				if val_str in ("100%", "auto", "none", "inherit", "full"):
+					continue
+				parsed = _bounded_int(val, default=None, minimum=1, maximum=2000)
+				if parsed is not None:
+					out[key] = parsed
 		out["preserve_aspect_ratio"] = bool(content.get("preserve_aspect_ratio", True))
 	elif type_ == "button":
 		out["text"] = validate_semantic_tokens(str(content.get("text") or "Button")[:500])
 		action = content.get("action") or "url"
 		if action not in BUTTON_ACTIONS:
-			frappe.throw(_("Unsupported button action"))
+			action = "url"
 		out["action"] = action
 		href = str(content.get("href") or "").strip()
 		if action == "email" and href and ("{{" in href or "@" in href) and not href.startswith("mailto:"):
@@ -215,8 +287,9 @@ def _validate_block(block):
 		out["height"] = _bounded_int(content.get("height"), 24, 1, 300)
 	elif type_ == "social":
 		items = content.get("items") or []
-		if not isinstance(items, list) or len(items) > 12:
-			frappe.throw(_("Social links must be a list of at most twelve items"))
+		if not isinstance(items, list):
+			items = []
+		items = items[:12]
 		out["items"] = []
 		for item in items:
 			if not isinstance(item, dict):
@@ -240,51 +313,82 @@ def _validate_block(block):
 
 def _validate_section(section, seen_ids):
 	if not isinstance(section, dict):
-		frappe.throw(_("Sections must be objects"))
-	section_id = _node_id(section.get("id"))
-	if section_id in seen_ids:
-		frappe.throw(_("Duplicate builder node ID"))
-	seen_ids.add(section_id)
-	layout = section.get("layout") or "1"
-	if layout not in LAYOUTS:
-		frappe.throw(_("Unsupported column layout: {0}").format(layout))
+		section = {}
+	section_id = _ensure_unique_id(section.get("id"), seen_ids, prefix="sec")
 	columns = section.get("columns") or []
-	if not isinstance(columns, list) or len(columns) != len(LAYOUTS[layout]):
-		frappe.throw(_("Layout {0} requires {1} columns").format(layout, len(LAYOUTS[layout])))
+	columns_len = len(columns) if isinstance(columns, list) else 1
+
+	raw_layout = str(section.get("layout") or "1").strip()
+	ALIAS_LAYOUTS = {
+		"1": "1",
+		"single": "1",
+		"1-col": "1",
+		"2": "1/2:1/2",
+		"2-col": "1/2:1/2",
+		"half": "1/2:1/2",
+		"50:50": "1/2:1/2",
+		"3": "1/3:1/3:1/3",
+		"3-col": "1/3:1/3:1/3",
+		"third": "1/3:1/3:1/3",
+		"thirds": "1/3:1/3:1/3",
+		"4": "1/4:1/4:1/4:1/4",
+		"4-col": "1/4:1/4:1/4:1/4",
+		"quarter": "1/4:1/4:1/4:1/4",
+		"quarters": "1/4:1/4:1/4:1/4",
+	}
+	if raw_layout in LAYOUTS:
+		layout = raw_layout
+	elif raw_layout in ALIAS_LAYOUTS:
+		layout = ALIAS_LAYOUTS[raw_layout]
+	elif columns_len == 2:
+		layout = "1/2:1/2"
+	elif columns_len == 3:
+		layout = "1/3:1/3:1/3"
+	elif columns_len == 4:
+		layout = "1/4:1/4:1/4:1/4"
+	else:
+		layout = "1"
+
+	section["layout"] = layout
+	if layout not in LAYOUTS:
+		layout = "1"
+
+	expected_cols = len(LAYOUTS[layout])
+	if not isinstance(columns, list):
+		columns = []
+	if len(columns) < expected_cols:
+		while len(columns) < expected_cols:
+			columns.append({"id": frappe.generate_hash(length=10), "style": {}, "blocks": []})
+	elif len(columns) > expected_cols:
+		columns = columns[:expected_cols]
+
 	column_widths = section.get("column_widths")
-	if column_widths in (None, []):
-		column_widths = list(LAYOUTS[layout])
 	if not isinstance(column_widths, list) or len(column_widths) != len(columns):
-		frappe.throw(_("Column widths must match the number of columns"))
+		column_widths = list(LAYOUTS[layout])
 	try:
 		column_widths = [float(width) for width in column_widths]
-	except (TypeError, ValueError):
-		frappe.throw(_("Column widths must be numbers"))
-	if any(not math.isfinite(width) for width in column_widths):
-		frappe.throw(_("Column widths must be finite numbers"))
-	if len(column_widths) > 1 and any(width < 5 or width > 95 for width in column_widths):
-		frappe.throw(_("Each column width must be between 5% and 95%"))
-	total_width = sum(column_widths)
-	if not 99.5 <= total_width <= 100.5:
-		frappe.throw(_("Column widths must total 100%"))
+		if any(not math.isfinite(width) or width < 5 or width > 95 for width in column_widths) and len(column_widths) > 1:
+			column_widths = list(LAYOUTS[layout])
+		total_width = sum(column_widths)
+		if not 95.0 <= total_width <= 105.0:
+			column_widths = list(LAYOUTS[layout])
+	except Exception:
+		column_widths = list(LAYOUTS[layout])
+
+	total_width = sum(column_widths) or 100
 	column_widths = [round(width * 100 / total_width, 3) for width in column_widths]
 	column_widths[-1] = round(column_widths[-1] + 100 - sum(column_widths), 3)
 	normalized_columns = []
 	for column in columns:
 		if not isinstance(column, dict):
-			frappe.throw(_("Columns must be objects"))
-		column_id = _node_id(column.get("id"))
-		if column_id in seen_ids:
-			frappe.throw(_("Duplicate builder node ID"))
-		seen_ids.add(column_id)
+			continue
+		column_id = _ensure_unique_id(column.get("id"), seen_ids, prefix="col")
 		blocks = column.get("blocks") or []
 		if not isinstance(blocks, list):
-			frappe.throw(_("Column blocks must be a list"))
-		normalized_blocks = [_validate_block(block) for block in blocks]
+			blocks = []
+		normalized_blocks = [_validate_block(block) for block in blocks if isinstance(block, dict)]
 		for block in normalized_blocks:
-			if block["id"] in seen_ids:
-				frappe.throw(_("Duplicate builder node ID"))
-			seen_ids.add(block["id"])
+			block["id"] = _ensure_unique_id(block.get("id"), seen_ids, prefix="blk")
 		normalized_columns.append({"id": column_id, "style": _style(column.get("style")), "blocks": normalized_blocks})
 	normalized = {
 		"id": section_id,
@@ -296,6 +400,7 @@ def _validate_section(section, seen_ids):
 		"style": _style(section.get("style")),
 		"columns": normalized_columns,
 	}
+
 	# Optional reference to the saved Email Builder Component this row came from.
 	# Used purely by the UI to decide whether to offer per-row AI editing.
 	saved_component = section.get("saved_component")
@@ -316,19 +421,20 @@ def validate_schema(value) -> dict:
 	for key in ("body_background", "content_background", "text_color", "link_color", "button_background", "button_text_color"):
 		settings[key] = _css(settings.get(key), "color")
 	for key in ("font_size", "button_radius", "section_padding"):
-		settings[key] = _css(settings.get(key))
-		if settings[key] == "auto":
-			frappe.throw(_("The CSS value auto is not supported for {0}").format(key.replace("_", " ")))
+		val = _css(settings.get(key))
+		if val == "auto":
+			val = DEFAULT_SETTINGS.get(key, "0px")
+		settings[key] = val
 	settings["font_family"] = _font_family(settings.get("font_family"))
 	settings["link_decoration"] = settings.get("link_decoration") if settings.get("link_decoration") in {"none", "underline"} else "underline"
 	sections = schema.get("sections") or []
 	if not isinstance(sections, list):
-		frappe.throw(_("Builder sections must be a list"))
+		sections = []
 	seen_ids = set()
 	normalized = {
 		"version": SCHEMA_VERSION,
 		"settings": settings,
-		"sections": [_validate_section(section, seen_ids) for section in sections],
+		"sections": [_validate_section(section, seen_ids) for section in sections if isinstance(section, dict)],
 	}
 	count = sum(len(column["blocks"]) for section in normalized["sections"] for column in section["columns"])
 	if count > MAX_BLOCKS:
