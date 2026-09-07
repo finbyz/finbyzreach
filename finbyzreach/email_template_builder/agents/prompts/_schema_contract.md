@@ -58,8 +58,14 @@ The same applies to `style.margin`.
 ## BLOCK TYPES AND THEIR CONTENT
 
 **text** — `{ "html": "...", "tag": "p" }`
-Allowed tags: p, div, br, ul, ol, li, strong, b, em, i, u, s, a, span, h1, h2, h3.
-Style it with inline CSS on those tags. `tag` is one of p, h1, h2, h3.
+
+`html` is the actual content, styled with inline CSS. Inside it you may use:
+p, div, br, ul, ol, li, strong, b, em, i, u, s, a, span, h1, h2, h3.
+A bulleted list goes here, as `<ul><li>...</li></ul>`.
+
+`tag` is a separate field describing the block's role for the editor, and it is
+only ever one of: `p`, `h1`, `h2`, `h3`. It is not the tag you used in `html`.
+A list block is still `"tag": "p"`.
 
 **image** — `{ "src": "...", "alt": "...", "width": 240, "href": "" }`
 `width` is an integer number of pixels, or omit it entirely for full width.
@@ -99,8 +105,19 @@ Rules, all of which matter:
 - Two braces, never one. `{ first_name }` is literal text and ships broken.
 - No `doc.` prefix. `{{ doc.first_name }}` does not resolve.
 - A dotted name means a link hop and only that: `{{ customer.email_id }}`.
-- Never put a merge field behind a scheme. Write `"href": "{{ website_url }}"`,
-  not `"href": "https://{{ website_url }}"` — the field already holds the URL.
+- **A button or image `href` takes the bare token.** Write
+  `"href": "{{ website_url }}"`, not `"href": "https://{{ website_url }}"` —
+  the field already holds the whole URL.
+- **An `<a href>` written inside text HTML is the opposite**, and this is the
+  rule most often broken. It MUST begin with a literal scheme, because inline
+  links are not safety-checked the way a button href is:
+
+      GOOD  <a href="https://finbyz.com/blog">Read the blog</a>
+      BAD   <a href="{{ blog_link }}">Read the blog</a>     rejected outright
+
+  If you need a personalised link, use a `button` block, or write the literal
+  part of the URL yourself: `<a href="https://{{ blog_domain }}">`.
+  When in doubt, prefer a real static URL inside body copy.
 - Only use field names that exist on the reference doctype you were given. If
   you were given no reference doctype, use no merge fields at all.
 - No `{% if %}`, no loops, no filters other than `default(...)`. They are
@@ -109,6 +126,14 @@ Rules, all of which matter:
 ## NEVER LEAVE A PLACEHOLDER
 
 Do not write `[Your Company Name]`, `[Product]`, `Lorem ipsum`, or
-`https://example.com/link-here`. If you genuinely do not know a value, either
-use a merge field that resolves it or write copy that does not need it. A
-bracketed placeholder in a finished template is a defect.
+`https://example.com/link-here`. A bracketed placeholder in a finished template
+is a defect — it will be sent to a real recipient exactly as written.
+
+The sending organisation is: **<<company_name>>**
+
+Use that name wherever the copy needs the sender. It is not a guess and not a
+placeholder; write it directly into headlines, body copy and the footer.
+
+If some other value is genuinely unknowable, either use a merge field that
+resolves it, or write the sentence so it does not need the value at all.
+Rewriting the sentence is always better than shipping a bracket.

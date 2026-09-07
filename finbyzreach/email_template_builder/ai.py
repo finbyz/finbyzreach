@@ -471,6 +471,25 @@ def _format_chat_history(chat_history):
 	return "\n".join(formatted) if formatted else "(no prior chat history)"
 
 
+def _brand_name():
+	"""The sending organisation's name, for the agent to write into copy.
+
+	Without this the agent has nothing to put in a headline that needs a sender,
+	so it writes "[Your Company Name]" and ships it. The name is knowable, so
+	give it to the agent rather than leaving a placeholder for a human to catch.
+	"""
+	try:
+		company = frappe.defaults.get_global_default("company")
+		if company:
+			return str(company)
+	except Exception:
+		pass
+	try:
+		return str(frappe.db.get_single_value("Website Settings", "app_name") or "")
+	except Exception:
+		return ""
+
+
 def _scope_instruction(schema, scope="template", section_id=None):
 	"""Tell the agent which part of the document it is allowed to touch.
 
@@ -502,6 +521,7 @@ def _agent_context(doc, schema, metadata, prompt, chat_history=None, scope="temp
 	palette = _collect_palette(schema)
 	return {
 		"scope_instruction": _scope_instruction(schema, scope, section_id),
+		"company_name": _brand_name(),
 		"user_prompt": prompt,
 		"current_schema": json.dumps(schema, separators=(",", ":")),
 		"current_settings": json.dumps(settings or {}, separators=(",", ":")),
@@ -601,6 +621,7 @@ def _invoke_rewrite_agent(agent_name, prompt, context_kwargs=None, callback_hand
 		"current_palette": "(reuse the existing design settings colors)",
 		"chat_history": "(no prior chat history)",
 		"scope_instruction": "You are editing the whole template.",
+		"company_name": _brand_name(),
 	}
 	if context_kwargs:
 		for k, v in context_kwargs.items():
@@ -623,7 +644,55 @@ def _invoke_rewrite_agent(agent_name, prompt, context_kwargs=None, callback_hand
 		payload["callbacks"] = [callback_handler]
 
 	# Same public entry point used by ai_engine / custom_research / finbyzreach.
-	return ai_agent_doc.agent_service.invoke(query=prompt, **payload)
+	try:
+		return ai_agent_doc.agent_service.invoke(query=prompt, **payload)
+	except Exception as exc:
+		recovered = _recover_unparsed_completion(exc)
+		if recovered is None:
+			raise
+		return recovered
+
+
+def _recover_unparsed_completion(exc):
+	"""Salvage the model's JSON when the structured-output parser rejected it.
+
+	The agent runs through a ``PydanticOutputParser``, which is all-or-nothing:
+	one field the generated model dislikes discards an otherwise complete,
+	usable design. That strictness buys nothing here, because ``validate_schema``
+	independently coerces every field to a safe value and ``design_defaults``
+	repairs the rest — a rejected ``"tag": "ul"`` would have become ``"p"``
+	anyway.
+
+	So the rich output schema stays (it is what shapes ``format_instructions``
+	and therefore what the model aims at) while a parse failure falls back to
+	the raw completion instead of losing the generation.
+	"""
+	try:
+		from langchain_core.exceptions import OutputParserException
+	except Exception:
+		return None
+	if not isinstance(exc, OutputParserException):
+		return None
+
+	text = getattr(exc, "llm_output", None) or ""
+	if not text:
+		# Older LangChain builds fold the completion into the message only.
+		match = re.search(r"from completion (.*)", str(exc), re.S)
+		if not match:
+			return None
+		text = match.group(1)
+
+	start, end = text.find("{"), text.rfind("}")
+	if start == -1 or end <= start:
+		return None
+	try:
+		json.loads(text[start : end + 1])
+	except (TypeError, ValueError):
+		return None
+	frappe.logger("email_builder").info(
+		"Recovered an Email Builder generation the structured parser rejected"
+	)
+	return text[start : end + 1]
 
 
 # ---------------------------------------------------------------------------
@@ -698,6 +767,7 @@ def create_template_with_ai(prompt, template_name=None, subject=None, reference_
 		"available_images": "(Brand new template. Use the `generate_email_image` tool if visuals, hero banners, or photos are needed.)",
 		"current_palette": "(Choose a modern, high-contrast, visually pleasing palette matching the requested email topic)",
 		"chat_history": "(New template creation from scratch)",
+		"company_name": _brand_name(),
 	}
 
 	callback_name = str(template_name or "New Template")

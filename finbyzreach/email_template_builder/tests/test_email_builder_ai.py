@@ -258,3 +258,42 @@ class TestEmailBuilderAI(IntegrationTestCase):
 			self.assertIsInstance(res["settings"], dict)
 			self.assertEqual(res["settings"]["content_width"], 600)
 
+
+
+class TestUnparsedCompletionRecovery(IntegrationTestCase):
+	"""A strict structured-output parse must not lose a usable design.
+
+	validate_schema coerces every field independently, so a completion the
+	PydanticOutputParser rejects is still safe to use.
+	"""
+
+	def _exc(self, **kwargs):
+		from langchain_core.exceptions import OutputParserException
+		return OutputParserException(**kwargs)
+
+	def test_recovers_json_from_llm_output(self):
+		payload = '{"summary": "ok", "schema": {"version": 1, "sections": []}}'
+		recovered = ai._recover_unparsed_completion(
+			self._exc(error="bad", llm_output=payload)
+		)
+		self.assertEqual(json.loads(recovered)["summary"], "ok")
+
+	def test_recovers_json_from_the_message_when_llm_output_is_absent(self):
+		payload = '{"summary": "ok", "schema": {"version": 1}}'
+		recovered = ai._recover_unparsed_completion(
+			self._exc(error=f"Failed to parse DynamicModel from completion {payload}")
+		)
+		self.assertEqual(json.loads(recovered)["summary"], "ok")
+
+	def test_returns_none_for_an_unrelated_exception(self):
+		self.assertIsNone(ai._recover_unparsed_completion(ValueError("boom")))
+
+	def test_returns_none_when_there_is_no_json_to_salvage(self):
+		self.assertIsNone(
+			ai._recover_unparsed_completion(self._exc(error="bad", llm_output="I refuse."))
+		)
+
+	def test_returns_none_for_malformed_json(self):
+		self.assertIsNone(
+			ai._recover_unparsed_completion(self._exc(error="bad", llm_output="{not json,,,}"))
+		)

@@ -219,3 +219,38 @@ class TestIdempotence(IntegrationTestCase):
 	def test_malformed_schema_does_not_raise(self):
 		for bad in (None, [], "text", {"sections": "nope"}, {"sections": [None, {"columns": [None]}]}):
 			apply_design_defaults(bad)
+
+
+class TestInlineAnchorHrefs(IntegrationTestCase):
+	"""sanitize_rich_html rejects a bare token in an inline anchor href.
+
+	Repairing the token without also restoring a literal scheme turned a
+	merely-broken link into one that failed validation and took the whole
+	generation with it.
+	"""
+
+	def test_repaired_inline_anchor_gets_a_scheme(self):
+		doc = _doc([{"id": "b1", "type": "text",
+		             "content": {"html": '<p><a href="{ doc.blog_link }">Blog</a></p>'}}])
+		apply_design_defaults(doc)
+		self.assertIn('href="https://{{ blog_link }}"', _first_block(doc)["content"]["html"])
+
+	def test_anchor_that_already_has_a_scheme_is_untouched(self):
+		html = '<p><a href="https://finbyz.com/blog">Blog</a></p>'
+		doc = _doc([{"id": "b1", "type": "text", "content": {"html": html}}])
+		apply_design_defaults(doc)
+		self.assertEqual(_first_block(doc)["content"]["html"], html)
+
+	def test_relative_and_mailto_anchors_are_untouched(self):
+		for href in ("/pricing", "#top", "mailto:hi@finbyz.com"):
+			html = f'<p><a href="{href}">x</a></p>'
+			doc = _doc([{"id": "b1", "type": "text", "content": {"html": html}}])
+			apply_design_defaults(doc)
+			self.assertEqual(_first_block(doc)["content"]["html"], html)
+
+	def test_block_level_href_still_takes_a_bare_token(self):
+		"""The opposite rule applies to a button's own href field."""
+		doc = _doc([{"id": "b1", "type": "button",
+		             "content": {"text": "Go", "href": "https://{ doc.dashboard_link }"}}])
+		apply_design_defaults(doc)
+		self.assertEqual(_first_block(doc)["content"]["href"], "{{ dashboard_link }}")

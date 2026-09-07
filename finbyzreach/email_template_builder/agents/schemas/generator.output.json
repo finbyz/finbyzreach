@@ -61,10 +61,7 @@
             },
             "link_decoration": {
               "type": "string",
-              "enum": [
-                "none",
-                "underline"
-              ]
+              "description": "One of: none, underline."
             },
             "button_background": {
               "type": "string"
@@ -97,17 +94,7 @@
               },
               "layout": {
                 "type": "string",
-                "enum": [
-                  "1",
-                  "1/2:1/2",
-                  "1/3:1/3:1/3",
-                  "1/3:2/3",
-                  "2/3:1/3",
-                  "1/4:1/4:1/4:1/4",
-                  "1/4:3/4",
-                  "3/4:1/4"
-                ],
-                "description": "Column count must match. Never '2', '3' or '4'."
+                "description": "Column count must match. Never '2', '3' or '4'. One of: 1, 1/2:1/2, 1/3:1/3:1/3, 1/3:2/3, 2/3:1/3, 1/4:1/4:1/4:1/4, 1/4:3/4, 3/4:1/4."
               },
               "column_widths": {
                 "type": "array",
@@ -117,19 +104,11 @@
               },
               "vertical_align": {
                 "type": "string",
-                "enum": [
-                  "top",
-                  "middle",
-                  "bottom"
-                ]
+                "description": "One of: top, middle, bottom."
               },
               "mobile_stack": {
                 "type": "string",
-                "enum": [
-                  "stack",
-                  "reverse",
-                  "none"
-                ]
+                "description": "One of: stack, reverse, none."
               },
               "style": {
                 "type": "object",
@@ -137,12 +116,7 @@
                 "properties": {
                   "align": {
                     "type": "string",
-                    "enum": [
-                      "left",
-                      "center",
-                      "right"
-                    ],
-                    "description": "REQUIRED on every image and button block. Omitting it renders the block left-aligned."
+                    "description": "REQUIRED on every image and button block. Omitting it renders the block left-aligned. One of: left, center, right."
                   },
                   "background": {
                     "type": "string",
@@ -190,14 +164,7 @@
                   },
                   "font_weight": {
                     "type": "string",
-                    "enum": [
-                      "normal",
-                      "bold",
-                      "400",
-                      "500",
-                      "600",
-                      "700"
-                    ]
+                    "description": "One of: normal, bold, 400, 500, 600, 700."
                   },
                   "width": {
                     "type": "string"
@@ -239,12 +206,7 @@
                       "properties": {
                         "align": {
                           "type": "string",
-                          "enum": [
-                            "left",
-                            "center",
-                            "right"
-                          ],
-                          "description": "REQUIRED on every image and button block. Omitting it renders the block left-aligned."
+                          "description": "REQUIRED on every image and button block. Omitting it renders the block left-aligned. One of: left, center, right."
                         },
                         "background": {
                           "type": "string",
@@ -292,14 +254,7 @@
                         },
                         "font_weight": {
                           "type": "string",
-                          "enum": [
-                            "normal",
-                            "bold",
-                            "400",
-                            "500",
-                            "600",
-                            "700"
-                          ]
+                          "description": "One of: normal, bold, 400, 500, 600, 700."
                         },
                         "width": {
                           "type": "string"
@@ -338,15 +293,7 @@
                           },
                           "type": {
                             "type": "string",
-                            "enum": [
-                              "text",
-                              "image",
-                              "button",
-                              "divider",
-                              "spacer",
-                              "social",
-                              "preview_url"
-                            ]
+                            "description": "One of: text, image, button, divider, spacer, social, preview_url."
                           },
                           "style": {
                             "type": "object",
@@ -354,12 +301,7 @@
                             "properties": {
                               "align": {
                                 "type": "string",
-                                "enum": [
-                                  "left",
-                                  "center",
-                                  "right"
-                                ],
-                                "description": "REQUIRED on every image and button block. Omitting it renders the block left-aligned."
+                                "description": "REQUIRED on every image and button block. Omitting it renders the block left-aligned. One of: left, center, right."
                               },
                               "background": {
                                 "type": "string",
@@ -407,14 +349,7 @@
                               },
                               "font_weight": {
                                 "type": "string",
-                                "enum": [
-                                  "normal",
-                                  "bold",
-                                  "400",
-                                  "500",
-                                  "600",
-                                  "700"
-                                ]
+                                "description": "One of: normal, bold, 400, 500, 600, 700."
                               },
                               "width": {
                                 "type": "string"
@@ -452,12 +387,7 @@
                               },
                               "tag": {
                                 "type": "string",
-                                "enum": [
-                                  "p",
-                                  "h1",
-                                  "h2",
-                                  "h3"
-                                ]
+                                "description": "One of: p, h1, h2, h3."
                               },
                               "src": {
                                 "type": "string",
@@ -481,13 +411,7 @@
                               },
                               "action": {
                                 "type": "string",
-                                "enum": [
-                                  "url",
-                                  "email",
-                                  "file",
-                                  "telephone",
-                                  "sms"
-                                ]
+                                "description": "One of: url, email, file, telephone, sms."
                               },
                               "full_width": {
                                 "type": "boolean"
@@ -508,17 +432,7 @@
                                   "properties": {
                                     "platform": {
                                       "type": "string",
-                                      "enum": [
-                                        "Facebook",
-                                        "Instagram",
-                                        "LinkedIn",
-                                        "YouTube",
-                                        "X",
-                                        "TikTok",
-                                        "WhatsApp",
-                                        "Website"
-                                      ],
-                                      "description": "Exact capitalisation. Anything else becomes a generic globe."
+                                      "description": "Exact capitalisation. Anything else becomes a generic globe. One of: Facebook, Instagram, LinkedIn, YouTube, X, TikTok, WhatsApp, Website."
                                     },
                                     "href": {
                                       "type": "string"

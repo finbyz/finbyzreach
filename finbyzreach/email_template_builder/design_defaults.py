@@ -259,6 +259,38 @@ def apply_design_defaults(schema):
 
 _URL_KEYS = {"href", "src"}
 
+# An ``<a href>`` written inside rich text, as opposed to a block's own href
+# field. ``sanitize_rich_html`` rejects a bare ``{{ token }}`` here (see
+# ``DYNAMIC_SCHEME``): inline anchors are not run through
+# ``email_builder_safe_url``, so the literal scheme is what keeps a merge field
+# from resolving to ``javascript:``. A block-level href has no such rule
+# because ``_url(..., allow_full_token=True)`` accepts a whole token there.
+_INLINE_ANCHOR_HREF = re.compile(r'(<a\b[^>]*?\bhref\s*=\s*")([^"]*)(")', re.I)
+
+_SAFE_INLINE_PREFIXES = ("http://", "https://", "mailto:", "tel:", "sms:", "/", "#")
+
+
+def _fix_inline_anchor_hrefs(html):
+	"""Give any inline anchor whose href is a bare token a literal scheme.
+
+	Repairing ``{ doc.blog_link }`` to ``{{ blog_link }}`` inside rich text would
+	otherwise turn a link that was merely broken into one that fails validation
+	and takes the whole generation down with it.
+	"""
+	if not isinstance(html, str) or "<a" not in html.lower():
+		return html, 0
+	fixed = 0
+
+	def replace(match):
+		nonlocal fixed
+		href = match.group(2).strip()
+		if href.startswith("{{") and not href.startswith(_SAFE_INLINE_PREFIXES):
+			fixed += 1
+			return f"{match.group(1)}https://{href}{match.group(3)}"
+		return match.group(0)
+
+	return _INLINE_ANCHOR_HREF.sub(replace, html), fixed
+
 
 def _repair_tree(node):
 	"""Recursively repair merge tokens across the whole schema."""
@@ -267,6 +299,9 @@ def _repair_tree(node):
 		for key, value in node.items():
 			if isinstance(value, str):
 				repaired, count = _repair_url(value) if key in _URL_KEYS else _repair_token_text(value)
+				if key == "html":
+					repaired, anchor_count = _fix_inline_anchor_hrefs(repaired)
+					count += anchor_count
 				node[key] = repaired
 				fixed += count
 			else:

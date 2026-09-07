@@ -36,7 +36,7 @@ BACKUP_DIR = os.path.join(HERE, "backup")
 KNOWN_VARIABLES = {
 	"user_prompt", "current_schema", "current_settings", "subject", "preheader",
 	"reference_doctype", "block_types", "layouts", "available_images",
-	"current_palette", "chat_history", "scope_instruction", "query",
+	"current_palette", "chat_history", "scope_instruction", "company_name", "query",
 	"format_instructions",
 }
 
