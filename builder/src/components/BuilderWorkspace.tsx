@@ -45,8 +45,6 @@ export const BuilderWorkspace = memo(function BuilderWorkspace() {
     updateContent,
     changeColumnWidths,
     editSection,
-    openAiSectionRewrite,
-    aiEnabled,
     duplicateNode,
     requestSaveComponent,
     chooseImage,
@@ -125,8 +123,6 @@ export const BuilderWorkspace = memo(function BuilderWorkspace() {
             onUpdateNode={updateNode}
             onResizeColumns={changeColumnWidths}
             onEditSection={editSection}
-            onAiRewriteSection={openAiSectionRewrite}
-            aiEnabled={aiEnabled}
             onDuplicate={duplicateNode}
             onDelete={deleteNode}
             onSaveComponent={requestSaveComponent}
@@ -167,8 +163,6 @@ export const BuilderWorkspace = memo(function BuilderWorkspace() {
             onInsertMergeField={insertMergeField}
             onDuplicate={duplicateNode}
             onDelete={deleteNode}
-            onAiRewriteSection={openAiSectionRewrite}
-            aiEnabled={aiEnabled}
             readOnly={isReadOnly}
           />
         </Suspense>

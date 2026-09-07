@@ -19,6 +19,7 @@ export const API_METHODS = {
   aiClearChat: 'finbyzreach.email_template_builder.ai.clear_builder_ai_chat',
   aiSaveSamplePrompt: 'finbyzreach.email_template_builder.ai.save_ai_sample_prompt',
   aiRunPreview: 'finbyzreach.email_template_builder.ai.get_ai_run_preview',
+  aiCreateTemplate: 'finbyzreach.email_template_builder.ai.create_template_with_ai',
 } as const
 
 export type ApiParams = Record<string, string | number | boolean | null | undefined>

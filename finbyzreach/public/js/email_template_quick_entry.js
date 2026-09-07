@@ -60,6 +60,25 @@ frappe.provide("frappe.ui.form");
 			super.render_dialog();
 
 			this.setup_subject_autofill();
+			this.setup_ai_button();
+		}
+
+		setup_ai_button() {
+			const $footer = this.dialog.$wrapper.find(".modal-footer");
+			if ($footer.length && !$footer.find(".btn-build-ai-qe").length) {
+				const $ai_btn = $(
+					`<button type="button" class="btn btn-default btn-sm btn-build-ai-qe" style="margin-right:auto;">
+						<span style="color:#7c3aed;">✨</span> ${__("Build with AI from prompt")}
+					</button>`
+				);
+				$ai_btn.on("click", () => {
+					this.dialog.hide();
+					if (frappe.email_template_builder && frappe.email_template_builder.show_ai_create_dialog) {
+						frappe.email_template_builder.show_ai_create_dialog();
+					}
+				});
+				$footer.prepend($ai_btn);
+			}
 		}
 
 		register_primary_action() {

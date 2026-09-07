@@ -18,7 +18,7 @@ type AiOptions = {
   isReadOnly: boolean
 }
 
-type AiScope = { type: 'template' } | { type: 'section'; sectionId: string }
+type AiScope = { type: 'template' }
 
 type AiState = {
   prompt: string
@@ -190,12 +190,6 @@ export function useBuilderAi({ document, sdk, templateName, notify, setModal, co
     setModal('ai')
   }, [enabled, isReadOnly, setModal])
 
-  const openAiSectionRewrite = useCallback((sectionId: string) => {
-    if (isReadOnly || !enabled || !sectionId) return
-    dispatch({ type: 'set-scope', scope: { type: 'section', sectionId } })
-    setModal('ai')
-  }, [enabled, isReadOnly, setModal])
-
   const closeAiRewrite = useCallback(() => {
     setModal(null)
     dispatch({ type: 'clear-proposal' })
@@ -221,15 +215,14 @@ export function useBuilderAi({ document, sdk, templateName, notify, setModal, co
         schema: JSON.stringify(document.schema),
         metadata: JSON.stringify(document.metadata),
         prompt,
-        scope: state.scope.type,
-        section_id: state.scope.type === 'section' ? state.scope.sectionId : undefined,
+        scope: 'template',
         chat_history: JSON.stringify(chatHistory),
       })
       dispatch({ type: 'receive-proposal', value: response.message })
     } catch (error) {
       dispatch({ type: 'receive-error', value: getErrorMessage(error, 'The AI rewrite could not be generated.') })
     }
-  }, [document, isReadOnly, sdk.aiRewrite, state.chatTurns, state.prompt, state.scope, templateName])
+  }, [document, isReadOnly, sdk.aiRewrite, state.chatTurns, state.prompt, templateName])
 
   const acceptProposal = useCallback(() => {
     if (!state.proposal || isReadOnly) return
@@ -245,7 +238,7 @@ export function useBuilderAi({ document, sdk, templateName, notify, setModal, co
     dispatch({ type: 'accept-proposal', proposalId: proposal_id || undefined })
     dispatch({ type: 'clear-proposal' })
     setModal(null)
-    notify(state.proposal.scope === 'section' ? 'AI row changes applied. Undo to revert, or Save to keep them.' : 'AI changes applied. Undo to revert, or Save to keep them.', 'success')
+    notify('AI changes applied. Undo to revert, or Save to keep them.', 'success')
   }, [commit, isReadOnly, notify, sdk.aiAccept, setModal, state.proposal, templateName])
 
   const applyPastProposal = useCallback((proposal: AiRewriteProposal) => {
@@ -338,7 +331,6 @@ export function useBuilderAi({ document, sdk, templateName, notify, setModal, co
     chatTurns: state.chatTurns,
     setAiPrompt,
     openAiRewrite,
-    openAiSectionRewrite,
     closeAiRewrite,
     generateAiRewrite: runGenerate,
     acceptAiProposal: acceptProposal,

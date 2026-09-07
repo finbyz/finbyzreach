@@ -7,7 +7,12 @@ from copy import deepcopy
 import frappe
 from frappe import _
 
+from urllib.parse import quote
+
+from frappe.utils.jinja import validate_template
+
 from .api import (
+	_compiled_subject,
 	_content_hash,
 	_format_preview_html,
 	_render_builder_request,
@@ -15,16 +20,16 @@ from .api import (
 	_subject_source,
 	_template,
 )
-from .constants import BLOCK_TYPES, LAYOUTS, MAX_SCHEMA_BYTES
-from .schema import parse_json
-from .tokens import TOKEN_RE
+from .constants import BLOCK_TYPES, LAYOUTS, MAX_SCHEMA_BYTES, SCHEMA_VERSION
+from .schema import parse_json, validate_schema
+from .tokens import TOKEN_RE, validate_semantic_tokens
 
 # The AI Agent used for rewriting is configured on the "Followup Settings" single,
 # consistent with the other AI Content Engine agents (smart reply, timeline, ...).
 SETTINGS_DOCTYPE = "Followup Settings"
 ENABLE_FIELD = "custom_enable_email_builder_ai"
 REWRITE_AGENT_FIELD = "custom_email_builder_rewrite_agent"
-ROW_REWRITE_AGENT_FIELD = "custom_email_builder_row_rewrite_agent"
+GENERATOR_AGENT_FIELD = "custom_email_builder_generator_agent"
 
 MAX_PROMPT_CHARS = 2000
 
@@ -48,9 +53,13 @@ def _rewrite_agent(settings=None):
 	return (settings.get(REWRITE_AGENT_FIELD) or "").strip()
 
 
-def _row_rewrite_agent(settings=None):
+def _generator_agent(settings=None):
 	settings = settings or _settings()
-	return (settings.get(ROW_REWRITE_AGENT_FIELD) or settings.get(REWRITE_AGENT_FIELD) or "").strip()
+	return (
+		settings.get(GENERATOR_AGENT_FIELD)
+		or settings.get(REWRITE_AGENT_FIELD)
+		or ""
+	).strip()
 
 
 def _sample_prompts():
@@ -139,11 +148,11 @@ def get_builder_ai_settings(template_name=None):
 	_require_designer()
 	settings = _settings()
 	template_agent = _rewrite_agent(settings)
-	row_agent = _row_rewrite_agent(settings)
+	generator_agent = _generator_agent(settings)
 	return {
-		"enabled": bool(_ai_enabled(settings) and (template_agent or row_agent)),
+		"enabled": bool(_ai_enabled(settings) and (template_agent or generator_agent)),
 		"rewrite_configured": bool(template_agent),
-		"row_rewrite_configured": bool(row_agent),
+		"generator_configured": bool(generator_agent),
 		"sample_prompts": _sample_prompts(),
 		"chat_history": _get_saved_chat_history(template_name) if template_name else [],
 	}
@@ -213,7 +222,7 @@ def _coerce_ai_payload(result) -> dict:
 
 def _extract_schema(payload: dict) -> dict:
 	"""Pull the builder schema out of the agent payload."""
-	schema = payload.get("schema") or payload.get("section")
+	schema = payload.get("schema")
 	if schema is None:
 		# The agent may have returned the schema object at the top level.
 		if {"sections", "settings", "version"} & set(payload.keys()):
@@ -224,6 +233,31 @@ def _extract_schema(payload: dict) -> dict:
 		schema = parse_json(schema, label="AI schema", max_bytes=MAX_SCHEMA_BYTES)
 	if not isinstance(schema, dict):
 		frappe.throw(_("The AI response email design was not an object."))
+	schema["version"] = SCHEMA_VERSION
+
+	raw_settings = schema.get("settings")
+	if isinstance(raw_settings, str):
+		try:
+			schema["settings"] = json.loads(raw_settings)
+		except Exception:
+			schema["settings"] = {}
+	elif not isinstance(raw_settings, dict):
+		schema["settings"] = {}
+
+	sections = schema.get("sections") or []
+	if isinstance(sections, list):
+		total_blocks = sum(
+			len(col.get("blocks") or [])
+			for sec in sections
+			if isinstance(sec, dict)
+			for col in (sec.get("columns") or [])
+			if isinstance(col, dict)
+		)
+		if total_blocks == 0:
+			frappe.throw(
+				_("The AI generated a design with no content blocks. Please try again with more details in your prompt.")
+			)
+
 	return schema
 
 
@@ -414,15 +448,12 @@ def _format_chat_history(chat_history):
 	return "\n".join(formatted) if formatted else "(no prior chat history)"
 
 
-def _agent_context(doc, schema, metadata, prompt, scope="template", target_section=None, chat_history=None):
+def _agent_context(doc, schema, metadata, prompt, chat_history=None):
 	settings = schema.get("settings") if isinstance(schema, dict) else {}
 	images = _collect_images(schema)
 	palette = _collect_palette(schema)
 	return {
 		"user_prompt": prompt,
-		"rewrite_scope": scope,
-		"target_section_id": str((target_section or {}).get("id") or ""),
-		"target_section": json.dumps(target_section or {}, separators=(",", ":")),
 		"current_schema": json.dumps(schema, separators=(",", ":")),
 		"current_settings": json.dumps(settings or {}, separators=(",", ":")),
 		"subject": str(metadata.get("subject") or _subject_source(doc) or ""),
@@ -492,35 +523,24 @@ class EmailBuilderThinkingCallback(BaseCallbackHandler):
 
 
 def _invoke_rewrite_agent(agent_name, prompt, context_kwargs=None, callback_handler=None):
-	if not frappe.db.exists("AI Agent", agent_name):
-		frappe.throw(
-			_("The configured Email Builder AI Agent {0} does not exist. Update Followup Settings.").format(agent_name)
-		)
-	ai_agent_doc = frappe.get_doc("AI Agent", agent_name)
+	settings = _settings()
+	main_agent = _rewrite_agent(settings)
 
-	# Ensure system prompt instructs the agent to gracefully adapt if image generation fails
-	for msg in (ai_agent_doc.messages or []):
-		if getattr(msg, "type", "") == "system" and "IMAGE RULES & ERROR HANDLING" not in (getattr(msg, "content", "") or ""):
-			addition = (
-				"\n\nIMAGE RULES & ERROR HANDLING:\n"
-				"- You have access to the generate_email_image tool to dynamically create visuals.\n"
-				"- If generate_email_image returns an error or IMAGE_GENERATION_FAILED, DO NOT create or leave broken image blocks in your schema!\n"
-				"- Instead, adapt the design to look stunning and professional without images using clean typography, card sections with background colors, dividers, and prominent buttons.\n"
-				"- In your summary and change_notes, state clearly: 'I was unable to generate images due to an image service error, but I redesigned the email to be modern, concise, and professional with strong typography and sections.'\n"
+	if not frappe.db.exists("AI Agent", agent_name):
+		if main_agent and frappe.db.exists("AI Agent", main_agent):
+			agent_name = main_agent
+		else:
+			frappe.throw(
+				_("The configured Email Builder AI Agent {0} does not exist. Update Followup Settings.").format(agent_name)
 			)
-			msg.content = (msg.content or "") + addition
-			try:
-				ai_agent_doc.save(ignore_permissions=True)
-				frappe.db.commit()
-			except Exception:
-				pass
-			break
+	ai_agent_doc = frappe.get_doc("AI Agent", agent_name)
+	if not (ai_agent_doc.messages or []):
+		frappe.throw(
+			_("The AI Agent '{0}' has no prompt instructions configured. Configure prompt messages in AI Agent.").format(agent_name)
+		)
 
 	payload = {
 		"user_prompt": prompt,
-		"rewrite_scope": "template",
-		"target_section_id": "",
-		"target_section": "{}",
 		"current_schema": "{}",
 		"current_settings": "{}",
 		"subject": "",
@@ -554,88 +574,6 @@ def _invoke_rewrite_agent(agent_name, prompt, context_kwargs=None, callback_hand
 
 	# Same public entry point used by ai_engine / custom_research / finbyzreach.
 	return ai_agent_doc.agent_service.invoke(query=prompt, **payload)
-
-
-def _find_section(schema, section_id):
-	sections = schema.get("sections") if isinstance(schema, dict) else []
-	if not isinstance(sections, list):
-		return None, -1
-	for index, section in enumerate(sections):
-		if isinstance(section, dict) and section.get("id") == section_id:
-			return section, index
-	return None, -1
-
-
-def _extract_single_section(payload_schema):
-	if isinstance(payload_schema, dict) and isinstance(payload_schema.get("sections"), list):
-		sections = [section for section in payload_schema.get("sections") if isinstance(section, dict)]
-		if len(sections) != 1:
-			frappe.throw(_("For a row rewrite, the AI must return exactly one row/section."))
-		return sections[0]
-	if isinstance(payload_schema, dict) and isinstance(payload_schema.get("columns"), list):
-		return payload_schema
-	frappe.throw(_("For a row rewrite, the AI must return one valid row/section."))
-
-
-def _collect_schema_ids(schema, skip_section_index=None):
-	used = set()
-	for section_index, section in enumerate(schema.get("sections") or []):
-		if skip_section_index is not None and section_index == skip_section_index:
-			continue
-		if not isinstance(section, dict):
-			continue
-		if section.get("id"):
-			used.add(str(section.get("id")))
-		for column in section.get("columns") or []:
-			if not isinstance(column, dict):
-				continue
-			if column.get("id"):
-				used.add(str(column.get("id")))
-			for block in column.get("blocks") or []:
-				if isinstance(block, dict) and block.get("id"):
-					used.add(str(block.get("id")))
-	return used
-
-
-def _unique_ai_id(prefix, used):
-	while True:
-		value = f"{prefix}-{frappe.generate_hash(length=8)}"
-		if value not in used:
-			used.add(value)
-			return value
-
-
-def _dedupe_section_node_ids(section, section_id, used):
-	section["id"] = section_id
-	used.add(section_id)
-	for column in section.get("columns") or []:
-		if not isinstance(column, dict):
-			continue
-		column_id = str(column.get("id") or "")
-		if not column_id or column_id in used:
-			column["id"] = _unique_ai_id("ai-column", used)
-		else:
-			used.add(column_id)
-		for block in column.get("blocks") or []:
-			if not isinstance(block, dict):
-				continue
-			block_id = str(block.get("id") or "")
-			if not block_id or block_id in used:
-				block["id"] = _unique_ai_id("ai-block", used)
-			else:
-				used.add(block_id)
-	return section
-
-
-def _merge_section_proposal(current_schema, section_id, proposed_section):
-	current_section, section_index = _find_section(current_schema, section_id)
-	if section_index < 0 or not current_section:
-		frappe.throw(_("The selected row no longer exists. Select a row and try again."))
-	merged = deepcopy(current_schema)
-	section = deepcopy(proposed_section)
-	used = _collect_schema_ids(current_schema, skip_section_index=section_index)
-	merged["sections"][section_index] = _dedupe_section_node_ids(section, section_id, used)
-	return merged
 
 
 # ---------------------------------------------------------------------------
@@ -675,7 +613,164 @@ def _log_run(template, prompt, agent, before_schema, after_schema, summary, chan
 # Public API
 # ---------------------------------------------------------------------------
 @frappe.whitelist(methods=["POST"])
-def generate_ai_rewrite(template_name, schema, metadata=None, prompt=None, scope="template", section_id=None, chat_history=None):
+def create_template_with_ai(prompt, template_name=None, subject=None, reference_doctype=None):
+	"""Build a complete visual email template from scratch using AI without requiring
+	the user to create an Email Template document first.
+
+	Creates the Email Template record with visual mode, saves initial chat history,
+	and returns the route to directly open the builder with the newly generated design.
+	"""
+	_require_designer()
+	frappe.has_permission("Email Template", "create", throw=True)
+
+	settings = _settings()
+	prompt = str(prompt or "").strip()
+	if not prompt:
+		frappe.throw(_("Describe the email template you want to create."))
+	if len(prompt) > MAX_PROMPT_CHARS:
+		frappe.throw(_("Your instructions are too long. Keep them under {0} characters.").format(MAX_PROMPT_CHARS))
+
+	agent_name = _generator_agent(settings)
+	if not _ai_enabled(settings) or not agent_name:
+		frappe.throw(_("AI generation is not enabled or configured in Followup Settings."))
+
+	starter_schema = validate_schema(None)
+
+	starter_context = {
+		"user_prompt": prompt,
+		"current_schema": json.dumps(starter_schema, separators=(",", ":")),
+		"current_settings": json.dumps(starter_schema.get("settings", {}), separators=(",", ":")),
+		"subject": str(subject or "").strip(),
+		"preheader": "",
+		"reference_doctype": str(reference_doctype or "").strip(),
+		"block_types": ", ".join(sorted(BLOCK_TYPES)),
+		"layouts": ", ".join(LAYOUTS.keys()),
+		"available_images": "(Brand new template. Use the `generate_email_image` tool if visuals, hero banners, or photos are needed.)",
+		"current_palette": "(Choose a modern, high-contrast, visually pleasing palette matching the requested email topic)",
+		"chat_history": "(New template creation from scratch)",
+	}
+
+	callback_name = str(template_name or "New Template")
+	callback_handler = EmailBuilderThinkingCallback(callback_name, frappe.session.user)
+
+	try:
+		raw = _invoke_rewrite_agent(agent_name, prompt, starter_context, callback_handler=callback_handler)
+	except Exception as exc:
+		frappe.log_error(frappe.get_traceback(), f"Email Builder AI generation failed - {agent_name}")
+		frappe.throw(_("The AI agent could not generate the template: {0}").format(str(exc)[:250]))
+
+	payload = _coerce_ai_payload(raw)
+	ai_schema = _extract_schema(payload)
+	proposed_schema = ai_schema
+
+	proposed_subject = str(payload.get("subject") or subject or "").strip()
+	summary = str(payload.get("summary") or "")[:1000]
+	change_notes = _string_list(payload.get("change_notes"))
+
+	# Determine clean, unique template name
+	final_template_name = str(template_name or "").strip()[:140]
+	if not final_template_name:
+		source_title = proposed_subject or prompt[:40]
+		base_name = re.sub(r"[^a-zA-Z0-9\s\-]", "", source_title).strip()
+		if not base_name:
+			base_name = "AI Email Template"
+		base_name = base_name[:50].strip()
+
+		candidate = base_name
+		counter = 1
+		while frappe.db.exists("Email Template", candidate):
+			counter += 1
+			candidate = f"{base_name} {counter}"
+		final_template_name = candidate
+	else:
+		if frappe.db.exists("Email Template", final_template_name):
+			frappe.throw(_("Email Template {0} already exists").format(frappe.bold(final_template_name)))
+
+	if not proposed_subject:
+		proposed_subject = final_template_name
+
+	img_warnings = _resolve_generated_images(proposed_schema, template_name=final_template_name)
+	raw_warnings = _string_list(payload.get("warnings")) + img_warnings
+	warnings = [w.strip() for w in raw_warnings if str(w or "").strip()]
+
+	proposed_preheader = str(payload.get("preheader") or "")
+
+	proposed_schema, _ = _sanitize_schema_tokens(proposed_schema)
+	proposed_subject, _ = _sanitize_token_text(proposed_subject)
+	proposed_preheader, _ = _sanitize_token_text(proposed_preheader)
+
+	subject_source = validate_semantic_tokens(proposed_subject[:140])
+	compiled_subject = _compiled_subject(subject_source)
+	validate_template(compiled_subject)
+
+	state = _render_builder_request(
+		proposed_schema,
+		{"subject": subject_source, "preheader": proposed_preheader, "validate_dynamic_fields": 0},
+	)
+	normalized_schema = state["schema"]
+	compiled = state["compiled"]
+	validate_template(compiled["html"])
+	issues = compiled.get("issues") or []
+
+	doc = frappe.get_doc({
+		"doctype": "Email Template",
+		"name": final_template_name,
+		"subject": compiled_subject,
+		"use_html": 1,
+		"response_html": compiled["html"],
+		"custom_builder_mode": "Visual",
+		"custom_builder_schema": json.dumps(compiled["schema"], separators=(",", ":")),
+		"custom_builder_schema_version": 1,
+		"custom_builder_content_hash": _content_hash(compiled["html"]),
+		"custom_builder_subject_source": subject_source,
+	})
+	doc.insert()
+
+	proposal_id = _log_run(
+		final_template_name, prompt, agent_name, starter_schema, normalized_schema,
+		summary, change_notes, warnings, issues, status="Success",
+	)
+
+	result_payload = {
+		"proposal_id": proposal_id,
+		"scope": "template",
+		"target_kind": "template",
+		"target_id": "",
+		"summary": summary,
+		"schema": normalized_schema,
+		"metadata": {
+			"subject": state["subject_source"],
+			"preheader": state["preheader"],
+		},
+		"change_notes": change_notes,
+		"warnings": warnings,
+		"preview_html": _format_preview_html(state["subject"], state["html_content"]),
+		"preview_subject": state["subject"],
+		"issues": issues,
+	}
+
+	# Seed initial conversation in Email Builder AI Chat
+	timestamp = int(frappe.utils.now_datetime().timestamp() * 1000)
+	user_turn = {"id": f"u-{timestamp}", "role": "user", "text": prompt}
+	assistant_turn = {
+		"id": proposal_id or f"a-{timestamp}",
+		"role": "assistant",
+		"text": summary or _("Here is your newly generated email template:"),
+		"proposal": result_payload,
+		"status": "accepted",
+	}
+	_save_chat_history(final_template_name, [user_turn, assistant_turn])
+
+	return {
+		"name": doc.name,
+		"route": f"/builder?template={quote(doc.name, safe='')}",
+		"subject": compiled_subject,
+		"summary": summary,
+	}
+
+
+@frappe.whitelist(methods=["POST"])
+def generate_ai_rewrite(template_name, schema, metadata=None, prompt=None, chat_history=None, scope="template", section_id=None):
 	"""Generate an AI rewrite proposal for the current builder document.
 
 	Returns a validated, compiled proposal. Nothing is persisted to the
@@ -696,25 +791,11 @@ def generate_ai_rewrite(template_name, schema, metadata=None, prompt=None, scope
 	if not isinstance(metadata, dict):
 		metadata = {}
 
-	scope = str(scope or "template").strip().lower()
-	if scope not in ("template", "section"):
-		frappe.throw(_("Unsupported AI rewrite scope."))
-
-	agent_name = _row_rewrite_agent(settings) if scope == "section" else _rewrite_agent(settings)
+	agent_name = _rewrite_agent(settings)
 	if not _ai_enabled(settings) or not agent_name:
-		frappe.throw(_("AI rewriting is not enabled or configured for this scope in Followup Settings."))
-	target_section = None
-	if scope == "section":
-		section_id = str(section_id or "").strip()
-		if not section_id:
-			frappe.throw(_("Select a row before asking AI to rewrite it."))
-		target_section, _section_index = _find_section(current_schema, section_id)
-		if not target_section:
-			frappe.throw(_("The selected row no longer exists. Select a row and try again."))
+		frappe.throw(_("AI rewriting is not enabled or configured in Followup Settings."))
 
-	context = _agent_context(
-		doc, current_schema, metadata, prompt, scope=scope, target_section=target_section, chat_history=chat_history
-	)
+	context = _agent_context(doc, current_schema, metadata, prompt, chat_history=chat_history)
 
 	callback_handler = EmailBuilderThinkingCallback(template_name, frappe.session.user)
 	try:
@@ -727,7 +808,7 @@ def generate_ai_rewrite(template_name, schema, metadata=None, prompt=None, scope
 		)
 		# Persist error turn so the UI conversation thread remains intact
 		try:
-			error_msg = _("The AI agent could not complete the rewrite. Please try again.")
+			error_msg = _("The AI agent could not complete the rewrite: {0}").format(str(exc)[:200])
 			timestamp = int(frappe.utils.now_datetime().timestamp() * 1000)
 			existing = _get_saved_chat_history(template_name)
 			_save_chat_history(template_name, existing + [
@@ -755,11 +836,8 @@ def generate_ai_rewrite(template_name, schema, metadata=None, prompt=None, scope
 		except Exception:
 			pass
 		raise
-	if scope == "section":
-		proposed_schema = _merge_section_proposal(current_schema, section_id, _extract_single_section(ai_schema))
-	else:
-		proposed_schema = ai_schema
 
+	proposed_schema = ai_schema
 	img_warnings = _resolve_generated_images(proposed_schema, template_name=template_name)
 	summary = str(payload.get("summary") or "")[:1000]
 	change_notes = _string_list(payload.get("change_notes"))
@@ -770,8 +848,8 @@ def generate_ai_rewrite(template_name, schema, metadata=None, prompt=None, scope
 		if w_clean and w_clean not in warnings:
 			warnings.append(w_clean)
 
-	proposed_subject = str((metadata.get("subject") if scope == "section" else payload.get("subject")) or metadata.get("subject") or _subject_source(doc) or "")
-	proposed_preheader = str((metadata.get("preheader") if scope == "section" else payload.get("preheader")) or metadata.get("preheader") or "")
+	proposed_subject = str(payload.get("subject") or metadata.get("subject") or _subject_source(doc) or "")
+	proposed_preheader = str(payload.get("preheader") or metadata.get("preheader") or "")
 
 	# Strip any unsupported Jinja the agent may have invented so a single bad
 	# token cannot crash the whole proposal. Valid merge tokens are preserved.
@@ -841,9 +919,9 @@ def generate_ai_rewrite(template_name, schema, metadata=None, prompt=None, scope
 
 	result_payload = {
 		"proposal_id": proposal_id,
-		"scope": scope,
-		"target_kind": "section" if scope == "section" else "template",
-		"target_id": section_id if scope == "section" else "",
+		"scope": "template",
+		"target_kind": "template",
+		"target_id": "",
 		"summary": summary,
 		"schema": normalized_schema,
 		"metadata": {
@@ -964,8 +1042,8 @@ def get_ai_run_preview(proposal_id: str):
 
 	return {
 		"proposal_id": run.name,
-		"scope": "section" if run.agent and "Row" in run.agent else "template",
-		"target_kind": "section" if run.agent and "Row" in run.agent else "template",
+		"scope": "template",
+		"target_kind": "template",
 		"target_id": "",
 		"summary": run.summary or "",
 		"schema": after_schema,

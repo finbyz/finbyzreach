@@ -417,7 +417,6 @@ function AiRewriteDialog() {
     aiProposal,
     aiGenerating,
     aiLiveStep,
-    aiScope,
     aiSamplePrompts,
     chatTurns,
     setAiPrompt,
@@ -440,8 +439,7 @@ function AiRewriteDialog() {
     }
   }, [chatTurns, aiGenerating, aiProposal])
 
-  const sectionMode = aiScope?.type === 'section'
-  const title = sectionMode ? 'AI Row Copilot' : 'AI Copilot'
+  const title = 'AI Copilot'
   const chips = aiSamplePrompts.length ? aiSamplePrompts : AI_PROMPT_FALLBACK
   const accent = document?.schema.settings.button_background || document?.schema.settings.link_color || ''
   const accentStyle = accent ? ({ ['--ai-accent']: accent } as CSSProperties) : undefined
@@ -514,9 +512,7 @@ function AiRewriteDialog() {
               {chatTurns.length === 0 && (
                 <div className="ai-chat-welcome">
                   <p className="ai-lead">
-                    {sectionMode
-                      ? 'Ask the AI Copilot to rewrite this selected row. Describe your vision, paste a URL, or ask for specific style changes.'
-                      : 'Ask the AI Copilot to design or edit your email. You can refine the email over multiple conversation turns.'}
+                    Ask the AI Copilot to design or edit your email. You can refine the email over multiple conversation turns.
                   </p>
                 </div>
               )}
@@ -601,7 +597,7 @@ function AiRewriteDialog() {
                   className="ai-prompt-input"
                   value={aiPrompt}
                   onChange={(event) => setAiPrompt(event.target.value)}
-                  placeholder={sectionMode ? 'e.g. Make this row more persuasive or update button color' : 'e.g. Make it more modern or paste a URL...'}
+                  placeholder="e.g. Make it more modern or paste a URL..."
                   rows={2}
                   autoFocus
                   disabled={aiGenerating}
@@ -632,12 +628,12 @@ function AiRewriteDialog() {
                 />
                 <button
                   type="button"
-                  className="button button--secondary button--ai"
+                  className="button button--ai"
                   onClick={generateAiRewrite}
                   disabled={!aiPrompt.trim() || aiGenerating}
                   title="Send message to AI Copilot"
                 >
-                  <Wand2 size={15} />
+                  <Wand2 size={16} />
                 </button>
               </div>
             </div>
@@ -659,7 +655,7 @@ function AiRewriteDialog() {
                 </section>
                 <section className="ai-pane ai-pane--after">
                   <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span>After · {sectionMode ? 'row proposal' : 'AI proposal'}</span>
+                    <span>After · AI proposal</span>
                     <button
                       type="button"
                       className="button button--tertiary button--sm"
@@ -699,7 +695,7 @@ function AiRewriteDialog() {
                       <RefreshCw size={15} /> Regenerate
                     </button>
                     <button type="button" className="button button--primary" onClick={acceptAiProposal} disabled={!document}>
-                      <CheckCircle2 size={15} /> {sectionMode ? 'Accept Row' : 'Accept Changes'}
+                      <CheckCircle2 size={15} /> Accept Changes
                     </button>
                   </>
                 )}

@@ -411,12 +411,28 @@ def _validate_section(section, seen_ids):
 
 def validate_schema(value) -> dict:
 	schema = parse_json(value, max_bytes=MAX_SCHEMA_BYTES)
-	if schema.get("version", SCHEMA_VERSION) != SCHEMA_VERSION:
+	raw_version = schema.get("version")
+	if raw_version is not None:
+		try:
+			version = int(float(str(raw_version).strip().lstrip("vV")))
+		except (ValueError, TypeError):
+			version = SCHEMA_VERSION
+	else:
+		version = SCHEMA_VERSION
+
+	if version > 5:
 		frappe.throw(_("Unsupported builder schema version"))
+	raw_settings = schema.get("settings")
+	if isinstance(raw_settings, str):
+		try:
+			raw_settings = json.loads(raw_settings)
+		except Exception:
+			raw_settings = None
+
 	settings = dict(DEFAULT_SETTINGS)
-	if schema.get("settings") and not isinstance(schema["settings"], dict):
-		frappe.throw(_("Builder settings must be an object"))
-	settings.update(schema.get("settings") or {})
+	if isinstance(raw_settings, dict):
+		settings.update(raw_settings)
+
 	settings["content_width"] = _bounded_int(settings.get("content_width"), 600, 320, 900)
 	for key in ("body_background", "content_background", "text_color", "link_color", "button_background", "button_text_color"):
 		settings[key] = _css(settings.get(key), "color")
@@ -427,9 +443,21 @@ def validate_schema(value) -> dict:
 		settings[key] = val
 	settings["font_family"] = _font_family(settings.get("font_family"))
 	settings["link_decoration"] = settings.get("link_decoration") if settings.get("link_decoration") in {"none", "underline"} else "underline"
-	sections = schema.get("sections") or []
-	if not isinstance(sections, list):
-		sections = []
+
+	raw_sections = schema.get("sections")
+	if isinstance(raw_sections, str):
+		try:
+			raw_sections = json.loads(raw_sections)
+		except Exception:
+			raw_sections = []
+	if isinstance(raw_sections, dict):
+		if "columns" in raw_sections:
+			raw_sections = [raw_sections]
+		else:
+			raw_sections = list(raw_sections.values())
+	if not isinstance(raw_sections, list):
+		raw_sections = []
+	sections = raw_sections
 	seen_ids = set()
 	normalized = {
 		"version": SCHEMA_VERSION,

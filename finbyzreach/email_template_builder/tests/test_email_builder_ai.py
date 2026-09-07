@@ -7,7 +7,7 @@ import frappe
 from frappe.tests import IntegrationTestCase
 
 from .. import ai
-from ..ai import accept_ai_proposal, generate_ai_rewrite, get_builder_ai_settings
+from ..ai import accept_ai_proposal, create_template_with_ai, generate_ai_rewrite, get_builder_ai_settings
 from ..constants import LAYOUTS
 from ..schema import validate_schema
 
@@ -32,20 +32,6 @@ def _schema(layout="1", block_type="text"):
 			}
 		],
 	}
-
-
-def _two_section_schema():
-	schema = _schema()
-	first = schema["sections"][0]
-	first["id"] = "section-a"
-	first["columns"][0]["blocks"][0]["content"]["html"] = "<p>Keep this untouched</p>"
-	second = _schema()["sections"][0]
-	second["id"] = "section-b"
-	second["columns"][0]["id"] = "column-b"
-	second["columns"][0]["blocks"][0]["id"] = "block-b"
-	second["columns"][0]["blocks"][0]["content"]["html"] = "<p>Rewrite me</p>"
-	schema["sections"].append(second)
-	return schema
 
 
 def _email_template():
@@ -104,11 +90,17 @@ class TestEmailBuilderAI(IntegrationTestCase):
 		self.assertEqual(result["summary"], "ok")
 		self.assertTrue(result["schema"]["sections"])
 
-	def test_rejects_unsupported_block(self):
+	def test_coerces_unsupported_block_to_text(self):
 		bad = _schema("1", "text")
 		bad["sections"][0]["columns"][0]["blocks"][0]["type"] = "iframe"
+		result = self._generate({"summary": "ok", "schema": bad})
+		self.assertEqual(result["schema"]["sections"][0]["columns"][0]["blocks"][0]["type"], "text")
+
+	def test_rejects_empty_blocks_schema(self):
+		empty = _schema("1", "text")
+		empty["sections"][0]["columns"][0]["blocks"] = []
 		with self.assertRaises(frappe.exceptions.ValidationError):
-			self._generate({"summary": "bad", "schema": bad})
+			self._generate({"summary": "bad", "schema": empty})
 
 	def test_empty_prompt_is_rejected(self):
 		with self.assertRaises(frappe.exceptions.ValidationError):
@@ -162,16 +154,13 @@ class TestEmailBuilderAI(IntegrationTestCase):
 				return {"schema": _schema(), "summary": "ok"}
 
 		with patch("frappe.db.exists", return_value=True), patch(
-			"frappe.get_doc", return_value=frappe._dict(agent_service=Service())
+			"frappe.get_doc", return_value=frappe._dict(agent_service=Service(), messages=[frappe._dict(content="hello {user_prompt}")])
 		):
 			ai._invoke_rewrite_agent("Test Rewrite Agent", "Rewrite it", {"current_schema": "{}"})
 
 		for key in (
 			"query",
 			"user_prompt",
-			"rewrite_scope",
-			"target_section_id",
-			"target_section",
 			"current_schema",
 			"current_settings",
 			"subject",
@@ -181,6 +170,7 @@ class TestEmailBuilderAI(IntegrationTestCase):
 			"layouts",
 			"available_images",
 			"current_palette",
+			"chat_history",
 		):
 			self.assertIn(key, calls)
 
@@ -221,41 +211,50 @@ class TestEmailBuilderAI(IntegrationTestCase):
 			probe = get_builder_ai_settings()
 		titles = [row["title"] for row in probe["sample_prompts"]]
 		self.assertIn(title, titles)
-	def test_section_rewrite_replaces_only_selected_section(self):
-		current = _two_section_schema()
-		proposal_section = _schema()["sections"][0]
-		proposal_section["id"] = "agent-new-id"
-		proposal_section["columns"][0]["blocks"][0]["content"]["html"] = "<p>Rewritten selected row</p>"
+
+	def test_create_template_with_ai_creates_new_record_and_chat(self):
+		generated_schema = _schema("1", "text")
 		with patch.object(ai, "_settings", return_value=ENABLED_SETTINGS), patch.object(
-			ai, "_invoke_rewrite_agent", return_value={"summary": "Row updated", "schema": {"sections": [proposal_section]}}
+			ai,
+			"_invoke_rewrite_agent",
+			return_value={
+				"summary": "Brand new design",
+				"change_notes": ["Created layout from prompt"],
+				"subject": f"Welcome Test {frappe.generate_hash(length=4)}",
+				"schema": generated_schema,
+			},
 		):
-			result = generate_ai_rewrite(
-				self.template.name,
-				json.dumps(current),
-				metadata={"subject": "Original subject", "preheader": "Original preview"},
-				prompt="Improve selected row",
-				scope="section",
-				section_id="section-b",
+			result = create_template_with_ai(
+				prompt="Create a welcoming email for new users",
+				template_name=f"_Test New AI {frappe.generate_hash(length=6)}",
 			)
 
-		self.assertEqual(result["scope"], "section")
-		self.assertEqual(result["target_id"], "section-b")
-		self.assertIn("Keep this untouched", result["schema"]["sections"][0]["columns"][0]["blocks"][0]["content"]["html"])
-		self.assertEqual(result["schema"]["sections"][1]["id"], "section-b")
-		self.assertIn("Rewritten selected row", result["schema"]["sections"][1]["columns"][0]["blocks"][0]["content"]["html"])
-		self.assertEqual(result["metadata"]["subject"], "Original subject")
-		self.assertEqual(result["metadata"]["preheader"], "Original preview")
+		self.assertTrue(result.get("name"))
+		self.assertIn("/builder?template=", result.get("route"))
+		self.assertTrue(frappe.db.exists("Email Template", result["name"]))
 
-	def test_section_rewrite_rejects_multiple_sections(self):
-		current = _two_section_schema()
-		with patch.object(ai, "_settings", return_value=ENABLED_SETTINGS), patch.object(
-			ai, "_invoke_rewrite_agent", return_value={"summary": "bad", "schema": {"sections": [_schema()["sections"][0], _schema()["sections"][0]]}}
-		):
-			with self.assertRaises(frappe.exceptions.ValidationError):
-				generate_ai_rewrite(self.template.name, json.dumps(current), prompt="x", scope="section", section_id="section-b")
+		doc = frappe.get_doc("Email Template", result["name"])
+		self.assertEqual(doc.custom_builder_mode, "Visual")
+		self.assertIn("Hello there", doc.response_html)
 
-	def test_section_rewrite_requires_existing_section(self):
-		with patch.object(ai, "_settings", return_value=ENABLED_SETTINGS):
-			with self.assertRaises(frappe.exceptions.ValidationError):
-				generate_ai_rewrite(self.template.name, json.dumps(_schema()), prompt="x", scope="section", section_id="missing")
+		# Verify AI chat history was initialized
+		chat = ai._get_saved_chat_history(result["name"])
+		self.assertEqual(len(chat), 2)
+		self.assertEqual(chat[0]["role"], "user")
+		self.assertEqual(chat[1]["role"], "assistant")
+		self.assertEqual(chat[1]["status"], "accepted")
+
+		# Cleanup
+		frappe.delete_doc("Email Template", result["name"], ignore_permissions=True, force=True)
+
+	def test_schema_version_coerced_gracefully(self):
+		for ver in (2, "1", "1.0", "v1", "2.0"):
+			res = validate_schema({"version": ver, "settings": {}, "sections": []})
+			self.assertEqual(res["version"], 1)
+
+	def test_settings_coerced_gracefully(self):
+		for bad_settings in ("default", "{}", None, [], True, 123):
+			res = validate_schema({"version": 1, "settings": bad_settings, "sections": []})
+			self.assertIsInstance(res["settings"], dict)
+			self.assertEqual(res["settings"]["content_width"], 600)
 

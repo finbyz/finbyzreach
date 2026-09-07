@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, use
 import { useDroppable, type DraggableAttributes, type DraggableSyntheticListeners } from '@dnd-kit/core'
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { AlignCenter, AlignLeft, AlignRight, Bold, Bookmark, Copy, EyeOff, GripVertical, ImagePlus, Italic, Link, List, ListOrdered, Pencil, Plus, RemoveFormatting, Sparkles, Trash2, Underline } from 'lucide-react'
+import { AlignCenter, AlignLeft, AlignRight, Bold, Bookmark, Copy, EyeOff, GripVertical, ImagePlus, Italic, Link, List, ListOrdered, Pencil, Plus, RemoveFormatting, Trash2, Underline } from 'lucide-react'
 
 import { BLOCKS, findBlock, LAYOUTS, nodeCss, normalizeColumnWidths, normalizeLength } from '../lib/builder'
 import { insertLineBreakAtSelection, insertTextAtSelection, runLegacyEditorCommand } from '../lib/editorDom'
@@ -29,8 +29,6 @@ type CanvasProps = {
   onUpdateNode: (selection: NonNullable<Selection>, path: string, value: unknown) => void
   onResizeColumns: (sectionId: string, widths: number[]) => void
   onEditSection: (sectionId: string, tab: 'content' | 'visibility') => void
-  onAiRewriteSection?: (sectionId: string) => void
-  aiEnabled?: boolean
   onDuplicate: (selection: NonNullable<Selection>) => void
   onDelete: (selection: NonNullable<Selection>) => void
   onSaveComponent: (selection: NonNullable<Selection>) => void
@@ -521,14 +519,12 @@ function RichTextToolbar({
   )
 }
 
-function NodeToolbar({ selection, listeners, attributes, onEdit, onVisibility, onAiRewrite, aiEligible, onDuplicate, onDelete, onSave }: {
+function NodeToolbar({ selection, listeners, attributes, onEdit, onVisibility, onDuplicate, onDelete, onSave }: {
   selection: NonNullable<Selection>
   listeners?: DraggableSyntheticListeners
   attributes?: DraggableAttributes
   onEdit?: () => void
   onVisibility?: () => void
-  onAiRewrite?: () => void
-  aiEligible?: boolean
   onDuplicate: () => void
   onDelete: () => void
   onSave: () => void
@@ -540,7 +536,6 @@ function NodeToolbar({ selection, listeners, attributes, onEdit, onVisibility, o
           <button type="button" title="Edit row" aria-label="Edit row" onClick={onEdit}><Pencil size={13} /></button>
           <button type="button" title="Visibility" aria-label="Edit row visibility" onClick={onVisibility}><EyeOff size={13} /></button>
           <button type="button" title="Duplicate" aria-label="Duplicate row" onClick={onDuplicate}><Copy size={14} /></button>
-          {aiEligible && onAiRewrite && <button type="button" className="node-toolbar__ai" title="Rewrite row with AI" aria-label="Rewrite row with AI" onClick={onAiRewrite}><Sparkles size={13} /></button>}
           <button type="button" title="Save to library" aria-label="Save to library" onClick={onSave}><Bookmark size={14} /></button>
           <button type="button" className="node-delete" title="Delete" aria-label="Delete row" onClick={onDelete}><Trash2 size={14} /></button>
         </>
@@ -830,7 +825,7 @@ function SortableSection({ section, props }: { section: BuilderSection; props: C
     >
       {props.showStructure && <span className="section-label">Row · {displayWidths.map((width) => Math.round(width) + '%').join(' / ')}</span>}
       <button type="button" className="row-drag-rail" title="Drag row" aria-label="Drag row" onClick={(event) => { event.stopPropagation(); props.onSelect({ kind: 'section', id: section.id }) }} {...sortable.attributes} {...sortable.listeners}><GripVertical size={15} /></button>
-      {!props.readOnly && <NodeToolbar selection={{ kind: 'section', id: section.id }} onEdit={() => props.onEditSection(section.id, 'content')} onAiRewrite={() => props.onAiRewriteSection?.(section.id)} aiEligible={props.aiEnabled} onVisibility={() => props.onEditSection(section.id, 'visibility')} onDuplicate={() => props.onDuplicate({ kind: 'section', id: section.id })} onDelete={() => props.onDelete({ kind: 'section', id: section.id })} onSave={() => props.onSaveComponent({ kind: 'section', id: section.id })} />}
+      {!props.readOnly && <NodeToolbar selection={{ kind: 'section', id: section.id }} onEdit={() => props.onEditSection(section.id, 'content')} onVisibility={() => props.onEditSection(section.id, 'visibility')} onDuplicate={() => props.onDuplicate({ kind: 'section', id: section.id })} onDelete={() => props.onDelete({ kind: 'section', id: section.id })} onSave={() => props.onSaveComponent({ kind: 'section', id: section.id })} />}
       <div className={`canvas-columns${mobile && section.mobile_stack === 'reverse' ? ' is-reverse' : ''}`} style={{ gridTemplateColumns, alignItems }}>
         {section.columns.map((column) => <Column key={column.id} column={column} props={props} />)}
         {!mobile && displayWidths.slice(0, -1).map((width, index) => {

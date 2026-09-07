@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react'
 import { closestCenter, DndContext, DragOverlay } from '@dnd-kit/core'
 
 import './App.css'
+import { AiTemplateCreator } from './components/AiTemplateCreator'
 import { BuilderHeader } from './components/BuilderHeader'
 import { BuilderWorkspace } from './components/BuilderWorkspace'
 import { DialogLoadingFallback, Spinner } from './components/ui'
@@ -33,13 +34,7 @@ function BuilderApp() {
   } = useBuilder()
 
   if (!templateName) {
-    return (
-      <div className="fatal-state">
-        <strong>No Email Template selected</strong>
-        <span>Open the builder from an Email Template in Desk.</span>
-        <a href="/app/email-template">Back to Email Templates</a>
-      </div>
-    )
+    return <AiTemplateCreator mode="page" />
   }
 
   if (sdk.load.error) {

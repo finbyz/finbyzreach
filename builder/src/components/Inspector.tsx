@@ -40,8 +40,6 @@ type InspectorProps = {
   onInsertMergeField: (blockId: string, token: string) => boolean
   onDuplicate: (selection: NonNullable<Selection>) => void
   onDelete: (selection: NonNullable<Selection>) => void
-  onAiRewriteSection?: (sectionId: string) => void
-  aiEnabled?: boolean
   readOnly?: boolean
 }
 
