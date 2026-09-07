@@ -7,4 +7,5 @@ finbyzreach/docs/current
 node_modules/
 finbyzreach/public/builder
 finbyzreach/www/builder.html
-finbyzreach/public/node_modulesgraphify-out/
+finbyzreach/public/node_modules
+graphify-out/
