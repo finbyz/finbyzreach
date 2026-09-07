@@ -987,8 +987,8 @@ def _schedule_campaign_internal(campaign_name):
 	validate_lead_filter_groups(campaign.custom_exclude_filters_json)
 	validate_excluded_email_groups(campaign.custom_exclude_email_groups_json)
 	start_slot = calculate_batch_slots(campaign, 1)[0]
-	if start_slot < now_datetime() - timedelta(minutes=1):
-		frappe.throw(_("Campaign start time cannot be in the past"))
+	# if start_slot < now_datetime() - timedelta(minutes=1):
+	# 	frappe.throw(_("Campaign start time cannot be in the past"))
 
 	snapshot = get_campaign_snapshot(
 		campaign.custom_email_template,
