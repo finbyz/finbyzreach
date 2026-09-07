@@ -471,11 +471,37 @@ def _format_chat_history(chat_history):
 	return "\n".join(formatted) if formatted else "(no prior chat history)"
 
 
-def _agent_context(doc, schema, metadata, prompt, chat_history=None):
+def _scope_instruction(schema, scope="template", section_id=None):
+	"""Tell the agent which part of the document it is allowed to touch.
+
+	``generate_ai_rewrite`` has always accepted a scope, but it never reached
+	the prompt, so a row-scoped edit asked the agent to rewrite the entire
+	template and then silently discarded everything outside the row.
+	"""
+	if scope != "section" or not section_id:
+		return (
+			"You are editing the whole template. Any section may change, but only "
+			"where the request calls for it."
+		)
+	labels = []
+	for section in (schema.get("sections") or []):
+		if isinstance(section, dict) and section.get("id") == section_id:
+			labels.append(section.get("layout") or "1")
+	layout = labels[0] if labels else "unknown"
+	return (
+		f"You are editing ONE section only: id \"{section_id}\" (layout \"{layout}\"). "
+		"Return the complete document, but every other section must come back "
+		"byte-identical — same ids, same copy, same styling. Change nothing outside "
+		f"section \"{section_id}\"."
+	)
+
+
+def _agent_context(doc, schema, metadata, prompt, chat_history=None, scope="template", section_id=None):
 	settings = schema.get("settings") if isinstance(schema, dict) else {}
 	images = _collect_images(schema)
 	palette = _collect_palette(schema)
 	return {
+		"scope_instruction": _scope_instruction(schema, scope, section_id),
 		"user_prompt": prompt,
 		"current_schema": json.dumps(schema, separators=(",", ":")),
 		"current_settings": json.dumps(settings or {}, separators=(",", ":")),
@@ -574,6 +600,7 @@ def _invoke_rewrite_agent(agent_name, prompt, context_kwargs=None, callback_hand
 		"available_images": "(none - do not add any new images)",
 		"current_palette": "(reuse the existing design settings colors)",
 		"chat_history": "(no prior chat history)",
+		"scope_instruction": "You are editing the whole template.",
 	}
 	if context_kwargs:
 		for k, v in context_kwargs.items():
@@ -828,7 +855,10 @@ def generate_ai_rewrite(template_name, schema, metadata=None, prompt=None, chat_
 	if not _ai_enabled(settings) or not agent_name:
 		frappe.throw(_("AI rewriting is not enabled or configured in Followup Settings."))
 
-	context = _agent_context(doc, current_schema, metadata, prompt, chat_history=chat_history)
+	context = _agent_context(
+		doc, current_schema, metadata, prompt, chat_history=chat_history,
+		scope=scope, section_id=section_id,
+	)
 
 	callback_handler = EmailBuilderThinkingCallback(template_name, frappe.session.user)
 	try:

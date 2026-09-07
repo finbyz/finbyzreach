@@ -1,0 +1,41 @@
+{
+  "Email Builder Generator": {
+    "purpose": "Writes a complete template from a blank page.",
+    "llm_provider": "OpenRouter",
+    "llm": "openrouter/google/gemini-2.5-flash",
+    "agent_type": "LangChain Chain",
+    "temperature": 0.25,
+    "max_tokens": 32000,
+    "output_schema": "schemas/generator.output.json",
+    "messages": [
+      { "type": "system", "content_type": "text", "file": "prompts/generator.system.md" },
+      { "type": "human", "content_type": "text", "file": "prompts/generator.human.md" }
+    ]
+  },
+  "Email Builder Copilot": {
+    "purpose": "Edits an existing template in place, narrowly.",
+    "llm_provider": "OpenRouter",
+    "llm": "openrouter/google/gemini-2.5-flash",
+    "agent_type": "LangChain Chain",
+    "temperature": 0.2,
+    "max_tokens": 32000,
+    "output_schema": "schemas/copilot.output.json",
+    "messages": [
+      { "type": "system", "content_type": "text", "file": "prompts/copilot.system.md" },
+      { "type": "human", "content_type": "text", "file": "prompts/copilot.human.md" }
+    ]
+  },
+  "Email Builder Row Copilot": {
+    "purpose": "ORPHANED: no code reads this agent. Row-scoped edits go through Email Builder Copilot with scope='section', which supplies scope_instruction. Kept in sync so it is correct rather than stale if it is ever wired up.",
+    "llm_provider": "OpenRouter",
+    "llm": "openrouter/google/gemini-2.5-flash",
+    "agent_type": "LangChain Chain",
+    "temperature": 0.2,
+    "max_tokens": 32000,
+    "output_schema": "schemas/copilot.output.json",
+    "messages": [
+      { "type": "system", "content_type": "text", "file": "prompts/copilot.system.md" },
+      { "type": "human", "content_type": "text", "file": "prompts/copilot.human.md" }
+    ]
+  }
+}

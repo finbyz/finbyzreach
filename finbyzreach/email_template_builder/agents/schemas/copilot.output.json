@@ -1,0 +1,575 @@
+{
+  "type": "object",
+  "properties": {
+    "summary": {
+      "type": "string",
+      "description": "One or two sentences on what you changed, and any assumption you made."
+    },
+    "change_notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Only what actually changed, one short line each."
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "subject": {
+      "type": "string"
+    },
+    "preheader": {
+      "type": "string"
+    },
+    "schema": {
+      "type": "object",
+      "description": "The complete email document.",
+      "properties": {
+        "version": {
+          "type": "integer"
+        },
+        "settings": {
+          "type": "object",
+          "properties": {
+            "content_width": {
+              "type": "integer",
+              "description": "600 unless there is a reason."
+            },
+            "body_background": {
+              "type": "string"
+            },
+            "content_background": {
+              "type": "string"
+            },
+            "font_family": {
+              "type": "string",
+              "description": "Email-safe stack only."
+            },
+            "font_size": {
+              "type": "string"
+            },
+            "text_color": {
+              "type": "string"
+            },
+            "link_color": {
+              "type": "string"
+            },
+            "link_decoration": {
+              "type": "string",
+              "enum": [
+                "none",
+                "underline"
+              ]
+            },
+            "button_background": {
+              "type": "string"
+            },
+            "button_text_color": {
+              "type": "string"
+            },
+            "button_radius": {
+              "type": "string"
+            },
+            "section_padding": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "content_width",
+            "body_background",
+            "content_background",
+            "font_family",
+            "text_color"
+          ]
+        },
+        "sections": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "layout": {
+                "type": "string",
+                "enum": [
+                  "1",
+                  "1/2:1/2",
+                  "1/3:1/3:1/3",
+                  "1/3:2/3",
+                  "2/3:1/3",
+                  "1/4:1/4:1/4:1/4",
+                  "1/4:3/4",
+                  "3/4:1/4"
+                ],
+                "description": "Column count must match. Never '2', '3' or '4'."
+              },
+              "column_widths": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "vertical_align": {
+                "type": "string",
+                "enum": [
+                  "top",
+                  "middle",
+                  "bottom"
+                ]
+              },
+              "mobile_stack": {
+                "type": "string",
+                "enum": [
+                  "stack",
+                  "reverse",
+                  "none"
+                ]
+              },
+              "style": {
+                "type": "object",
+                "description": "Presentation for this node. Alignment and padding live HERE, never in content.",
+                "properties": {
+                  "align": {
+                    "type": "string",
+                    "enum": [
+                      "left",
+                      "center",
+                      "right"
+                    ],
+                    "description": "REQUIRED on every image and button block. Omitting it renders the block left-aligned."
+                  },
+                  "background": {
+                    "type": "string",
+                    "description": "Hex colour or 'transparent'."
+                  },
+                  "padding": {
+                    "type": "object",
+                    "description": "Four explicit sides. A CSS shorthand string is discarded.",
+                    "properties": {
+                      "top": {
+                        "type": "string",
+                        "description": "e.g. '24px'"
+                      },
+                      "right": {
+                        "type": "string",
+                        "description": "e.g. '24px'"
+                      },
+                      "bottom": {
+                        "type": "string",
+                        "description": "e.g. '24px'"
+                      },
+                      "left": {
+                        "type": "string",
+                        "description": "e.g. '24px'"
+                      }
+                    },
+                    "required": [
+                      "top",
+                      "right",
+                      "bottom",
+                      "left"
+                    ]
+                  },
+                  "font_size": {
+                    "type": "string"
+                  },
+                  "line_height": {
+                    "type": "string"
+                  },
+                  "color": {
+                    "type": "string"
+                  },
+                  "font_family": {
+                    "type": "string"
+                  },
+                  "font_weight": {
+                    "type": "string",
+                    "enum": [
+                      "normal",
+                      "bold",
+                      "400",
+                      "500",
+                      "600",
+                      "700"
+                    ]
+                  },
+                  "width": {
+                    "type": "string"
+                  },
+                  "radius": {
+                    "type": "string"
+                  },
+                  "border_color": {
+                    "type": "string"
+                  },
+                  "border_width": {
+                    "type": "string"
+                  },
+                  "button_background": {
+                    "type": "string"
+                  },
+                  "button_text_color": {
+                    "type": "string"
+                  },
+                  "button_padding_x": {
+                    "type": "string"
+                  },
+                  "button_padding_y": {
+                    "type": "string"
+                  }
+                }
+              },
+              "columns": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "style": {
+                      "type": "object",
+                      "description": "Presentation for this node. Alignment and padding live HERE, never in content.",
+                      "properties": {
+                        "align": {
+                          "type": "string",
+                          "enum": [
+                            "left",
+                            "center",
+                            "right"
+                          ],
+                          "description": "REQUIRED on every image and button block. Omitting it renders the block left-aligned."
+                        },
+                        "background": {
+                          "type": "string",
+                          "description": "Hex colour or 'transparent'."
+                        },
+                        "padding": {
+                          "type": "object",
+                          "description": "Four explicit sides. A CSS shorthand string is discarded.",
+                          "properties": {
+                            "top": {
+                              "type": "string",
+                              "description": "e.g. '24px'"
+                            },
+                            "right": {
+                              "type": "string",
+                              "description": "e.g. '24px'"
+                            },
+                            "bottom": {
+                              "type": "string",
+                              "description": "e.g. '24px'"
+                            },
+                            "left": {
+                              "type": "string",
+                              "description": "e.g. '24px'"
+                            }
+                          },
+                          "required": [
+                            "top",
+                            "right",
+                            "bottom",
+                            "left"
+                          ]
+                        },
+                        "font_size": {
+                          "type": "string"
+                        },
+                        "line_height": {
+                          "type": "string"
+                        },
+                        "color": {
+                          "type": "string"
+                        },
+                        "font_family": {
+                          "type": "string"
+                        },
+                        "font_weight": {
+                          "type": "string",
+                          "enum": [
+                            "normal",
+                            "bold",
+                            "400",
+                            "500",
+                            "600",
+                            "700"
+                          ]
+                        },
+                        "width": {
+                          "type": "string"
+                        },
+                        "radius": {
+                          "type": "string"
+                        },
+                        "border_color": {
+                          "type": "string"
+                        },
+                        "border_width": {
+                          "type": "string"
+                        },
+                        "button_background": {
+                          "type": "string"
+                        },
+                        "button_text_color": {
+                          "type": "string"
+                        },
+                        "button_padding_x": {
+                          "type": "string"
+                        },
+                        "button_padding_y": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "blocks": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "description": "Stable slug, e.g. 'blk_hero_cta'."
+                          },
+                          "type": {
+                            "type": "string",
+                            "enum": [
+                              "text",
+                              "image",
+                              "button",
+                              "divider",
+                              "spacer",
+                              "social",
+                              "preview_url"
+                            ]
+                          },
+                          "style": {
+                            "type": "object",
+                            "description": "Presentation for this node. Alignment and padding live HERE, never in content.",
+                            "properties": {
+                              "align": {
+                                "type": "string",
+                                "enum": [
+                                  "left",
+                                  "center",
+                                  "right"
+                                ],
+                                "description": "REQUIRED on every image and button block. Omitting it renders the block left-aligned."
+                              },
+                              "background": {
+                                "type": "string",
+                                "description": "Hex colour or 'transparent'."
+                              },
+                              "padding": {
+                                "type": "object",
+                                "description": "Four explicit sides. A CSS shorthand string is discarded.",
+                                "properties": {
+                                  "top": {
+                                    "type": "string",
+                                    "description": "e.g. '24px'"
+                                  },
+                                  "right": {
+                                    "type": "string",
+                                    "description": "e.g. '24px'"
+                                  },
+                                  "bottom": {
+                                    "type": "string",
+                                    "description": "e.g. '24px'"
+                                  },
+                                  "left": {
+                                    "type": "string",
+                                    "description": "e.g. '24px'"
+                                  }
+                                },
+                                "required": [
+                                  "top",
+                                  "right",
+                                  "bottom",
+                                  "left"
+                                ]
+                              },
+                              "font_size": {
+                                "type": "string"
+                              },
+                              "line_height": {
+                                "type": "string"
+                              },
+                              "color": {
+                                "type": "string"
+                              },
+                              "font_family": {
+                                "type": "string"
+                              },
+                              "font_weight": {
+                                "type": "string",
+                                "enum": [
+                                  "normal",
+                                  "bold",
+                                  "400",
+                                  "500",
+                                  "600",
+                                  "700"
+                                ]
+                              },
+                              "width": {
+                                "type": "string"
+                              },
+                              "radius": {
+                                "type": "string"
+                              },
+                              "border_color": {
+                                "type": "string"
+                              },
+                              "border_width": {
+                                "type": "string"
+                              },
+                              "button_background": {
+                                "type": "string"
+                              },
+                              "button_text_color": {
+                                "type": "string"
+                              },
+                              "button_padding_x": {
+                                "type": "string"
+                              },
+                              "button_padding_y": {
+                                "type": "string"
+                              }
+                            }
+                          },
+                          "content": {
+                            "type": "object",
+                            "description": "Type-specific payload. NEVER put align, padding or width:'100%' here.",
+                            "properties": {
+                              "html": {
+                                "type": "string",
+                                "description": "text block: inline-styled HTML."
+                              },
+                              "tag": {
+                                "type": "string",
+                                "enum": [
+                                  "p",
+                                  "h1",
+                                  "h2",
+                                  "h3"
+                                ]
+                              },
+                              "src": {
+                                "type": "string",
+                                "description": "image block: URL, or 'generate: <description>'."
+                              },
+                              "alt": {
+                                "type": "string",
+                                "description": "image block: required alt text."
+                              },
+                              "width": {
+                                "type": "integer",
+                                "description": "image block: pixels. Never a percentage."
+                              },
+                              "text": {
+                                "type": "string",
+                                "description": "button block: label."
+                              },
+                              "href": {
+                                "type": "string",
+                                "description": "button/image: URL or a bare {{ field }} token."
+                              },
+                              "action": {
+                                "type": "string",
+                                "enum": [
+                                  "url",
+                                  "email",
+                                  "file",
+                                  "telephone",
+                                  "sms"
+                                ]
+                              },
+                              "full_width": {
+                                "type": "boolean"
+                              },
+                              "height": {
+                                "type": "integer",
+                                "description": "spacer block: pixels."
+                              },
+                              "thickness": {
+                                "type": "integer",
+                                "description": "divider block."
+                              },
+                              "items": {
+                                "type": "array",
+                                "description": "social block.",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "platform": {
+                                      "type": "string",
+                                      "enum": [
+                                        "Facebook",
+                                        "Instagram",
+                                        "LinkedIn",
+                                        "YouTube",
+                                        "X",
+                                        "TikTok",
+                                        "WhatsApp",
+                                        "Website"
+                                      ],
+                                      "description": "Exact capitalisation. Anything else becomes a generic globe."
+                                    },
+                                    "href": {
+                                      "type": "string"
+                                    },
+                                    "label": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "platform",
+                                    "href"
+                                  ]
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "type",
+                          "style",
+                          "content"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "blocks"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "id",
+              "layout",
+              "style",
+              "columns"
+            ]
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "version",
+        "settings",
+        "sections"
+      ]
+    }
+  },
+  "required": [
+    "summary",
+    "change_notes",
+    "schema"
+  ]
+}
