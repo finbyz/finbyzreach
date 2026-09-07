@@ -285,8 +285,30 @@ fixtures = [
     },
     {
         "doctype": "Custom Field",
+        # "Email Template Builder" is the visual builder's own module (app_name
+        # finbyzreach, distinct from the "Finbyzreach" module) and previously
+        # was not in this filter, so the builder's own core fields on Email
+        # Template (custom_builder_mode, custom_builder_schema, ...) were never
+        # exported - a fresh install of this app would create the doctype
+        # without them.
         "filters": [
-            ["module", "in", ["Finbyzreach"]]
+            ["module", "in", ["Finbyzreach", "Email Template Builder"]]
+        ]
+    },
+    {
+        # Only the agents actually read by ai.py's _generator_agent() /
+        # _rewrite_agent(). "Email Builder Rewrite", "Email Builder Row
+        # Rewrite" and "Email Builder Image Generator" exist in this database
+        # but nothing in the codebase references them; fixturing them would
+        # ship unused config as if it were load-bearing.
+        #
+        # These reference an LLM record (agent.llm) by name. Importing this
+        # fixture on a site that lacks a matching LLM / LLM Provider record
+        # will fail that link validation - it is not exported here, since
+        # LLM Provider carries the provider API key.
+        "doctype": "AI Agent",
+        "filters": [
+            ["name", "in", ["Email Builder Generator", "Email Builder Copilot", "Email Builder Row Copilot"]]
         ]
     }
 ]
