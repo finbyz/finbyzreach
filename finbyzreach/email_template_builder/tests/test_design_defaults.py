@@ -254,3 +254,61 @@ class TestInlineAnchorHrefs(IntegrationTestCase):
 		             "content": {"text": "Go", "href": "https://{ doc.dashboard_link }"}}])
 		apply_design_defaults(doc)
 		self.assertEqual(_first_block(doc)["content"]["href"], "{{ dashboard_link }}")
+
+
+class TestSettingsFallbacks(IntegrationTestCase):
+	"""An unparseable setting must fall back to its documented default.
+
+	_css's generic fallback is "0px"/transparent, which is a valid length or
+	colour but never a valid design intent. A 0px settings font_size hid every
+	button label -- a button is the only element with no inline font-size of
+	its own to override the document default.
+	"""
+
+	def _settings(self, raw):
+		from ..schema import validate_schema
+		return validate_schema({"version": 1, "settings": raw, "sections": []})["settings"]
+
+	def test_empty_font_size_falls_back_to_the_default(self):
+		self.assertEqual(self._settings({"font_size": ""})["font_size"], "16px")
+
+	def test_null_font_size_falls_back_to_the_default(self):
+		self.assertEqual(self._settings({"font_size": None})["font_size"], "16px")
+
+	def test_explicit_zero_font_size_is_rejected(self):
+		for bad in ("0", "0px", "0%", "0.0px"):
+			self.assertEqual(self._settings({"font_size": bad})["font_size"], "16px", bad)
+
+	def test_a_real_font_size_is_kept(self):
+		self.assertEqual(self._settings({"font_size": "18px"})["font_size"], "18px")
+
+	def test_empty_text_colour_does_not_become_transparent(self):
+		"""Transparent body text would hide every unstyled string in the email."""
+		self.assertEqual(self._settings({"text_color": ""})["text_color"], "#1f2937")
+
+	def test_empty_button_colours_fall_back(self):
+		got = self._settings({"button_background": "", "button_text_color": None})
+		self.assertEqual(got["button_background"], "#2563eb")
+		self.assertEqual(got["button_text_color"], "#ffffff")
+
+	def test_zero_radius_and_padding_are_still_allowed(self):
+		"""Zero is meaningless for a font size but legitimate here."""
+		got = self._settings({"button_radius": "0px", "section_padding": "0px"})
+		self.assertEqual(got["button_radius"], "0px")
+		self.assertEqual(got["section_padding"], "0px")
+
+
+class TestBlockFontSizeGuard(IntegrationTestCase):
+	def test_zero_block_font_size_is_dropped_so_it_inherits(self):
+		from ..schema import validate_schema
+		doc = validate_schema(_doc([
+			{"id": "b1", "type": "button", "style": {"font_size": "0px"}, "content": {"text": "Go"}}
+		]))
+		self.assertNotIn("font_size", doc["sections"][0]["columns"][0]["blocks"][0]["style"])
+
+	def test_real_block_font_size_is_kept(self):
+		from ..schema import validate_schema
+		doc = validate_schema(_doc([
+			{"id": "b1", "type": "button", "style": {"font_size": "18px"}, "content": {"text": "Go"}}
+		]))
+		self.assertEqual(doc["sections"][0]["columns"][0]["blocks"][0]["style"]["font_size"], "18px")

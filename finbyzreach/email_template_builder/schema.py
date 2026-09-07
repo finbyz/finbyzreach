@@ -117,6 +117,12 @@ def _css(value, kind="length", default="0px"):
 		return default
 
 
+def _zero_length(value):
+	"""True when a CSS length resolves to nothing at all (0, 0px, 0%, ...)."""
+	match = re.match(r"^0+(?:\.0+)?(?:px|%|em|rem|pt)?$", str(value or "").strip(), re.I)
+	return bool(match)
+
+
 def _font_family(value):
 	value = str(value or DEFAULT_SETTINGS["font_family"]).strip()
 	if not FONT_FAMILY.fullmatch(value):
@@ -189,6 +195,10 @@ def _style(style):
 			val = _css(style[key])
 			if val == "auto" and key not in {"width", "height"}:
 				val = "0px"
+			# A block that asked for an unreadable size is better off inheriting
+			# the document's, so drop the key instead of writing 0px into it.
+			if key in ("font_size", "line_height") and _zero_length(val):
+				continue
 			result[key] = val
 	if style.get("align") is not None:
 		result["align"] = style["align"] if style["align"] in ALIGNMENTS else "left"
@@ -434,13 +444,22 @@ def validate_schema(value) -> dict:
 		settings.update(raw_settings)
 
 	settings["content_width"] = _bounded_int(settings.get("content_width"), 600, 320, 900)
+	# Fall back to the documented default for each setting, not to _css's generic
+	# "0px"/transparent. An unparseable value is a mistake to correct, not a
+	# design instruction: a transparent text_color hides every unstyled string,
+	# and a 0px font_size hides every button label, because a button is the one
+	# element with no inline font-size of its own to override it.
 	for key in ("body_background", "content_background", "text_color", "link_color", "button_background", "button_text_color"):
-		settings[key] = _css(settings.get(key), "color")
+		settings[key] = _css(settings.get(key), "color", DEFAULT_SETTINGS[key])
 	for key in ("font_size", "button_radius", "section_padding"):
-		val = _css(settings.get(key))
+		fallback = DEFAULT_SETTINGS[key]
+		val = _css(settings.get(key), default=fallback)
 		if val == "auto":
-			val = DEFAULT_SETTINGS.get(key, "0px")
+			val = fallback
 		settings[key] = val
+	# Zero is a legitimate radius or padding, but never a legitimate body size.
+	if _zero_length(settings["font_size"]):
+		settings["font_size"] = DEFAULT_SETTINGS["font_size"]
 	settings["font_family"] = _font_family(settings.get("font_family"))
 	settings["link_decoration"] = settings.get("link_decoration") if settings.get("link_decoration") in {"none", "underline"} else "underline"
 
