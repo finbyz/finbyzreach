@@ -21,6 +21,7 @@ from .api import (
 	_template,
 )
 from .constants import BLOCK_TYPES, LAYOUTS, MAX_SCHEMA_BYTES, SCHEMA_VERSION
+from .design_defaults import apply_design_defaults, repair_text
 from .schema import parse_json, validate_schema
 from .tokens import TOKEN_RE, validate_semantic_tokens
 
@@ -323,6 +324,28 @@ def _sanitize_schema_tokens(value):
 	elif isinstance(value, str):
 		return _sanitize_token_text(value)
 	return value, removed
+
+
+def _apply_defaults_with_warnings(schema):
+	"""Run the deterministic repair pass and translate its result into warnings.
+
+	Keeps the two AI entry points identical in behaviour and gives the user a
+	plain account of what was corrected on their behalf, rather than silently
+	rewriting their design.
+	"""
+	stats = apply_design_defaults(schema)
+	warnings = []
+	if stats["tokens_repaired"]:
+		warnings.append(
+			_("Repaired {0} merge field(s) the AI wrote with single braces. Verify they point at the right fields.").format(
+				stats["tokens_repaired"]
+			)
+		)
+	if stats["placeholders"]:
+		warnings.append(
+			_("The AI left placeholder text you should replace: {0}").format(", ".join(stats["placeholders"][:5]))
+		)
+	return stats, warnings
 
 
 def _resolve_generated_images(schema, template_name="") -> list[str]:
@@ -690,14 +713,23 @@ def create_template_with_ai(prompt, template_name=None, subject=None, reference_
 		proposed_subject = final_template_name
 
 	img_warnings = _resolve_generated_images(proposed_schema, template_name=final_template_name)
-	raw_warnings = _string_list(payload.get("warnings")) + img_warnings
+
+	# Repair the conventions the agent reliably gets wrong (block alignment,
+	# section padding, single-braced merge tokens, social platform names)
+	# before anything is compiled or persisted.
+	defaults_stats, defaults_warnings = _apply_defaults_with_warnings(proposed_schema)
+
+	raw_warnings = _string_list(payload.get("warnings")) + img_warnings + defaults_warnings
 	warnings = [w.strip() for w in raw_warnings if str(w or "").strip()]
 
 	proposed_preheader = str(payload.get("preheader") or "")
 
-	proposed_schema, _ = _sanitize_schema_tokens(proposed_schema)
-	proposed_subject, _ = _sanitize_token_text(proposed_subject)
-	proposed_preheader, _ = _sanitize_token_text(proposed_preheader)
+	proposed_subject, _subject_fixes = repair_text(proposed_subject)
+	proposed_preheader, _preheader_fixes = repair_text(proposed_preheader)
+
+	proposed_schema, _schema_removed = _sanitize_schema_tokens(proposed_schema)
+	proposed_subject, _subject_removed = _sanitize_token_text(proposed_subject)
+	proposed_preheader, _preheader_removed = _sanitize_token_text(proposed_preheader)
 
 	subject_source = validate_semantic_tokens(proposed_subject[:140])
 	compiled_subject = _compiled_subject(subject_source)
@@ -747,6 +779,7 @@ def create_template_with_ai(prompt, template_name=None, subject=None, reference_
 		"preview_html": _format_preview_html(state["subject"], state["html_content"]),
 		"preview_subject": state["subject"],
 		"issues": issues,
+		"repairs": defaults_stats,
 	}
 
 	# Seed initial conversation in Email Builder AI Chat
@@ -839,9 +872,15 @@ def generate_ai_rewrite(template_name, schema, metadata=None, prompt=None, chat_
 
 	proposed_schema = ai_schema
 	img_warnings = _resolve_generated_images(proposed_schema, template_name=template_name)
+
+	# Repair the conventions the agent reliably gets wrong (block alignment,
+	# section padding, single-braced merge tokens, social platform names)
+	# before anything is compiled or persisted.
+	defaults_stats, defaults_warnings = _apply_defaults_with_warnings(proposed_schema)
+
 	summary = str(payload.get("summary") or "")[:1000]
 	change_notes = _string_list(payload.get("change_notes"))
-	raw_warnings = _string_list(payload.get("warnings")) + img_warnings
+	raw_warnings = _string_list(payload.get("warnings")) + img_warnings + defaults_warnings
 	warnings = []
 	for w in raw_warnings:
 		w_clean = str(w or "").strip()
@@ -850,6 +889,8 @@ def generate_ai_rewrite(template_name, schema, metadata=None, prompt=None, chat_
 
 	proposed_subject = str(payload.get("subject") or metadata.get("subject") or _subject_source(doc) or "")
 	proposed_preheader = str(payload.get("preheader") or metadata.get("preheader") or "")
+	proposed_subject, _subject_fixes = repair_text(proposed_subject)
+	proposed_preheader, _preheader_fixes = repair_text(proposed_preheader)
 
 	# Strip any unsupported Jinja the agent may have invented so a single bad
 	# token cannot crash the whole proposal. Valid merge tokens are preserved.
@@ -935,6 +976,7 @@ def generate_ai_rewrite(template_name, schema, metadata=None, prompt=None, chat_
 		"before_html": before_html,
 		"before_subject": before_subject,
 		"issues": issues,
+		"repairs": defaults_stats,
 		"thinking_steps": callback_handler.steps,
 	}
 
