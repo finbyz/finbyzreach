@@ -12,46 +12,73 @@ def run_followup_job():
         return
 
     followups = get_opportunity_followups(setting.days_since_last_activity) or []
+    queued = 0
 
     for row in followups:
-        party = {
-            "party_type": row.get("party_type"),
-            "name": row.get("party_name"),
-            "lead_name": row.get("customer_name"),
-            "email_id": row.get("email"),
-            "company_name": row.get("company"),
-            "status": row.get("opportunity_status"),
-            "person_research": row.get("person_research"),
-            "customer_details": row.get("customer_details"),
-            "contact_name": row.get("contact_name"),
-            "country":row.get("country"),
-            "city":row.get("city"),
-            "state":row.get("state"),
-        }
-
-        if not party.get("person_research"):
-            research_summary = research_person(party.get("party_type"),party.get("name"),party.get("contact_name"))
-            party["person_research"] = research_summary
-            
-        if not party.get("customer_details"):
-            research_summary = research_company(
-                party.get("party_type"),
-                party.get("name"),
-                country=party.get("country"),
-                city=party.get("city"),
-                state=party.get("state")
-            )
-            party["customer_details"] = research_summary
-
-        activities = get_party_activities(party.get("party_type"), party.get("name"))
-
-        activity_summary = "\n".join(
-            [f"- {a.get('type')}: {a.get('subject')} on {a.get('date')}" for a in activities]
+        frappe.enqueue(
+            "finbyzreach.tasks.every_4PM.smart_followup.process_followup_row",
+            queue="long",
+            timeout=900,
+            enqueue_after_commit=True,
+            job_name=f"Smart Followup - {row.get('party_type')} {row.get('party_name')}",
+            row=dict(row),
         )
+        queued += 1
 
-        email_draft = draft_email(party, activity_summary)
-        # Save draft in Communication or custom doctype
-        send_email_draft(party, email_draft,setting.email_account)
+    return {"queued": queued}
+
+
+def process_followup_row(row):
+    party = {
+        "party_type": row.get("party_type"),
+        "name": row.get("party_name"),
+        "lead_name": row.get("customer_name"),
+        "email_id": row.get("email"),
+        "company_name": row.get("company"),
+        "status": row.get("opportunity_status"),
+        "person_research": row.get("person_research"),
+        "customer_details": row.get("customer_details"),
+        "contact_name": row.get("contact_name"),
+        "country": row.get("country"),
+        "city": row.get("city"),
+        "state": row.get("state"),
+    }
+
+    if not party.get("person_research") and party.get("contact_name"):
+        research_result = research_person(party.get("contact_name"))
+        party["person_research"] = _research_summary(research_result)
+
+    if not party.get("customer_details"):
+        research_result = research_company(
+            party.get("party_type"),
+            party.get("name"),
+            country=party.get("country"),
+            city=party.get("city"),
+            state=party.get("state")
+        )
+        party["customer_details"] = _research_summary(research_result)
+
+    activities = get_party_activities(party.get("party_type"), party.get("name"))
+
+    activity_summary = "\n".join(
+        [f"- {a.get('type')}: {a.get('subject')} on {a.get('date')}" for a in activities]
+    )
+
+    setting = frappe.get_single("Lead Followup Setting")
+    email_draft = draft_email(party, activity_summary)
+    send_email_draft(party, email_draft, setting.email_account)
+
+
+def _research_summary(result):
+    if not result:
+        return ""
+    if isinstance(result, str):
+        return result
+    return (
+        getattr(result, "research_summary", None)
+        or getattr(result, "company_overview", None)
+        or str(result)
+    )
 
     
 def get_opportunity_followups(days_since_last_activity=5):
