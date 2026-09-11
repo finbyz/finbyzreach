@@ -32,7 +32,7 @@ def after_insert(doc, method):
         job_name=f"Analyze Communication - {doc.name}"
     )
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def analyze_communication(doc_name):
     """
     Analyze a communication using AI and update the reference document.
@@ -41,6 +41,7 @@ def analyze_communication(doc_name):
         doc_name: Name of the Communication document
     """
     doc = frappe.get_doc("Communication", doc_name)
+    doc.check_permission("read")
     
     if not doc.reference_doctype or not doc.reference_name:
         return
@@ -60,6 +61,7 @@ def analyze_communication(doc_name):
             return
         
         # Update the reference document based on its type
+        frappe.get_doc(doc.reference_doctype, doc.reference_name).check_permission("write")
         updated = update_reference_document(doc.reference_doctype, doc.reference_name, category)
         
         if updated:

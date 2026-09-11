@@ -71,7 +71,7 @@ def create_segment(segment_name, segment_type, filter_groups, exclude_filters="[
 	return {"name": doc.name, "segment_type": doc.segment_type, "member_count": doc.member_count}
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["GET"])
 def get_segment_filters(segment_name):
 	segment = frappe.get_doc("Reach Segment", segment_name)
 	segment.check_permission("read")
@@ -97,6 +97,7 @@ def update_segment(segment_name, filter_groups, exclude_filters="[]", exclude_em
 	)
 	
 	doc = frappe.get_doc("Reach Segment", segment_name)
+	doc.check_permission("write")
 		
 	doc.filter_groups_json = filter_groups_json
 	doc.exclude_filters_json = exclude_filters
@@ -109,6 +110,7 @@ def update_segment(segment_name, filter_groups, exclude_filters="[]", exclude_em
 def refresh_static_segment_leads(segment_name):
 	frappe.has_permission("Reach Segment", "write", throw=True)
 	doc = frappe.get_doc("Reach Segment", segment_name)
+	doc.check_permission("write")
 	
 	if doc.segment_type != "Static":
 		frappe.throw(_("Only Static segments can have their leads refreshed from filters."))
@@ -123,10 +125,11 @@ def refresh_static_segment_leads(segment_name):
 	
 	return {"name": doc.name, "member_count": doc.member_count}
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["GET"])
 def preview_segment_audience(segment_name):
 	frappe.has_permission("Reach Segment", "read", throw=True)
 	doc = frappe.get_doc("Reach Segment", segment_name)
+	doc.check_permission("read")
 	member_names = _calculate_static_leads(
 		doc.filter_groups_json, doc.exclude_filters_json, doc.exclude_email_groups_json
 	)

@@ -471,7 +471,7 @@ def _campaign_for_studio(campaign_name):
 	}
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["GET"])
 def get_bootstrap(campaign_name=None):
 	campaign_name = str(campaign_name or "").strip()
 	_check_permission("read" if campaign_name else "create")

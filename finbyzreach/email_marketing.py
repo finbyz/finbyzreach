@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import re
 from collections import Counter
@@ -1847,7 +1848,7 @@ def send_campaign_test(campaign_name, recipient, sample_lead):
 	return {"status": "queued", "email_queue": queue.name if queue else None}
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["GET"])
 def preview_campaign_audience_api(campaign_name):
 	campaign = frappe.get_doc("Campaign", campaign_name)
 	campaign.check_permission("read")
@@ -1924,7 +1925,6 @@ def update_subscription_preferences(campaign_recipient, email, unsubscribed_topi
 		frappe.throw(_("Invalid or expired link"), frappe.PermissionError)
 	else:
 		from frappe.utils.verified_command import _sign_message
-		import hmac
 		from urllib.parse import parse_qs
 
 		signature_string = "&_signature="
@@ -1945,7 +1945,7 @@ def update_subscription_preferences(campaign_recipient, email, unsubscribed_topi
 		frappe.throw(_("This campaign recipient could not be found."), frappe.DoesNotExistError)
 
 	recipient = frappe.get_doc("Email Campaign", campaign_recipient, for_update=True)
-	if email and _normalized_email(email) != recipient.custom_normalized_email:
+	if email and not hmac.compare_digest(_normalized_email(email), recipient.custom_normalized_email or ""):
 		frappe.throw(_("Invalid email for this recipient"), frappe.PermissionError)
 
 	if isinstance(unsubscribed_topics, str):

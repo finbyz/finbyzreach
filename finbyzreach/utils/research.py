@@ -1,9 +1,20 @@
-from finbyzai.ai.agent.agent_service import AgentService
 import frappe
+from frappe import _
 
-def research_company(party_type: str,party_name: str,**kwargs) -> str:
+from finbyzai.ai.agent.agent_service import AgentService
+
+SUPPORTED_RESEARCH_PARTIES = {"Lead", "Customer"}
+
+
+def research_company(party_type: str, party_name: str, enforce_permissions: bool = False, **kwargs) -> str:
     """Research about a lead or customer using internal data or fallback to Perplexity."""
-    doc = frappe.get_doc(party_type, {"name": party_name})
+    if party_type not in SUPPORTED_RESEARCH_PARTIES:
+        frappe.throw(_("Research is supported only for Lead and Customer."))
+
+    doc = frappe.get_doc(party_type, party_name)
+    if enforce_permissions:
+        doc.check_permission("read")
+        doc.check_permission("write")
     
     lead_info = {}
     if party_type == "Lead":
@@ -63,15 +74,18 @@ def research_company(party_type: str,party_name: str,**kwargs) -> str:
     if hasattr(doc, "type") and not doc.get("type"):
         doc.type = result.lead_type
     
-    doc.save()
+    doc.save(ignore_permissions=not enforce_permissions)
     return result
 
 
-def research_person(contact_name: str) -> str:
+def research_person(contact_name: str, enforce_permissions: bool = False) -> str:
     """Research about a person using internal data or fallback to Perplexity.
     Automatically detects linked Lead or Customer from the Contact.
     """
     contact = frappe.get_doc("Contact", contact_name)
+    if enforce_permissions:
+        contact.check_permission("read")
+        contact.check_permission("write")
 
     # Find linked Lead or Customer
     party_type, party_doc = None, None
@@ -79,6 +93,8 @@ def research_person(contact_name: str) -> str:
         if link.link_doctype in ["Lead", "Customer"]:
             party_type = link.link_doctype
             party_doc = frappe.get_doc(link.link_doctype, link.link_name)
+            if enforce_permissions:
+                party_doc.check_permission("read")
             break
 
     # Collect company / lead info
@@ -114,6 +130,6 @@ def research_person(contact_name: str) -> str:
     # Save to contact
     contact.person_research = result.research_summary
     contact.linkedin_profile = result.linkedin_profile
-    contact.save(ignore_permissions=True)
+    contact.save(ignore_permissions=not enforce_permissions)
     
     return result
