@@ -269,10 +269,6 @@ override_doctype_dashboards = {
 # 	"finbyzreach.auth.validate"
 # ]
 
-from frappe.email.doctype.email_queue.email_queue import QueueBuilder
-from finbyzreach.email_marketing import get_unsubscribed_user_emails
-QueueBuilder.get_unsubscribed_user_emails = get_unsubscribed_user_emails
-
 website_route_rules = [
     {"from_route": "/builder/<path:app_path>", "to_route": "builder"},
 ]

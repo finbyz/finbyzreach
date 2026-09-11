@@ -55,7 +55,6 @@ class CommunicationEmail(Document):
             self.sent_at = now_datetime()
             self.error_message = ""  # Clear previous errors
             self.save()
-            frappe.db.commit()
             
             frappe.logger().info(f"Email sent successfully: {self.subject}")
             return True
@@ -71,4 +70,3 @@ class CommunicationEmail(Document):
         self.status = "Failed"
         self.error_message = error_message
         self.save()
-        frappe.db.commit()
