@@ -1,0 +1,178 @@
+{
+ "actions": [],
+ "allow_import": 1,
+ "allow_rename": 1,
+ "autoname": "Prompt",
+ "doctype": "DocType",
+ "document_type": "Document",
+ "engine": "InnoDB",
+ "field_order": [
+  "library_section",
+  "folder",
+  "enabled",
+  "thumbnail",
+  "subject",
+  "custom_builder_mode",
+  "custom_builder_schema",
+  "custom_builder_schema_version",
+  "custom_builder_content_hash",
+  "custom_preheader_text",
+  "custom_builder_subject_source",
+  "use_html",
+  "response_html",
+  "response",
+  "personalization_section",
+  "custom_reference_doctype",
+  "custom_preview_document"
+ ],
+ "fields": [
+  {
+   "fieldname": "library_section",
+   "fieldtype": "Section Break",
+   "label": "Template Library"
+  },
+  {
+   "fieldname": "folder",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Folder",
+   "options": "Email Template Folder"
+  },
+  {
+   "default": "1",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Enabled"
+  },
+  {
+   "fieldname": "thumbnail",
+   "fieldtype": "Attach Image",
+   "label": "Thumbnail"
+  },
+  {
+   "fieldname": "subject",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Subject",
+   "reqd": 1
+  },
+  {
+   "default": "Visual",
+   "fieldname": "custom_builder_mode",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Builder Mode",
+   "options": "Raw HTML\nVisual",
+   "read_only": 1
+  },
+  {
+   "fieldname": "custom_builder_schema",
+   "fieldtype": "Code",
+   "hidden": 1,
+   "label": "Builder Schema",
+   "options": "JSON"
+  },
+  {
+   "default": "1",
+   "fieldname": "custom_builder_schema_version",
+   "fieldtype": "Int",
+   "hidden": 1,
+   "label": "Builder Schema Version",
+   "read_only": 1
+  },
+  {
+   "fieldname": "custom_builder_content_hash",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Builder Content Hash",
+   "read_only": 1
+  },
+  {
+   "fieldname": "custom_preheader_text",
+   "fieldtype": "Small Text",
+   "label": "Preheader Text"
+  },
+  {
+   "fieldname": "custom_builder_subject_source",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Builder Subject Source"
+  },
+  {
+   "default": "1",
+   "fieldname": "use_html",
+   "fieldtype": "Check",
+   "label": "Use HTML"
+  },
+  {
+   "depends_on": "eval:doc.use_html",
+   "fieldname": "response_html",
+   "fieldtype": "Code",
+   "label": "Response",
+   "options": "Jinja",
+   "read_only_depends_on": "eval:doc.custom_builder_mode == 'Visual'"
+  },
+  {
+   "depends_on": "eval:!doc.use_html",
+   "fieldname": "response",
+   "fieldtype": "Text Editor",
+   "label": "Response",
+   "mandatory_depends_on": "eval:!doc.use_html"
+  },
+  {
+   "fieldname": "personalization_section",
+   "fieldtype": "Section Break",
+   "label": "Personalization"
+  },
+  {
+   "fieldname": "custom_reference_doctype",
+   "fieldtype": "Link",
+   "label": "Reference DocType",
+   "options": "DocType"
+  },
+  {
+   "depends_on": "eval:doc.custom_reference_doctype",
+   "fieldname": "custom_preview_document",
+   "fieldtype": "Dynamic Link",
+   "label": "Preview Document",
+   "options": "custom_reference_doctype"
+  }
+ ],
+ "links": [],
+ "module": "Email Template Builder",
+ "name": "Email Template Master",
+ "naming_rule": "Set by user",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Email Designer",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "import": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "search_fields": "subject,folder",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}
