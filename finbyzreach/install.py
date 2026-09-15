@@ -343,6 +343,22 @@ AI_AGENTS = [{'agent_type': 'LangChain Chain',
 
 def after_install():
 	create_ai_agents()
+	setup_email_template_library()
+
+
+def setup_email_template_library():
+	from finbyzreach.email_template_builder.doctype.email_template_folder.email_template_folder import ROOT_FOLDER
+
+	if not frappe.db.exists("DocType", "Email Template Folder"):
+		return
+	if not frappe.db.exists("Email Template Folder", ROOT_FOLDER):
+		frappe.get_doc(
+			{
+				"doctype": "Email Template Folder",
+				"folder_name": ROOT_FOLDER,
+				"is_group": 1,
+			}
+		).insert(ignore_permissions=True)
 
 
 def create_ai_agents():

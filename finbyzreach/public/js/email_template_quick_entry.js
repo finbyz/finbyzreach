@@ -79,6 +79,18 @@ frappe.provide("frappe.ui.form");
 				});
 				$footer.prepend($ai_btn);
 			}
+			if ($footer.length && !$footer.find(".btn-template-library-qe").length) {
+				const $library_btn = $(
+					`<button type="button" class="btn btn-default btn-sm btn-template-library-qe">
+						${__("Choose from Template Library")}
+					</button>`
+				);
+				$library_btn.on("click", () => {
+					this.dialog.hide();
+					frappe.email_template_library.choose_master();
+				});
+				$footer.prepend($library_btn);
+			}
 		}
 
 		register_primary_action() {

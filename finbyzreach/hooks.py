@@ -21,7 +21,8 @@ add_to_apps_screen = [
 # app_include_css = "/assets/finbyzreach/css/finbyzreach.css"
 app_include_js = [
     "/assets/finbyzreach/js/email_builder_composer.js?v=20260716.1",
-    "/assets/finbyzreach/js/email_template_quick_entry.js?v=20260716.1",
+    "/assets/finbyzreach/js/email_template_library.js?v=20260915.10",
+    "/assets/finbyzreach/js/email_template_quick_entry.js?v=20260915.1",
 ]
 
 # include js, css files in header of web template
@@ -49,6 +50,7 @@ doctype_js = {
 }
 doctype_list_js = {
     "Email Template": "public/js/doctype_list_js/email_template_list.js",
+    "Email Template Master": "public/js/doctype_list_js/email_template_master_list.js",
     "Lead": "public/js/doctype_list_js/lead_list.js",
     "Campaign": "public/js/doctype_list_js/campaign_list.js",
 }
@@ -93,6 +95,7 @@ jinja = {
 
 # before_install = "finbyzreach.install.before_install"
 after_install = "finbyzreach.install.after_install"
+after_migrate = "finbyzreach.install.setup_email_template_library"
 
 # Uninstallation
 # ------------

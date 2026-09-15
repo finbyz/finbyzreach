@@ -6,7 +6,10 @@ frappe.ui.form.on("Email Template", {
 		frm.set_df_property("response_html", "read_only", visual ? 1 : 0);
 		if (!frm.is_new() && can_design) {
 			frm.add_custom_button(__(visual ? "Open Visual Builder" : "Start Visual Builder"), () => {
-				window.location.href = `/builder?template=${encodeURIComponent(frm.doc.name)}`;
+				frappe.email_template_library.open_builder(frm.doc.name);
+			}, __("Builder"));
+			frm.add_custom_button(__("Create Master from Email"), () => {
+				frappe.email_template_library.create_master_from_email(frm.doc.name);
 			}, __("Builder"));
 			if (visual) {
 				frm.add_custom_button(__("Switch to Raw HTML"), () => {

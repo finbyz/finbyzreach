@@ -11,6 +11,7 @@ from finbyzreach.email_template_builder.services import (
 	get_campaign_snapshot,
 	render_campaign_snapshot,
 )
+from finbyzreach.email_template_builder.targets import normalize_template_doctype
 
 no_cache = 1
 
@@ -129,7 +130,8 @@ def get_context(context):
 
 	elif template_id:
 		# Builder / Template Test
-		if not frappe.db.exists("Email Template", template_id):
+		template_doctype = normalize_template_doctype(frappe.form_dict.get("template_doctype"))
+		if not frappe.db.exists(template_doctype, template_id):
 			context.error_message = _("The email template could not be found.")
 			return context
 
@@ -137,6 +139,7 @@ def get_context(context):
 			template_id,
 			frappe.form_dict.get("subject_override"),
 			check_permission=False,
+			template_doctype=template_doctype,
 		)
 		subject = snapshot.subject
 		html = snapshot.html

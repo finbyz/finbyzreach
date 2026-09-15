@@ -8,7 +8,7 @@ frappe.listview_settings["Email Template"] = frappe.listview_settings["Email Tem
 	}
 
 	function open_builder(template_name) {
-		window.location.href = `/builder?template=${encodeURIComponent(template_name)}`;
+		frappe.email_template_library.open_builder(template_name);
 	}
 
 	function show_new_visual_template_dialog() {
@@ -64,7 +64,8 @@ frappe.listview_settings["Email Template"] = frappe.listview_settings["Email Tem
 		});
 	}
 
-	function show_ai_create_dialog() {
+	function show_ai_create_dialog(template_doctype = "Email Template") {
+		const is_master = template_doctype === "Email Template Master";
 		const sample_prompts = [
 			{ label: __("Product Launch"), text: "Product launch announcement with hero banner, headline, 3 feature columns, and a prominent 'Get Started' CTA button." },
 			{ label: __("Welcome / Onboarding"), text: "Warm welcome email for new customers with an introduction, 3 quick-start steps, helpful resources, and support contact." },
@@ -73,7 +74,7 @@ frappe.listview_settings["Email Template"] = frappe.listview_settings["Email Tem
 		];
 
 		const dialog = new frappe.ui.Dialog({
-			title: __("Build Email Template with AI ✨"),
+			title: __(is_master ? "Build Master Template with AI ✨" : "Build Email Template with AI ✨"),
 			fields: [
 				{
 					fieldname: "prompt_desc",
@@ -124,6 +125,7 @@ frappe.listview_settings["Email Template"] = frappe.listview_settings["Email Tem
 						prompt: values.prompt,
 						template_name: values.template_name || "",
 						subject: values.subject || "",
+						template_doctype,
 					},
 					freeze: true,
 					freeze_message: __("AI is designing your email template from scratch..."),
@@ -165,6 +167,9 @@ frappe.listview_settings["Email Template"] = frappe.listview_settings["Email Tem
 		if (!can_design_email() || listview._visual_builder_actions_added) return;
 
 		listview.page.add_button(__("Build with AI ✨"), show_ai_create_dialog);
+		listview.page.add_button(__("Choose Template"), () => frappe.email_template_library.choose_master());
+		listview.page.add_inner_button(__("Choose from Library"), () => frappe.email_template_library.choose_master(), __("Builder"));
+		listview.page.add_inner_button(__("Manage Master Templates"), () => frappe.set_route("List", "Email Template Master"), __("Builder"));
 		listview.page.add_inner_button(__("Build with AI ✨"), show_ai_create_dialog, __("Builder"));
 		listview.page.add_inner_button(__("New Visual Email"), show_new_visual_template_dialog, __("Builder"));
 		listview.page.add_action_item(__("Open Visual Builder"), () => {
@@ -174,6 +179,14 @@ frappe.listview_settings["Email Template"] = frappe.listview_settings["Email Tem
 				return;
 			}
 			open_builder(selected[0].name);
+		});
+		listview.page.add_action_item(__("Create Master from Email"), () => {
+			const selected = listview.get_checked_items();
+			if (!selected.length) {
+				frappe.msgprint(__("Select an Email Template first."));
+				return;
+			}
+			frappe.email_template_library.create_master_from_email(selected[0].name);
 		});
 		listview._visual_builder_actions_added = true;
 	};
