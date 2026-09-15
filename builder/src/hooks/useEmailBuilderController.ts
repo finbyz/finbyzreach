@@ -19,13 +19,17 @@ import { EMPTY_COMPONENTS, EMPTY_MERGE_FIELDS, EMPTY_REVISIONS } from '../lib/bu
 import { getErrorMessage, isConcurrencyError } from '../lib/errors'
 import { analyzeReferenceDoctypeUsage, removeReferenceDependentContent, type PendingReferenceDoctypeChange } from '../lib/referenceDoctype'
 import { collectBuilderSuggestions } from '../lib/suggestions'
-import type { BlockType, BuilderBlock, BuilderDocument, BuilderSection, LayoutType, Selection } from '../types'
+import type { BlockType, BuilderBlock, BuilderDocument, BuilderSection, BuilderTemplateDoctype, LayoutType, Selection } from '../types'
 import type { RecoveryDraft } from '../components/BuilderDialogs'
 
 const AUTOSAVE_IDLE_DELAY_MS = 4000
 const AUTOSAVE_MAX_WAIT_MS = 30000
 
 const getTemplateName = () => new URLSearchParams(window.location.search).get('template')?.trim() || ''
+const getTemplateDoctype = (): BuilderTemplateDoctype =>
+  new URLSearchParams(window.location.search).get('template_doctype') === 'Email Template Master'
+    ? 'Email Template Master'
+    : 'Email Template'
 
 function setAtPath(target: Record<string, unknown>, path: string, value: unknown) {
   const keys = path.split('.')
@@ -39,6 +43,7 @@ function setAtPath(target: Record<string, unknown>, path: string, value: unknown
 
 export function useEmailBuilderController() {
   const templateName = useMemo(getTemplateName, [])
+  const templateDoctype = useMemo(getTemplateDoctype, [])
   const {
     modified,
     mode,
@@ -119,12 +124,12 @@ export function useEmailBuilderController() {
     showMobileViewport,
   } = useBuilderPanels()
   const { registerTextEditor, focusTextEditor, prepareMergeField, insertMergeField } = useTextEditorBridge()
-  const sdk = useBuilderData(templateName, modal === 'history', document)
-  const { preview, previewError, recipient, setRecipient, retryPreview, sendTestEmail } = useBuilderPreviewTest({ document, sdk, templateName, notify, setModal, resetPreviewFormat })
-  const { revisionPreview, revisionPreviewError, openRevisionPreview, retryRevisionPreview } = useRevisionPreview({ sdk, templateName, setModal, setPreviewFormat })
+  const sdk = useBuilderData(templateName, templateDoctype, modal === 'history', document)
+  const { preview, previewError, recipient, setRecipient, retryPreview, sendTestEmail } = useBuilderPreviewTest({ document, sdk, templateName, templateDoctype, notify, setModal, resetPreviewFormat })
+  const { revisionPreview, revisionPreviewError, openRevisionPreview, retryRevisionPreview } = useRevisionPreview({ sdk, templateName, templateDoctype, setModal, setPreviewFormat })
   const mutateRevisions = sdk.revisions.mutate
-  const draftKey = useMemo(() => `email-builder-react:${window.location.host}:${templateName}`, [templateName])
-  const autosaveKey = useMemo(() => `email-builder-autosave:${window.location.host}:${templateName}`, [templateName])
+  const draftKey = useMemo(() => `email-builder-react:${window.location.host}:${templateDoctype}:${templateName}`, [templateDoctype, templateName])
+  const autosaveKey = useMemo(() => `email-builder-autosave:${window.location.host}:${templateDoctype}:${templateName}`, [templateDoctype, templateName])
   const autosaveFailureCount = useRef(0)
   const autosaveFirstDirtyAt = useRef<number | null>(null)
   const [autosaveEnabled, setAutosaveEnabled] = useState(() => {
@@ -160,7 +165,7 @@ export function useEmailBuilderController() {
     handleAiStep,
     aiLiveStep,
     clearAiChat,
-  } = useBuilderAi({ document, sdk, templateName, notify, setModal, commit, isReadOnly })
+  } = useBuilderAi({ document, sdk, templateName, templateDoctype, notify, setModal, commit, isReadOnly })
 
   useEffect(() => {
     try { localStorage.setItem(autosaveKey, autosaveEnabled ? 'on' : 'off') } catch { /* optional preference */ }
@@ -319,7 +324,7 @@ export function useEmailBuilderController() {
     loadMoreImages,
     selectExistingImage,
     uploadImageFromPicker,
-  } = useBuilderImageUpload({ fileUpload: sdk.fileUpload, listImages: sdk.listImages, attachImage: sdk.attachImage, templateName, notify, updateContent })
+  } = useBuilderImageUpload({ fileUpload: sdk.fileUpload, listImages: sdk.listImages, attachImage: sdk.attachImage, templateName, templateDoctype, notify, updateContent })
 
   const updateNode = useCallback((selected: NonNullable<Selection>, path: string, value: unknown) => {
     if (isReadOnly) return
@@ -514,6 +519,7 @@ export function useEmailBuilderController() {
 
   const realtime = useBuilderRealtime({
     templateName,
+    templateDoctype,
     enabled: Boolean(templateName),
     onRemoteSave: handleRemoteSave,
     onRevisionCreated: handleRemoteRevision,
@@ -536,6 +542,7 @@ export function useEmailBuilderController() {
     try {
       const response = await sdk.save.call({
         template_name: templateName,
+        template_doctype: templateDoctype,
         expected_modified: modified,
         schema: JSON.stringify(document.schema),
         metadata: JSON.stringify(document.metadata),
@@ -556,7 +563,7 @@ export function useEmailBuilderController() {
       }
       setDirty(hasNoNewerChanges ? false : currentSnapshot !== serverSnapshot)
       if (hasNoNewerChanges) sessionStorage.removeItem(draftKey)
-      if (!silent) notify(hasNoNewerChanges ? 'Email template saved' : 'Saved. Newer local changes are still pending.', 'success')
+      if (!silent) notify(hasNoNewerChanges ? `${templateDoctype === 'Email Template Master' ? 'Master template' : 'Email template'} saved` : 'Saved. Newer local changes are still pending.', 'success')
       const issues = response.message.issues || []
       const messages = issues.length ? issues.map((issue) => issue.message) : response.message.warnings || []
       if (!silent) messages.slice(0, 3).forEach((message) => notify(message, 'info'))
@@ -587,7 +594,7 @@ export function useEmailBuilderController() {
     } finally {
       if (mounted.current) setSaving(false)
     }
-  }, [dirty, document, documentRef, draftKey, handleConcurrentEdit, modified, notify, patchTemplateState, realtime.clientId, requiresOverwrite, savedSnapshot, saveConflict, saving, sdk.save, setDirty, setDocument, setModal, setOverwriteConfirmationOpen, setSaving, templateName])
+  }, [dirty, document, documentRef, draftKey, handleConcurrentEdit, modified, notify, patchTemplateState, realtime.clientId, requiresOverwrite, savedSnapshot, saveConflict, saving, sdk.save, setDirty, setDocument, setModal, setOverwriteConfirmationOpen, setSaving, templateDoctype, templateName])
 
   useEffect(() => {
     if (!dirty) {
@@ -677,7 +684,7 @@ export function useEmailBuilderController() {
       return
     }
     try {
-      await sdk.restoreRevision.call({ template_name: templateName, revision_name: name, expected_modified: modified, client_id: realtime.clientId })
+      await sdk.restoreRevision.call({ template_name: templateName, template_doctype: templateDoctype, revision_name: name, expected_modified: modified, client_id: realtime.clientId })
       setModal(null)
       initialized.current = false
       sessionStorage.removeItem(draftKey)
@@ -688,7 +695,7 @@ export function useEmailBuilderController() {
     } catch (error) {
       if (!handleConcurrentEdit(error)) notify(getErrorMessage(error, 'Revision could not be restored.'), 'error')
     }
-  }, [documentRef, draftKey, handleConcurrentEdit, isReadOnly, modified, notify, realtime.clientId, saveConflict, sdk.load, sdk.restoreRevision, setDocument, setModal, templateName])
+  }, [documentRef, draftKey, handleConcurrentEdit, isReadOnly, modified, notify, realtime.clientId, saveConflict, sdk.load, sdk.restoreRevision, setDocument, setModal, templateDoctype, templateName])
 
   const components = sdk.components.data?.message ?? EMPTY_COMPONENTS
   const mergeFields = sdk.mergeFields.data?.message ?? EMPTY_MERGE_FIELDS
@@ -712,6 +719,7 @@ export function useEmailBuilderController() {
 
   return {
     templateName,
+    templateDoctype,
     sdk,
     realtime,
     document,

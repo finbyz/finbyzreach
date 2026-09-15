@@ -3,7 +3,7 @@ import { useCallback, useRef, useState } from 'react'
 import type { useBuilderData } from './useBuilderData'
 import { MAX_IMAGE_BYTES } from '../lib/builderConstants'
 import { getErrorMessage } from '../lib/errors'
-import type { BuilderImageFile, BuilderImageListResponse } from '../types'
+import type { BuilderImageFile, BuilderImageListResponse, BuilderTemplateDoctype } from '../types'
 import type { NoticeKind, NoticeOptions } from '../components/notificationContext'
 
 type Notify = (value: unknown, kind?: NoticeKind, options?: NoticeOptions) => void
@@ -15,6 +15,7 @@ type ImageUploadOptions = {
   listImages: ReturnType<typeof useBuilderData>['listImages']
   attachImage: ReturnType<typeof useBuilderData>['attachImage']
   templateName: string
+  templateDoctype: BuilderTemplateDoctype
   notify: Notify
   updateContent: (blockId: string, key: string, value: unknown) => void
 }
@@ -27,7 +28,7 @@ function shouldOptimizeByDefault(file: File) {
   return file.size > 200 * 1024 && file.type.startsWith('image/') && file.type !== 'image/gif' && file.type !== 'image/svg+xml'
 }
 
-export function useBuilderImageUpload({ fileUpload, listImages, attachImage, templateName, notify, updateContent }: ImageUploadOptions) {
+export function useBuilderImageUpload({ fileUpload, listImages, attachImage, templateName, templateDoctype, notify, updateContent }: ImageUploadOptions) {
   const [pendingImageBlock, setPendingImageBlock] = useState<string | null>(null)
   const [imagePickerBlock, setImagePickerBlock] = useState<string | null>(null)
   const [imagePickerScope, setImagePickerScope] = useState<ImagePickerScope>('template')
@@ -62,7 +63,7 @@ export function useBuilderImageUpload({ fileUpload, listImages, attachImage, tem
     else setImageLibraryLoading(true)
     setImageLibraryError(null)
     try {
-      const response = await listImages.call({ template_name: templateName, scope, search, start, page_length: IMAGE_PAGE_LENGTH })
+      const response = await listImages.call({ template_name: templateName, template_doctype: templateDoctype, scope, search, start, page_length: IMAGE_PAGE_LENGTH })
       const result = normalizeImageList(response.message as BuilderImageListResponse | BuilderImageFile[] | undefined, start)
       setImageLibrary((current) => append ? [...current, ...result.rows] : result.rows)
       setImageLibraryHasMore(result.hasMore)
@@ -78,7 +79,7 @@ export function useBuilderImageUpload({ fileUpload, listImages, attachImage, tem
       if (append) setImageLibraryLoadingMore(false)
       else setImageLibraryLoading(false)
     }
-  }, [imagePickerScope, imageSearch, listImages, normalizeImageList, templateName])
+  }, [imagePickerScope, imageSearch, listImages, normalizeImageList, templateDoctype, templateName])
 
   const openImagePicker = useCallback((blockId: string) => {
     setImagePickerBlock(blockId)
@@ -116,7 +117,7 @@ export function useBuilderImageUpload({ fileUpload, listImages, attachImage, tem
     const uploadOptions = {
       isPrivate: false,
       folder: 'Home/Attachments',
-      doctype: 'Email Template',
+      doctype: templateDoctype,
       docname: templateName,
       otherData: optimize
         ? { optimize: '1', ...(maxImageWidth === 'auto' ? {} : { max_width: String(maxImageWidth || DEFAULT_MAX_WIDTH) }) }
@@ -138,7 +139,7 @@ export function useBuilderImageUpload({ fileUpload, listImages, attachImage, tem
     } finally {
       setPendingImageBlock(null)
     }
-  }, [closeImagePicker, fileUpload, loadImages, maxImageWidth, notify, optimizeImages, templateName, updateContent])
+  }, [closeImagePicker, fileUpload, loadImages, maxImageWidth, notify, optimizeImages, templateDoctype, templateName, updateContent])
 
   const uploadInspectorImage = useCallback((blockId: string, file: File) => { void uploadImage(blockId, file) }, [uploadImage])
 
@@ -146,7 +147,7 @@ export function useBuilderImageUpload({ fileUpload, listImages, attachImage, tem
     if (!imagePickerBlock) return
     setPendingImageBlock(imagePickerBlock)
     try {
-      const response = await attachImage.call({ template_name: templateName, file_name: fileName })
+      const response = await attachImage.call({ template_name: templateName, template_doctype: templateDoctype, file_name: fileName })
       const file = response.message
       updateContent(imagePickerBlock, 'src', file.file_url)
       notify('Existing image selected', 'success')
@@ -157,7 +158,7 @@ export function useBuilderImageUpload({ fileUpload, listImages, attachImage, tem
     } finally {
       setPendingImageBlock(null)
     }
-  }, [attachImage, closeImagePicker, imagePickerBlock, loadImages, notify, templateName, updateContent])
+  }, [attachImage, closeImagePicker, imagePickerBlock, loadImages, notify, templateDoctype, templateName, updateContent])
 
   const uploadImageFromPicker = useCallback((file: File) => {
     if (imagePickerBlock) void uploadImage(imagePickerBlock, file)

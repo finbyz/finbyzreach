@@ -2,7 +2,7 @@ import { useCallback, useEffect, useReducer } from 'react'
 
 import type { useBuilderData } from './useBuilderData'
 import { getErrorMessage } from '../lib/errors'
-import type { AiRewriteProposal, BuilderDocument, ChatTurn } from '../types'
+import type { AiRewriteProposal, BuilderDocument, BuilderTemplateDoctype, ChatTurn } from '../types'
 import type { ModalName } from '../components/BuilderDialogs'
 import type { NoticeKind, NoticeOptions } from '../components/notificationContext'
 
@@ -12,6 +12,7 @@ type AiOptions = {
   document: BuilderDocument | null
   sdk: ReturnType<typeof useBuilderData>
   templateName: string
+  templateDoctype: BuilderTemplateDoctype
   notify: Notify
   setModal: (modal: ModalName) => void
   commit: (change: (next: BuilderDocument) => void, recordHistory?: boolean, historyKey?: string) => void
@@ -168,7 +169,7 @@ function aiReducer(state: AiState, action: AiAction): AiState {
   }
 }
 
-export function useBuilderAi({ document, sdk, templateName, notify, setModal, commit, isReadOnly }: AiOptions) {
+export function useBuilderAi({ document, sdk, templateName, templateDoctype, notify, setModal, commit, isReadOnly }: AiOptions) {
   const [state, dispatch] = useReducer(aiReducer, INITIAL_AI_STATE)
 
   const enabled = Boolean(sdk.aiSettings.data?.message?.enabled)
@@ -212,6 +213,7 @@ export function useBuilderAi({ document, sdk, templateName, notify, setModal, co
     try {
       const response = await sdk.aiRewrite.call({
         template_name: templateName,
+        template_doctype: templateDoctype,
         schema: JSON.stringify(document.schema),
         metadata: JSON.stringify(document.metadata),
         prompt,
@@ -222,7 +224,7 @@ export function useBuilderAi({ document, sdk, templateName, notify, setModal, co
     } catch (error) {
       dispatch({ type: 'receive-error', value: getErrorMessage(error, 'The AI rewrite could not be generated.') })
     }
-  }, [document, isReadOnly, sdk.aiRewrite, state.chatTurns, state.prompt, templateName])
+  }, [document, isReadOnly, sdk.aiRewrite, state.chatTurns, state.prompt, templateDoctype, templateName])
 
   const acceptProposal = useCallback(() => {
     if (!state.proposal || isReadOnly) return
@@ -233,13 +235,13 @@ export function useBuilderAi({ document, sdk, templateName, notify, setModal, co
       next.metadata.preheader = metadata.preheader
     }, true, '')
     if (proposal_id) {
-      void sdk.aiAccept.call({ proposal_id, template_name: templateName }).catch(() => undefined)
+      void sdk.aiAccept.call({ proposal_id, template_name: templateName, template_doctype: templateDoctype }).catch(() => undefined)
     }
     dispatch({ type: 'accept-proposal', proposalId: proposal_id || undefined })
     dispatch({ type: 'clear-proposal' })
     setModal(null)
     notify('AI changes applied. Undo to revert, or Save to keep them.', 'success')
-  }, [commit, isReadOnly, notify, sdk.aiAccept, setModal, state.proposal, templateName])
+  }, [commit, isReadOnly, notify, sdk.aiAccept, setModal, state.proposal, templateDoctype, templateName])
 
   const applyPastProposal = useCallback((proposal: AiRewriteProposal) => {
     if (!proposal?.schema || isReadOnly) return
@@ -249,13 +251,13 @@ export function useBuilderAi({ document, sdk, templateName, notify, setModal, co
       if (proposal.metadata?.preheader) next.metadata.preheader = proposal.metadata.preheader
     }, true, '')
     if (proposal.proposal_id) {
-      void sdk.aiAccept.call({ proposal_id: proposal.proposal_id, template_name: templateName }).catch(() => undefined)
+      void sdk.aiAccept.call({ proposal_id: proposal.proposal_id, template_name: templateName, template_doctype: templateDoctype }).catch(() => undefined)
     }
     dispatch({ type: 'accept-proposal', proposalId: proposal.proposal_id || undefined })
     dispatch({ type: 'clear-proposal' })
     setModal(null)
     notify('Version restored and applied to template.', 'success')
-  }, [commit, isReadOnly, notify, sdk.aiAccept, setModal, templateName])
+  }, [commit, isReadOnly, notify, sdk.aiAccept, setModal, templateDoctype, templateName])
 
   const loadProposalPreview = useCallback(async (proposalId: string) => {
     if (!proposalId) return
@@ -292,14 +294,14 @@ export function useBuilderAi({ document, sdk, templateName, notify, setModal, co
 
   const clearAiChat = useCallback(async () => {
     try {
-      await sdk.aiClearChat.call({ template_name: templateName })
+      await sdk.aiClearChat.call({ template_name: templateName, template_doctype: templateDoctype })
       dispatch({ type: 'set-turns', turns: [] })
       dispatch({ type: 'clear-proposal' })
       notify('AI chat history cleared.', 'success')
     } catch (error) {
       notify(getErrorMessage(error, 'Could not clear AI chat history.'), 'error')
     }
-  }, [notify, sdk.aiClearChat, templateName])
+  }, [notify, sdk.aiClearChat, templateDoctype, templateName])
 
   const runGenerate = useCallback(() => { void generate() }, [generate])
 

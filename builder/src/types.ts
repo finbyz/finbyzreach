@@ -1,5 +1,7 @@
 export type DeviceVisibility = 'both' | 'desktop' | 'mobile'
 
+export type BuilderTemplateDoctype = 'Email Template' | 'Email Template Master'
+
 export type Spacing = {
   top?: string
   right?: string
@@ -118,6 +120,7 @@ export type BuilderDocument = {
 
 export type BuilderLoadResponse = {
   name: string
+  template_doctype: BuilderTemplateDoctype
   subject: string
   preheader: string
   mode: string

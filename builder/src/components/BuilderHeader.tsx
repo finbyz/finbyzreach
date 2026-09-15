@@ -7,6 +7,7 @@ import { AiTemplateCreator } from './AiTemplateCreator'
 export const BuilderHeader = memo(function BuilderHeader() {
   const {
     templateName,
+    templateDoctype,
     mode,
     isReadOnly,
     dirty,
@@ -45,14 +46,16 @@ export const BuilderHeader = memo(function BuilderHeader() {
   const suggestionCount = suggestions.length
 
   const [showNewModal, setShowNewModal] = useState(false)
+  const isMaster = templateDoctype === 'Email Template Master'
+  const formRoute = isMaster ? 'email-template-master' : 'email-template'
 
   return (
     <>
       <header className="builder-header">
         <div className="builder-title">
-          <a className="icon-button builder-back-button" href={`/app/email-template/${encodeURIComponent(templateName)}`} aria-label="Back to Email Template"><ArrowLeft size={18} /></a>
+          <a className="icon-button builder-back-button" href={`/app/${formRoute}/${encodeURIComponent(templateName)}`} aria-label={`Back to ${templateDoctype}`}><ArrowLeft size={18} /></a>
           <div className="builder-title-copy">
-            <small>Email template</small>
+            <small>{isMaster ? 'Master template' : 'Email template'}</small>
             <span className="builder-title-line"><strong>{templateName}</strong><span className="mode-badge">{mode}</span></span>
           </div>
           <button
@@ -92,7 +95,7 @@ export const BuilderHeader = memo(function BuilderHeader() {
           </div>
         </div>
       </header>
-      {showNewModal && <AiTemplateCreator mode="modal" onClose={() => setShowNewModal(false)} />}
+      {showNewModal && <AiTemplateCreator mode="modal" templateDoctype={templateDoctype} onClose={() => setShowNewModal(false)} />}
     </>
   )
 })

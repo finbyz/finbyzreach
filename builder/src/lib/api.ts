@@ -33,4 +33,7 @@ export function makeCallKey(method: string, params: ApiParams = {}) {
     .join('&')}`
 }
 
-export const builderCacheKey = (templateName: string) => makeCallKey(API_METHODS.load, { template_name: templateName })
+export const builderCacheKey = (templateName: string, templateDoctype = 'Email Template') => makeCallKey(API_METHODS.load, {
+  template_name: templateName,
+  template_doctype: templateDoctype,
+})

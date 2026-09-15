@@ -22,14 +22,15 @@ import type {
   MergeField,
   BuilderImageFile,
   BuilderImageListResponse,
+  BuilderTemplateDoctype,
 } from '../types'
 
-export function useBuilderData(templateName: string, historyOpen = false, document?: BuilderDocument | null) {
-  const loadParams = useMemo(() => ({ template_name: templateName }), [templateName])
+export function useBuilderData(templateName: string, templateDoctype: BuilderTemplateDoctype, historyOpen = false, document?: BuilderDocument | null) {
+  const loadParams = useMemo(() => ({ template_name: templateName, template_doctype: templateDoctype }), [templateDoctype, templateName])
   const load = useFrappeGetCall<ApiResponse<BuilderLoadResponse>>(
     API_METHODS.load,
     templateName ? loadParams : undefined,
-    templateName ? builderCacheKey(templateName) : null,
+    templateName ? builderCacheKey(templateName, templateDoctype) : null,
     { shouldRetryOnError: false, revalidateOnFocus: false },
   )
 
@@ -41,7 +42,7 @@ export function useBuilderData(templateName: string, historyOpen = false, docume
     { shouldRetryOnError: false, revalidateOnFocus: false },
   )
 
-  const revisionParams = useMemo(() => ({ template_name: templateName, page_length: 50 }), [templateName])
+  const revisionParams = useMemo(() => ({ template_name: templateName, template_doctype: templateDoctype, page_length: 50 }), [templateDoctype, templateName])
   const revisions = useFrappeGetCall<ApiResponse<RevisionSummary[]>>(
     API_METHODS.revisions,
     historyOpen && templateName ? revisionParams : undefined,
@@ -62,7 +63,7 @@ export function useBuilderData(templateName: string, historyOpen = false, docume
     { shouldRetryOnError: false, revalidateOnFocus: false, revalidateOnMount: true, dedupingInterval: 0 },
   )
 
-  const aiSettingsParams = useMemo(() => templateName ? { template_name: templateName } : undefined, [templateName])
+  const aiSettingsParams = useMemo(() => templateName ? { template_name: templateName, template_doctype: templateDoctype } : undefined, [templateDoctype, templateName])
   const aiSettings = useFrappeGetCall<ApiResponse<AiBuilderSettings>>(
     API_METHODS.aiSettings,
     aiSettingsParams,

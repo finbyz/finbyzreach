@@ -2,7 +2,7 @@ import { useCallback, useReducer } from 'react'
 
 import type { useBuilderData } from './useBuilderData'
 import { getErrorMessage } from '../lib/errors'
-import type { BuilderDocument, PreviewResult } from '../types'
+import type { BuilderDocument, BuilderTemplateDoctype, PreviewResult } from '../types'
 import type { ModalName } from '../components/BuilderDialogs'
 import type { NoticeKind, NoticeOptions } from '../components/notificationContext'
 
@@ -12,6 +12,7 @@ type PreviewTestOptions = {
   document: BuilderDocument | null
   sdk: ReturnType<typeof useBuilderData>
   templateName: string
+  templateDoctype: BuilderTemplateDoctype
   notify: Notify
   setModal: (modal: ModalName) => void
   resetPreviewFormat: () => void
@@ -48,7 +49,7 @@ function previewTestReducer(state: PreviewTestState, action: PreviewTestAction):
   }
 }
 
-export function useBuilderPreviewTest({ document, sdk, templateName, notify, setModal, resetPreviewFormat }: PreviewTestOptions) {
+export function useBuilderPreviewTest({ document, sdk, templateName, templateDoctype, notify, setModal, resetPreviewFormat }: PreviewTestOptions) {
   const [state, dispatch] = useReducer(previewTestReducer, INITIAL_PREVIEW_TEST_STATE)
 
   const setRecipient = useCallback((value: string) => dispatch({ type: 'set-recipient', value }), [])
@@ -76,6 +77,7 @@ export function useBuilderPreviewTest({ document, sdk, templateName, notify, set
     try {
       await sdk.testEmail.call({
         template_name: templateName,
+        template_doctype: templateDoctype,
         schema: JSON.stringify(document.schema),
         metadata: JSON.stringify(document.metadata),
         recipient: state.recipient.trim(),
@@ -87,7 +89,7 @@ export function useBuilderPreviewTest({ document, sdk, templateName, notify, set
     } catch (error) {
       notify(getErrorMessage(error, 'Test email could not be queued.'), 'error')
     }
-  }, [document, notify, sdk.testEmail, setModal, state.recipient, templateName])
+  }, [document, notify, sdk.testEmail, setModal, state.recipient, templateDoctype, templateName])
 
   const retryPreview = useCallback(() => { void openPreview() }, [openPreview])
   const sendTestEmail = useCallback(() => { void sendTest() }, [sendTest])

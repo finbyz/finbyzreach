@@ -3,7 +3,7 @@ import { ArrowLeft, ChevronDown, ChevronUp, Loader2, Sparkles, Wand2 } from 'luc
 import { useFrappePostCall } from 'frappe-react-sdk'
 import { API_METHODS } from '../lib/api'
 import { getErrorMessage } from '../lib/errors'
-import type { ApiResponse } from '../types'
+import type { ApiResponse, BuilderTemplateDoctype } from '../types'
 
 const SAMPLE_PROMPTS = [
   {
@@ -31,9 +31,10 @@ const SAMPLE_PROMPTS = [
 type AiTemplateCreatorProps = {
   mode?: 'page' | 'modal'
   onClose?: () => void
+  templateDoctype?: BuilderTemplateDoctype
 }
 
-export function AiTemplateCreator({ mode = 'page', onClose }: AiTemplateCreatorProps) {
+export function AiTemplateCreator({ mode = 'page', onClose, templateDoctype = 'Email Template' }: AiTemplateCreatorProps) {
   const [prompt, setPrompt] = useState('')
   const [templateName, setTemplateName] = useState('')
   const [subject, setSubject] = useState('')
@@ -56,6 +57,7 @@ export function AiTemplateCreator({ mode = 'page', onClose }: AiTemplateCreatorP
     try {
       const response = await createTemplateCall({
         prompt: cleanPrompt,
+        template_doctype: templateDoctype,
         template_name: templateName.trim() || undefined,
         subject: subject.trim() || undefined,
       })
@@ -79,7 +81,7 @@ export function AiTemplateCreator({ mode = 'page', onClose }: AiTemplateCreatorP
           <Sparkles size={24} />
         </div>
         <div className="ai-creator-title-block">
-          <h2>Build Email Template with AI ✨</h2>
+          <h2>Build {templateDoctype === 'Email Template Master' ? 'Master Template' : 'Email Template'} with AI ✨</h2>
           <p>
             Describe your email concept. AI will design a responsive layout, write persuasive copy, generate custom visuals, and launch the builder ready to customize.
           </p>
@@ -178,7 +180,7 @@ export function AiTemplateCreator({ mode = 'page', onClose }: AiTemplateCreatorP
               Cancel
             </button>
           ) : (
-            <a href="/app/email-template" className="button button--secondary">
+            <a href={templateDoctype === 'Email Template Master' ? '/app/email-template-master' : '/app/email-template'} className="button button--secondary">
               <ArrowLeft size={14} />
               <span>Back to Desk</span>
             </a>

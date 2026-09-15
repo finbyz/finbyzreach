@@ -767,6 +767,7 @@ function AiRewriteDialog() {
 export const BuilderDialogs = memo(function BuilderDialogs() {
   const {
     modal,
+    templateDoctype,
     document,
     preview,
     previewError,
@@ -811,6 +812,7 @@ export const BuilderDialogs = memo(function BuilderDialogs() {
 
   const compactPreview = uiMode === 'mobile'
   const activePreviewWidth = compactPreview ? 'mobile' : previewWidth
+  const builderDocumentLabel = templateDoctype === 'Email Template Master' ? 'Master Template' : 'Email Template'
 
   useEffect(() => {
     if (compactPreview && previewWidth !== 'mobile') setPreviewWidth('mobile')
@@ -908,7 +910,7 @@ export const BuilderDialogs = memo(function BuilderDialogs() {
       </Modal>}
 
       {overwriteConfirmationOpen && <Modal title="Replace manual HTML?" onClose={closeOverwriteConfirmation} width={480}>
-        <div className="dialog-form"><p>Saving this visual design will replace the current manual HTML in the Email Template. Your visual builder schema will be saved as the new source of the email.</p><div><button type="button" className="button button--secondary" onClick={closeOverwriteConfirmation}>Cancel</button><button type="button" className="button button--primary" onClick={confirmOverwrite}>Replace HTML</button></div></div>
+        <div className="dialog-form"><p>Saving this visual design will replace the current manual HTML in the {builderDocumentLabel}. Your visual builder schema will be saved as its new source.</p><div><button type="button" className="button button--secondary" onClick={closeOverwriteConfirmation}>Cancel</button><button type="button" className="button button--primary" onClick={confirmOverwrite}>Replace HTML</button></div></div>
       </Modal>}
 
 
@@ -941,7 +943,7 @@ export const BuilderDialogs = memo(function BuilderDialogs() {
 
 
       {modal === 'visual-unlock' && <Modal title="Edit Raw HTML visually?" onClose={closeModal} width={520}>
-        <div className="dialog-form"><p>This Email Template is currently in Raw HTML mode, so the visual builder is opened read-only to protect the manual HTML.</p><p>If you continue, visual editing will unlock in this browser. The current manual HTML is not replaced until you explicitly save and confirm the overwrite.</p><div><button type="button" className="button button--secondary" onClick={closeModal}>Keep read-only</button><button type="button" className="button button--primary" onClick={confirmVisualEditing}>Edit visually</button></div></div>
+        <div className="dialog-form"><p>This {builderDocumentLabel} is currently in Raw HTML mode, so the visual builder is opened read-only to protect the manual HTML.</p><p>If you continue, visual editing will unlock in this browser. The current manual HTML is not replaced until you explicitly save and confirm the overwrite.</p><div><button type="button" className="button button--secondary" onClick={closeModal}>Keep read-only</button><button type="button" className="button button--primary" onClick={confirmVisualEditing}>Edit visually</button></div></div>
       </Modal>}
 
       {modal === 'conflict' && <Modal title="Newer template version available" onClose={closeModal} width={500}>

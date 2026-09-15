@@ -2,7 +2,7 @@ import { useCallback, useReducer } from 'react'
 
 import type { useBuilderData } from './useBuilderData'
 import { getErrorMessage } from '../lib/errors'
-import type { RevisionPreviewResult } from '../types'
+import type { BuilderTemplateDoctype, RevisionPreviewResult } from '../types'
 import type { ModalName, PreviewFormat } from '../components/BuilderDialogs'
 
 type RevisionPreviewState = {
@@ -36,11 +36,13 @@ function revisionPreviewReducer(state: RevisionPreviewState, action: RevisionPre
 export function useRevisionPreview({
   sdk,
   templateName,
+  templateDoctype,
   setModal,
   setPreviewFormat,
 }: {
   sdk: ReturnType<typeof useBuilderData>
   templateName: string
+  templateDoctype: BuilderTemplateDoctype
   setModal: (modal: ModalName) => void
   setPreviewFormat: (format: PreviewFormat) => void
 }) {
@@ -52,12 +54,12 @@ export function useRevisionPreview({
     setPreviewFormat('html')
     setModal('revision-preview')
     try {
-      const response = await sdk.revisionPreview.call({ template_name: templateName, revision_name: revisionName })
+      const response = await sdk.revisionPreview.call({ template_name: templateName, template_doctype: templateDoctype, revision_name: revisionName })
       dispatch({ type: 'success', value: response.message })
     } catch (error) {
       dispatch({ type: 'error', value: getErrorMessage(error, 'Revision preview could not be loaded.') })
     }
-  }, [sdk.revisionPreview, setModal, setPreviewFormat, templateName])
+  }, [sdk.revisionPreview, setModal, setPreviewFormat, templateDoctype, templateName])
 
   const retryRevisionPreview = useCallback(() => {
     if (state.revisionPreviewName) void openRevisionPreview(state.revisionPreviewName)

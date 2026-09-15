@@ -1,10 +1,12 @@
 import { startTransition, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { FrappeContext } from 'frappe-react-sdk'
+import type { BuilderTemplateDoctype } from '../types'
 
 type RealtimeStatus = 'disabled' | 'connecting' | 'connected' | 'reconnecting' | 'disconnected' | 'error'
 
 export type BuilderRealtimeEvent = {
   template_name?: string
+  template_doctype?: string
   modified?: string
   content_hash?: string
   revision?: string | null
@@ -15,6 +17,7 @@ export type BuilderRealtimeEvent = {
 
 export type BuilderAssetEvent = {
   template_name?: string
+  template_doctype?: string
   file_name?: string | null
   actor?: string
   client_id?: string
@@ -39,17 +42,16 @@ type BuilderSocket = {
 
 type UseBuilderRealtimeOptions = {
   templateName: string
+  templateDoctype: BuilderTemplateDoctype
   enabled?: boolean
   onRemoteSave?: (event: BuilderRealtimeEvent) => void
   onRevisionCreated?: (event: BuilderRealtimeEvent) => void
   onAssetsChanged?: (event: BuilderAssetEvent) => void
-  onAiStep?: (event: { template_name?: string; step: { type: string; label: string; detail?: string } }) => void
+  onAiStep?: (event: { template_name?: string; template_doctype?: string; step: { type: string; label: string; detail?: string } }) => void
 }
 
-const EMAIL_TEMPLATE_DOCTYPE = 'Email Template'
-
-function makeClientId(templateName: string) {
-  const key = `email-builder-socket-client:${window.location.host}:${templateName || 'new'}`
+function makeClientId(templateName: string, templateDoctype: BuilderTemplateDoctype) {
+  const key = `email-builder-socket-client:${window.location.host}:${templateDoctype}:${templateName || 'new'}`
   try {
     const existing = sessionStorage.getItem(key)
     if (existing) return existing
@@ -69,6 +71,7 @@ function useLatestRef<T>(value: T) {
 
 export function useBuilderRealtime({
   templateName,
+  templateDoctype,
   enabled = true,
   onRemoteSave,
   onRevisionCreated,
@@ -83,10 +86,13 @@ export function useBuilderRealtime({
   const revisionCreatedRef = useLatestRef(onRevisionCreated)
   const assetsChangedRef = useLatestRef(onAssetsChanged)
   const aiStepRef = useLatestRef(onAiStep)
-  const clientId = useMemo(() => makeClientId(templateName), [templateName])
+  const clientId = useMemo(() => makeClientId(templateName, templateDoctype), [templateDoctype, templateName])
 
   const isOwnEvent = useCallback((event?: { client_id?: string }) => Boolean(event?.client_id && event.client_id === clientId), [clientId])
-  const isCurrentTemplate = useCallback((event?: { template_name?: string }) => !event?.template_name || event.template_name === templateName, [templateName])
+  const isCurrentTemplate = useCallback((event?: { template_name?: string; template_doctype?: string }) => (
+    (!event?.template_name || event.template_name === templateName)
+    && (!event?.template_doctype || event.template_doctype === templateDoctype)
+  ), [templateDoctype, templateName])
 
   useEffect(() => {
     if (!enabled || !templateName || !socket) {
@@ -96,19 +102,19 @@ export function useBuilderRealtime({
     }
 
     const subscribe = () => {
-      socket.emit('doc_subscribe', EMAIL_TEMPLATE_DOCTYPE, templateName)
-      socket.emit('doc_open', EMAIL_TEMPLATE_DOCTYPE, templateName)
+      socket.emit('doc_subscribe', templateDoctype, templateName)
+      socket.emit('doc_open', templateDoctype, templateName)
     }
     const unsubscribe = () => {
-      socket.emit('doc_close', EMAIL_TEMPLATE_DOCTYPE, templateName)
-      socket.emit('doc_unsubscribe', EMAIL_TEMPLATE_DOCTYPE, templateName)
+      socket.emit('doc_close', templateDoctype, templateName)
+      socket.emit('doc_unsubscribe', templateDoctype, templateName)
     }
     const onConnect = () => { setStatus('connected'); subscribe() }
     const onDisconnect = () => { setStatus('disconnected'); setViewers([]) }
     const onReconnectAttempt = () => setStatus('reconnecting')
     const onConnectError = () => setStatus('error')
     const onDocViewers = (event: DocViewersEvent) => {
-      if (event.doctype !== EMAIL_TEMPLATE_DOCTYPE || event.docname !== templateName) return
+      if (event.doctype !== templateDoctype || event.docname !== templateName) return
       startTransition(() => setViewers(Array.isArray(event.users) ? event.users : []))
     }
     const onSaved = (event: BuilderRealtimeEvent) => {
@@ -123,7 +129,7 @@ export function useBuilderRealtime({
       if (!isCurrentTemplate(event)) return
       startTransition(() => assetsChangedRef.current?.(event))
     }
-    const onAiStepHandler = (event: { template_name?: string; step: { type: string; label: string; detail?: string } }) => {
+    const onAiStepHandler = (event: { template_name?: string; template_doctype?: string; step: { type: string; label: string; detail?: string } }) => {
       if (!isCurrentTemplate(event)) return
       startTransition(() => aiStepRef.current?.(event))
     }
@@ -154,7 +160,7 @@ export function useBuilderRealtime({
       socket.io?.off('reconnect_attempt', onReconnectAttempt)
       socket.io?.off('reconnect', onConnect)
     }
-  }, [aiStepRef, assetsChangedRef, enabled, isCurrentTemplate, isOwnEvent, remoteSaveRef, revisionCreatedRef, socket, templateName])
+  }, [aiStepRef, assetsChangedRef, enabled, isCurrentTemplate, isOwnEvent, remoteSaveRef, revisionCreatedRef, socket, templateDoctype, templateName])
 
   return {
     clientId,
