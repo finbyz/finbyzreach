@@ -10,8 +10,10 @@ from frappe.utils import get_url
 
 from ..api import _compiled_subject, _content_hash, _validate_reference_usage, attach_builder_image, create_visual_template, get_link_merge_fields, get_merge_fields, list_builder_images, list_components, list_revisions, load_builder, load_component, render_preview, render_revision_preview, restore_revision, save_builder, save_component, send_test_email, switch_to_raw_html
 from ..compiler import compile_schema
-from ..constants import BLOCK_TYPES, LAYOUTS, MAX_COMPONENT_BYTES, MAX_METADATA_BYTES, MAX_SCHEMA_BYTES
+from ..constants import BLOCK_TYPES, EMAIL_TEMPLATE_MASTER_DOCTYPE, LAYOUTS, MAX_COMPONENT_BYTES, MAX_METADATA_BYTES, MAX_SCHEMA_BYTES
+from ..library import create_email_from_master
 from ..schema import validate_schema
+from ..targets import normalize_template_doctype
 
 
 def _schema(layout, block_type):
@@ -1179,6 +1181,45 @@ class TestEmailTemplateBuilder(IntegrationTestCase):
 		self.assertIn("/builder?template=", result["route"])
 		with self.assertRaises(frappe.ValidationError):
 			create_visual_template(name, subject="Duplicate")
+
+	def test_master_is_directly_editable_and_creates_an_independent_email(self):
+		master_name = f"_Test Builder Master {frappe.generate_hash(length=8)}"
+		created = create_visual_template(
+			master_name,
+			subject="Reusable welcome",
+			template_doctype=EMAIL_TEMPLATE_MASTER_DOCTYPE,
+		)
+		self.assertIn("template_doctype=Email%20Template%20Master", created["route"])
+
+		master = frappe.get_doc(EMAIL_TEMPLATE_MASTER_DOCTYPE, master_name)
+		result = save_builder(
+			master.name,
+			str(master.modified),
+			json.dumps(_schema("1", "button")),
+			json.dumps({"subject": "Master subject", "preheader": "Reusable", "reference_doctype": ""}),
+			template_doctype=EMAIL_TEMPLATE_MASTER_DOCTYPE,
+		)
+		self.assertTrue(result["revision"])
+		self.assertEqual(load_builder(master.name, EMAIL_TEMPLATE_MASTER_DOCTYPE)["template_doctype"], EMAIL_TEMPLATE_MASTER_DOCTYPE)
+		self.assertEqual(
+			frappe.db.get_value("Email Builder Revision", result["revision"], "template_doctype"),
+			EMAIL_TEMPLATE_MASTER_DOCTYPE,
+		)
+
+		email_name = f"_Test Email From Master {frappe.generate_hash(length=8)}"
+		copied = create_email_from_master(master.name, email_name, "Campaign subject")
+		email = frappe.get_doc("Email Template", copied["name"])
+		master.reload()
+		self.assertEqual(email.custom_builder_schema, master.custom_builder_schema)
+		self.assertEqual(email.response_html, master.response_html)
+		self.assertEqual(email.custom_builder_subject_source, "Campaign subject")
+		self.assertNotEqual(email.name, master.name)
+
+	def test_builder_target_doctype_is_allowlisted(self):
+		self.assertEqual(normalize_template_doctype(None), "Email Template")
+		self.assertEqual(normalize_template_doctype(EMAIL_TEMPLATE_MASTER_DOCTYPE), EMAIL_TEMPLATE_MASTER_DOCTYPE)
+		with self.assertRaises(frappe.PermissionError):
+			normalize_template_doctype("User")
 
 	def test_load_builder_reports_raw_manual_html_and_visual_conflict_state(self):
 		raw = _email_template(

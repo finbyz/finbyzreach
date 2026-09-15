@@ -4,6 +4,7 @@
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
+  "template_doctype",
   "template",
   "revision_number",
   "content_hash",
@@ -16,10 +17,19 @@
  ],
  "fields": [
   {
-   "fieldname": "template",
+   "default": "Email Template",
+   "fieldname": "template_doctype",
    "fieldtype": "Link",
-   "label": "Email Template",
-   "options": "Email Template",
+   "label": "Template Type",
+   "options": "DocType",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "template",
+   "fieldtype": "Dynamic Link",
+   "label": "Builder Document",
+   "options": "template_doctype",
    "reqd": 1,
    "in_list_view": 1
   },

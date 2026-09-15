@@ -4,16 +4,26 @@
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
+  "template_doctype",
   "template",
   "user",
   "chat_history_json"
  ],
  "fields": [
   {
-   "fieldname": "template",
+   "default": "Email Template",
+   "fieldname": "template_doctype",
    "fieldtype": "Link",
-   "label": "Email Template",
-   "options": "Email Template",
+   "label": "Template Type",
+   "options": "DocType",
+   "reqd": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "template",
+   "fieldtype": "Dynamic Link",
+   "label": "Builder Document",
+   "options": "template_doctype",
    "reqd": 1,
    "in_list_view": 1,
    "search_index": 1
@@ -38,8 +48,7 @@
  "modified": "2026-08-05 00:00:00.000000",
  "module": "Email Template Builder",
  "name": "Email Builder AI Chat",
- "naming_rule": "Expression",
- "autoname": "format:{template}-{user}",
+ "autoname": "hash",
  "permissions": [
   {
    "create": 1,
