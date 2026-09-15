@@ -21,7 +21,7 @@ add_to_apps_screen = [
 # app_include_css = "/assets/finbyzreach/css/finbyzreach.css"
 app_include_js = [
     "/assets/finbyzreach/js/email_builder_composer.js?v=20260716.1",
-    "/assets/finbyzreach/js/email_template_library.js?v=20260915.10",
+    "/assets/finbyzreach/js/email_template_library.js?v=20260915.32",
     "/assets/finbyzreach/js/email_template_quick_entry.js?v=20260915.1",
 ]
 

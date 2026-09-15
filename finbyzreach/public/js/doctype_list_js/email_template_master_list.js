@@ -8,8 +8,12 @@ frappe.listview_settings["Email Template Master"] = frappe.listview_settings["Em
 		if (existing_onload) existing_onload(listview);
 		if (listview._template_library_actions_added) return;
 
-		listview.page.add_button(__("New Master"), () => frappe.email_template_library.new_master());
-		listview.page.add_inner_button(__("New Folder"), () => frappe.email_template_library.new_folder(), __("Library"));
+		listview.page.add_button(__("New Master"), () => {
+			frappe.email_template_library.choose_master({ initial_action: "template" });
+		});
+		listview.page.add_inner_button(__("New Folder"), () => {
+			frappe.email_template_library.choose_master({ initial_action: "folder" });
+		}, __("Library"));
 		listview.page.add_action_item(__("Open Visual Builder"), () => {
 			const selected = listview.get_checked_items();
 			if (!selected.length) {

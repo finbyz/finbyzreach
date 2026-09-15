@@ -11,7 +11,7 @@ frappe.ui.form.on("Email Template Master", {
 		}, __("Builder"));
 
 		frm.add_custom_button(__("New Folder"), () => {
-			frappe.email_template_library.new_folder();
+			frappe.email_template_library.choose_master({ initial_action: "folder" });
 		}, __("Library"));
 	},
 });

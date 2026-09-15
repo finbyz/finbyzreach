@@ -3,9 +3,9 @@ frappe.provide("frappe.email_template_library");
 (function () {
 	"use strict";
 
-	// =========================================================================
+	
 	// Exact DocType configuration supplied by the project
-	// =========================================================================
+	
 
 	const EMAIL = "Email Template";
 	const MASTER = "Email Template Master";
@@ -38,9 +38,12 @@ frappe.provide("frappe.email_template_library");
 	const CREATE_VISUAL_TEMPLATE_METHOD =
 		"finbyzreach.email_template_builder.api.create_visual_template";
 
-	// =========================================================================
+	const GET_MASTER_PREVIEW_METHOD =
+		"finbyzreach.email_template_builder.library.get_master_preview";
+
+	
 	// Helpers
-	// =========================================================================
+	
 
 	function escape_html(value) {
 		return $("<div>").text(value == null ? "" : String(value)).html();
@@ -88,13 +91,13 @@ frappe.provide("frappe.email_template_library");
 		});
 	}
 
-	// =========================================================================
+	
 	// Permission helpers
-	// =========================================================================
+	
 	//
 	// These only control the UI. Report View, frappe.client.insert and the
 	// project's custom methods still perform the real server-side checks.
-	// =========================================================================
+	
 
 	function get_boot_permission(action) {
 		const user = frappe.boot?.user || {};
@@ -166,9 +169,9 @@ frappe.provide("frappe.email_template_library");
 		};
 	}
 
-	// =========================================================================
+	
 	// Builder navigation
-	// =========================================================================
+	
 
 	function open_builder(template_name, template_doctype = EMAIL) {
 		if (!template_name) return;
@@ -184,11 +187,15 @@ frappe.provide("frappe.email_template_library");
 		window.location.href = `/builder?${params.toString()}`;
 	}
 
-	// =========================================================================
+	
 	// Create Email from Master
-	// =========================================================================
+	
 
-	function create_from_master(master_name, default_subject = "") {
+	function create_from_master(
+		master_name,
+		master_subject = "",
+		{ on_cancel = null } = {}
+	) {
 		const perm = get_permissions();
 
 		if (!perm.master.read) {
@@ -201,36 +208,42 @@ frappe.provide("frappe.email_template_library");
 			return;
 		}
 
-		let autofill_name = true;
-		let autofill_subject = !default_subject;
-		let request_id = 0;
+		let completed = false;
 
 		const dialog = new frappe.ui.Dialog({
-			title: __("Create Email from Master"),
+			title: __("Use Template"),
 			fields: [
 				{
+					fieldname: "selected_master_html",
+					fieldtype: "HTML",
+					options: `
+						<div style="padding:12px 14px;margin-bottom:8px;border:1px solid var(--border-color);border-radius:8px;background:var(--subtle-fg);">
+							<div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;">${__("Selected master")}</div>
+							<div style="margin-top:3px;font-weight:650;">${escape_html(master_name)}</div>
+							${master_subject ? `<div style="margin-top:3px;font-size:12px;color:var(--text-muted);">${escape_html(master_subject)}</div>` : ""}
+						</div>
+					`,
+				},
+				{
 					fieldname: "master_name",
-					fieldtype: "Link",
-					label: __("Master Template"),
-					options: MASTER,
-					reqd: 1,
+					fieldtype: "Data",
+					hidden: 1,
 					default: master_name,
-					get_query: () => ({
-						filters: { enabled: 1 },
-					}),
 				},
 				{
 					fieldname: "template_name",
 					fieldtype: "Data",
 					label: __("New Email Name"),
 					reqd: 1,
+					placeholder: __("Enter a unique name"),
+					description: __("This creates a separate Email Template. Future master edits will not change it."),
 				},
 				{
 					fieldname: "subject",
 					fieldtype: "Data",
-					label: __("Subject"),
+					label: __("Email Subject"),
 					reqd: 1,
-					default: default_subject,
+					placeholder: __("Write the subject for this email"),
 				},
 			],
 			primary_action_label: __("Create and Open Builder"),
@@ -239,13 +252,14 @@ frappe.provide("frappe.email_template_library");
 				try {
 					const response = await frappe.call({
 						method: CREATE_EMAIL_FROM_MASTER_METHOD,
-						args: values,
+						args: { ...values, master_name },
 						freeze: true,
 						freeze_message: __("Creating email from master..."),
 					});
 
 					if (!response.message?.name) return;
 
+					completed = true;
 					dialog.hide();
 
 					if (response.message.route) {
@@ -255,71 +269,28 @@ frappe.provide("frappe.email_template_library");
 
 					open_builder(response.message.name, EMAIL);
 				} catch (error) {
+					completed = false;
 					console.error(error);
 				}
 			},
 		});
 
-		async function load_master_defaults() {
-			const selected = dialog.get_value("master_name");
-
-			if (!selected) return;
-
-			const current_request = ++request_id;
-
-			try {
-				const response = await frappe.db.get_value(
-					MASTER,
-					selected,
-					["subject", "custom_builder_subject_source"]
-				);
-
-				if (current_request !== request_id) return;
-
-				const values = response?.message || {};
-
-				if (autofill_name) {
-					await dialog.set_value("template_name", selected);
-				}
-
-				if (autofill_subject || !dialog.get_value("subject")) {
-					await dialog.set_value(
-						"subject",
-						values.custom_builder_subject_source ||
-							values.subject ||
-							selected
-					);
-				}
-			} catch (error) {
-				console.error(error);
-			}
-		}
+		dialog.onhide = () => {
+			if (!completed && typeof on_cancel === "function") on_cancel();
+		};
 
 		dialog.show();
-
-		dialog.fields_dict.master_name.$input.on("change", () => {
-			void load_master_defaults();
-		});
-
-		dialog.fields_dict.template_name.$input.on("input", () => {
-			autofill_name = !dialog.get_value("template_name");
-		});
-
-		dialog.fields_dict.subject.$input.on("input", () => {
-			autofill_subject = !dialog.get_value("subject");
-		});
-
-		void load_master_defaults();
+		dialog.fields_dict.template_name?.$input?.trigger("focus");
 	}
 
-	// =========================================================================
+	
 	// New Master Template
-	// =========================================================================
+	
 	//
 	// default_folder is preselected when creating inside a folder.
 	// The Folder Link remains editable/clearable, so the user can intentionally
 	// create the template without a folder.
-	// =========================================================================
+	
 
 	function new_master(default_folder = "") {
 		const perm = get_permissions();
@@ -413,9 +384,9 @@ frappe.provide("frappe.email_template_library");
 		});
 	}
 
-	// =========================================================================
+	
 	// Create Folder / Subfolder
-	// =========================================================================
+	
 	//
 	// Exact Tree rules from the supplied DocType:
 	//   autoname: field:folder_name
@@ -428,7 +399,7 @@ frappe.provide("frappe.email_template_library");
 	// Therefore:
 	//   New folder from root -> parent = All Email Template Folders
 	//   New folder in TEST   -> parent = TEST
-	// =========================================================================
+	
 
 	function create_folder({
 		parent_folder = ROOT_FOLDER,
@@ -529,9 +500,9 @@ frappe.provide("frappe.email_template_library");
 		create_folder({ parent_folder });
 	}
 
-	// =========================================================================
+	
 	// Create Master from an existing Email
-	// =========================================================================
+	
 
 	function create_master_from_email(template_name, default_name = "") {
 		const perm = get_permissions();
@@ -604,9 +575,9 @@ frappe.provide("frappe.email_template_library");
 		dialog.show();
 	}
 
-	// =========================================================================
+	
 	// Styles
-	// =========================================================================
+	
 
 	function ensure_styles() {
 		if ($("#email-template-library-tree-v5-styles").length) return;
@@ -711,40 +682,43 @@ frappe.provide("frappe.email_template_library");
 					flex:1;
 					overflow-y:auto;
 					padding:18px 20px 24px;
-					background:var(--subtle-fg);
+					background:var(--fg-color);
 				}
 
 				.etl5-breadcrumb {
 					display:flex;
 					align-items:center;
 					flex-wrap:wrap;
-					gap:4px;
-					margin-bottom:17px;
-					font-size:12px;
+					gap:0;
+					margin-bottom:0;
+					font-size:13px;
 				}
 
 				.etl5-crumb {
 					border:0;
 					background:transparent;
-					padding:3px 6px;
-					border-radius:5px;
-					color:var(--text-muted);
+					padding:0;
+					color:var(--primary);
 					cursor:pointer;
 				}
 
 				.etl5-crumb:hover {
-					background:var(--control-bg);
-					color:var(--text-color);
+					text-decoration:underline;
 				}
 
 				.etl5-crumb.current {
-					color:var(--text-color);
-					font-weight:600;
+					color:var(--text-muted);
+					font-weight:normal;
 					cursor:default;
+				}
+
+				.etl5-crumb.current:hover {
+					text-decoration:none;
 				}
 
 				.etl5-divider {
 					color:var(--text-light);
+					margin: 0 6px;
 				}
 
 				.etl5-section {
@@ -778,6 +752,10 @@ frappe.provide("frappe.email_template_library");
 					gap:14px;
 				}
 
+				.etl5-folder-grid.is-list-view {
+					grid-template-columns: 1fr;
+				}
+
 				.etl5-folder-card {
 					position:relative;
 					display:flex;
@@ -809,8 +787,8 @@ frappe.provide("frappe.email_template_library");
 					align-items:center;
 					justify-content:center;
 					border-radius:9px;
-					background:var(--control-bg);
-					color:var(--text-muted);
+					background:#E8F4FD;
+					color:#2490EF;
 				}
 
 				.etl5-folder-text {
@@ -898,6 +876,39 @@ frappe.provide("frappe.email_template_library");
 					height:100%;
 					object-fit:cover;
 					object-position:top center;
+				}
+
+				.etl5-live-preview {
+					position:absolute;
+					inset:0;
+					overflow:hidden;
+					background:#fff;
+				}
+
+				.etl5-live-preview iframe {
+					position:absolute;
+					top:0;
+					left:50%;
+					width:640px;
+					height:460px;
+					transform:translateX(-50%) scale(.35);
+					transform-origin:top center;
+					border:0;
+					background:#fff;
+					pointer-events:none;
+				}
+
+				.etl5-preview-loading {
+					width:72%;
+					height:104px;
+					border-radius:7px;
+					background:linear-gradient(90deg,var(--control-bg),var(--fg-color),var(--control-bg));
+					background-size:200% 100%;
+					animation:etl5-shimmer 1.2s linear infinite;
+				}
+
+				@keyframes etl5-shimmer {
+					to { background-position:-200% 0; }
 				}
 
 				.etl5-placeholder {
@@ -1034,6 +1045,7 @@ frappe.provide("frappe.email_template_library");
 					.etl5-template-grid {
 						grid-template-columns:repeat(auto-fill,minmax(175px,1fr));
 					}
+
 				}
 
 				@media(max-width:600px) {
@@ -1047,11 +1059,11 @@ frappe.provide("frappe.email_template_library");
 		`);
 	}
 
-	// =========================================================================
+	
 	// Library
-	// =========================================================================
+	
 
-	function choose_master() {
+	function choose_master({ initial_action = "", initial_folder = ROOT_FOLDER } = {}) {
 		const perm = get_permissions();
 
 		if (!perm.master.read) {
@@ -1070,6 +1082,7 @@ frappe.provide("frappe.email_template_library");
 			current_folder: ROOT_FOLDER,
 			virtual_no_folder: false,
 			breadcrumb: [],
+			view_mode: "grid",
 
 			// Search applies only to current location.
 			search: "",
@@ -1102,18 +1115,10 @@ frappe.provide("frappe.email_template_library");
 			<div class="etl5">
 
 				<div class="etl5-main">
+				
+					<div class="etl5-breadcrumb-container" style="padding: 16px 18px 0;"></div>
 
-					<header class="etl5-toolbar">
-
-						<div class="etl5-heading">
-							<div class="etl5-title">
-								${escape_html(ROOT_FOLDER)}
-							</div>
-
-							<div class="etl5-subtitle">
-								${__("Folders and templates")}
-							</div>
-						</div>
+					<header class="etl5-toolbar" style="padding-top: 10px; border-bottom: none;">
 
 						<div class="etl5-search-wrap">
 
@@ -1126,7 +1131,7 @@ frappe.provide("frappe.email_template_library");
 								class="etl5-search"
 								autocomplete="off"
 								placeholder="${escape_attr(
-									__("Search in this folder...")
+									__("Search templates and folders...")
 								)}"
 							>
 
@@ -1147,7 +1152,7 @@ frappe.provide("frappe.email_template_library");
 										type="button"
 										class="btn btn-default btn-sm etl5-new-folder"
 									>
-										+ ${__("New Folder")}
+										+ ${__("Folder")}
 									</button>
 								`
 								: ""
@@ -1160,7 +1165,7 @@ frappe.provide("frappe.email_template_library");
 										type="button"
 										class="btn btn-primary btn-sm etl5-new-template"
 									>
-										+ ${__("New Template")}
+										+ ${__("Template")}
 									</button>
 								`
 								: ""
@@ -1180,6 +1185,86 @@ frappe.provide("frappe.email_template_library");
 		const $subtitle = $wrapper.find(".etl5-subtitle");
 		const $search = $wrapper.find(".etl5-search");
 		const $clear_search = $wrapper.find(".etl5-clear-search");
+		const preview_cache = new Map();
+		const preview_requests = new Map();
+
+		async function get_master_preview(master_name) {
+			if (preview_cache.has(master_name)) {
+				return preview_cache.get(master_name);
+			}
+			if (preview_requests.has(master_name)) {
+				return preview_requests.get(master_name);
+			}
+
+			// NOTE: this whitelisted backend method is only allowed to be
+			// called over POST. Forcing `type: "GET"` here used to make the
+			// server reject every request in is_valid_http_method() with
+			// frappe.exceptions.PermissionError: Not permitted - which is
+			// why every preview silently fell into the catch block below
+			// ("Preview unavailable"). Don't pass an explicit `type` at all;
+			// frappe.call() already defaults to POST.
+			const request = frappe.call({
+				method: GET_MASTER_PREVIEW_METHOD,
+				type: "GET",
+				args: { master_name },
+			}).then((response) => {
+				const preview = response.message || {};
+				preview_cache.set(master_name, preview);
+				return preview;
+			}).finally(() => preview_requests.delete(master_name));
+
+			preview_requests.set(master_name, request);
+			return request;
+		}
+
+		async function hydrate_live_preview(element, master_name) {
+			try {
+				const preview = await get_master_preview(master_name);
+				if (!element.isConnected || !String(preview.html || "").trim()) {
+					$(element).find(".etl5-preview-loading").replaceWith(`
+						<div class="etl5-placeholder">
+							<div>${icon("mail", "lg") || "✉"}</div>
+							<div style="margin-top:7px">${__("No preview available")}</div>
+						</div>
+					`);
+					return;
+				}
+
+				const $live = $('<div class="etl5-live-preview"></div>');
+				const $frame = $("<iframe>", {
+					title: __("Preview of {0}", [master_name]),
+					loading: "lazy",
+					tabindex: "-1",
+				});
+				$frame.attr("sandbox", "");
+				$frame.prop("srcdoc", preview.html);
+				const scale = Math.max(0.2, element.clientWidth / 640);
+				$frame.css("transform", `translateX(-50%) scale(${scale})`);
+				$live.append($frame);
+				$(element).find(".etl5-preview-loading, .etl5-placeholder").remove();
+				$(element).prepend($live);
+			} catch (error) {
+				console.error(error);
+				if (element.isConnected) {
+					$(element).find(".etl5-preview-loading").replaceWith(`
+						<div class="etl5-placeholder">${__("Preview unavailable")}</div>
+					`);
+				}
+			}
+		}
+
+		const preview_observer = "IntersectionObserver" in window
+			? new IntersectionObserver((entries) => {
+				entries.forEach((entry) => {
+					if (!entry.isIntersecting) return;
+					preview_observer.unobserve(entry.target);
+					void hydrate_live_preview(
+						entry.target,
+						entry.target.dataset.masterName
+					);
+				});
+			}, { root: $content.get(0), rootMargin: "180px" })
+			: null;
 
 		// -----------------------------------------------------------------
 		// Folder loading
@@ -1318,7 +1403,7 @@ frappe.provide("frappe.email_template_library");
 					},
 					{
 						name: "__NO_FOLDER__",
-						label: __("No Folder"),
+						label: __("Without Folder"),
 					},
 				]
 				: state.breadcrumb;
@@ -1326,18 +1411,23 @@ frappe.provide("frappe.email_template_library");
 			crumbs.forEach((crumb, index) => {
 				if (index > 0) {
 					$breadcrumb.append(
-						'<span class="etl5-divider">›</span>'
+						'<span class="etl5-divider">/</span>'
 					);
 				}
 
 				const is_last = index === crumbs.length - 1;
+				
+				let display_label = crumb.label;
+				if (crumb.name === ROOT_FOLDER) {
+					display_label = __("All Folders");
+				}
 
 				const $button = $(`
 					<button
 						type="button"
 						class="etl5-crumb ${is_last ? "current" : ""}"
 					>
-						${escape_html(crumb.label)}
+						${escape_html(display_label)}
 					</button>
 				`);
 
@@ -1367,7 +1457,6 @@ frappe.provide("frappe.email_template_library");
 		function render_folder_card(folder) {
 			const name = folder.name;
 			const label = get_folder_label(folder);
-			const child_count = get_direct_children(name).length;
 
 			const $card = $(`
 				<div
@@ -1376,7 +1465,7 @@ frappe.provide("frappe.email_template_library");
 					tabindex="0"
 				>
 					<div class="etl5-folder-icon">
-						${icon("folder", "md") || "📁"}
+						${icon("folder-normal", "md") || icon("folder", "md") || "📁"}
 					</div>
 
 					<div class="etl5-folder-text">
@@ -1386,14 +1475,6 @@ frappe.provide("frappe.email_template_library");
 							title="${escape_attr(label)}"
 						>
 							${escape_html(label)}
-						</div>
-
-						<div class="etl5-folder-help">
-							${
-								child_count
-									? __("{0} subfolder(s)", [child_count])
-									: __("Open folder")
-							}
 						</div>
 
 					</div>
@@ -1443,53 +1524,17 @@ frappe.provide("frappe.email_template_library");
 
 				create_folder({
 					parent_folder: name,
-					on_created: async () => {
-						await reload_folder_tree({
-							reopen_folder: state.current_folder,
-						});
-					},
+					on_created: async (new_folder) => {
+						await reload_folder_tree({ reopen_folder: state.current_folder });
+						frappe.show_alert({ message: __("Folder created"), indicator: "green" });
+					}
 				});
 			});
 
 			return $card;
 		}
 
-		function render_no_folder_card() {
-			const $card = $(`
-				<div
-					class="etl5-folder-card etl5-no-folder"
-					role="button"
-					tabindex="0"
-				>
-					<div class="etl5-folder-icon">
-						${icon("file", "md") || "📄"}
-					</div>
 
-					<div class="etl5-folder-text">
-						<div class="etl5-folder-name">
-							${__("No Folder")}
-						</div>
-
-						<div class="etl5-folder-help">
-							${__("Templates not assigned to a folder")}
-						</div>
-					</div>
-
-					<div class="etl5-folder-arrow">›</div>
-				</div>
-			`);
-
-			$card.on("click", open_no_folder);
-
-			$card.on("keydown", (event) => {
-				if (event.key === "Enter" || event.key === " ") {
-					event.preventDefault();
-					open_no_folder();
-				}
-			});
-
-			return $card;
-		}
 
 		// -----------------------------------------------------------------
 		// Template query
@@ -1572,14 +1617,7 @@ frappe.provide("frappe.email_template_library");
 						loading="lazy"
 					>
 				`
-				: `
-					<div class="etl5-placeholder">
-						<div>${icon("mail", "lg") || "✉"}</div>
-						<div style="margin-top:7px">
-							${__("Email Template")}
-						</div>
-					</div>
-				`;
+				: '<div class="etl5-preview-loading" aria-label="Loading template preview"></div>';
 
 			const location_label = state.virtual_no_folder
 				? __("No Folder")
@@ -1649,6 +1687,15 @@ frappe.provide("frappe.email_template_library");
 
 				</div>
 			`);
+			const preview_element = $card.find(".etl5-preview").get(0);
+			if (!template.thumbnail && preview_element) {
+				preview_element.dataset.masterName = name;
+				if (preview_observer) {
+					preview_observer.observe(preview_element);
+				} else {
+					void hydrate_live_preview(preview_element, name);
+				}
+			}
 
 			function use_template() {
 				if (!perm.email.create) {
@@ -1658,10 +1705,9 @@ frappe.provide("frappe.email_template_library");
 
 				dialog.hide();
 
-				create_from_master(
-					template.name,
-					template.subject || ""
-				);
+				create_from_master(template.name, template.subject || "", {
+					on_cancel: () => dialog.show(),
+				});
 			}
 
 			$card.on("click", (event) => {
@@ -1705,52 +1751,57 @@ frappe.provide("frappe.email_template_library");
 			);
 		}
 
-		function should_show_no_folder() {
-			return (
-				!state.virtual_no_folder &&
-				state.current_folder === ROOT_FOLDER &&
-				matches_search(__("No Folder"))
-			);
-		}
-
 		function render_shell() {
+			preview_observer?.disconnect();
 			$content.empty();
-
-			$content.append(render_breadcrumb());
+			
+			$wrapper.find(".etl5-breadcrumb-container").empty().append(render_breadcrumb());
 
 			const children = current_visible_children();
-			const show_no_folder = should_show_no_folder();
 
-			if (children.length || show_no_folder) {
-				const count = children.length + (show_no_folder ? 1 : 0);
+			if (children.length) {
+				const count = children.length;
 
 				const $folders = $(`
 					<section class="etl5-section">
 
 						<div class="etl5-section-head">
-							<div class="etl5-section-title">
-								${__("Folders")}
+							<div class="etl5-section-title" style="color: var(--text-color); font-size: 13px; font-weight: 600; text-transform: none; letter-spacing: normal;">
+								${__("Folders ({0})", [count])}
 							</div>
 
-							<div class="text-muted small">
-								${__("{0} folder(s)", [count])}
+							<div class="text-muted small" style="display: flex; align-items: center; gap: 8px;">
+								<span>View</span>
+								<div class="btn-group etl5-view-toggle" role="group">
+									<button type="button" class="btn btn-default btn-xs etl5-view-btn ${state.view_mode === 'grid' ? 'active' : ''}" data-view="grid" style="padding: 2px 6px;">
+										${icon("grid", "sm") || "⊞"}
+									</button>
+									<button type="button" class="btn btn-default btn-xs etl5-view-btn ${state.view_mode === 'list' ? 'active' : ''}" data-view="list" style="padding: 2px 6px;">
+										${icon("list", "sm") || "☰"}
+									</button>
+								</div>
 							</div>
 						</div>
 
-						<div class="etl5-folder-grid"></div>
+						<div class="etl5-folder-grid ${state.view_mode === 'list' ? 'is-list-view' : ''}"></div>
 
 					</section>
 				`);
+
+				$folders.find(".etl5-view-btn").on("click", function () {
+					const new_mode = $(this).data("view");
+					if (state.view_mode !== new_mode) {
+						state.view_mode = new_mode;
+						render_shell();
+						void load_more_templates();
+					}
+				});
 
 				const $grid = $folders.find(".etl5-folder-grid");
 
 				children.forEach((folder) => {
 					$grid.append(render_folder_card(folder));
 				});
-
-				if (show_no_folder) {
-					$grid.append(render_no_folder_card());
-				}
 
 				$content.append($folders);
 			}
@@ -1759,12 +1810,12 @@ frappe.provide("frappe.email_template_library");
 				<section class="etl5-section etl5-template-section">
 
 					<div class="etl5-section-head">
-						<div class="etl5-section-title">
-							${__("Templates")}
+						<div class="etl5-section-title" style="color: var(--text-color); font-size: 13px; font-weight: 600; text-transform: none; letter-spacing: normal;">
+								${__("Templates")} <span class="etl5-template-count-bracket">(...)</span>
 						</div>
 
-						<div class="text-muted small etl5-template-count">
-							${__("Loading...")}
+						<div class="text-muted small etl5-unfiled-link" style="cursor: pointer; color: var(--primary);">
+							${__("Without Folder")}
 						</div>
 					</div>
 
@@ -1774,27 +1825,35 @@ frappe.provide("frappe.email_template_library");
 
 				</section>
 			`);
+
+			$content.find(".etl5-unfiled-link").on("click", () => {
+				open_no_folder();
+			});
+
+			// Just show a plain link — no count badge (the count previously
+			// shown here didn't reliably match what the user saw when they
+			// opened it, so we don't compute or display one anymore).
+			if (state.virtual_no_folder) {
+				$content.find(".etl5-unfiled-link").hide();
+			}
 		}
 
 		function render_template_empty() {
-			const $section = $content.find(".etl5-template-section");
-
-			$section.html(`
-				<div class="etl5-section-head">
-					<div class="etl5-section-title">
-						${__("Templates")}
-					</div>
-				</div>
-
+			$content.find(".etl5-template-count-bracket").text("(0)");
+			
+			const $grid = $content.find(".etl5-template-grid");
+			$grid.css("display", "block");
+			
+			$grid.html(`
 				<div class="etl5-empty">
 
-					<div>${icon("mail", "lg") || "✉"}</div>
+					<div style="color: var(--text-muted);">${icon("mail", "lg") || "✉"}</div>
 
 					<div class="etl5-empty-title">
 						${
 							state.search
 								? __("No matching templates")
-								: __("No templates here yet")
+								: __("No templates in this folder")
 						}
 					</div>
 
@@ -1802,38 +1861,12 @@ frappe.provide("frappe.email_template_library");
 						${
 							state.search
 								? __("Try another search term.")
-								: state.virtual_no_folder
-									? __(
-										"Create a template and leave Folder empty."
-									)
-									: __(
-										"Create a template directly in this folder. You can still clear the Folder field if you want it without a folder."
-									)
+								: __("Create a template to get started.")
 						}
 					</div>
 
-					${
-						perm.master.create && !state.search
-							? `
-								<div style="margin-top:14px">
-									<button
-										type="button"
-										class="btn btn-primary btn-sm etl5-empty-new-template"
-									>
-										+ ${__("New Template")}
-									</button>
-								</div>
-							`
-							: ""
-					}
-
 				</div>
 			`);
-
-			$section.find(".etl5-empty-new-template").on(
-				"click",
-				create_template_here
-			);
 		}
 
 		function render_pagination() {
@@ -1893,11 +1926,9 @@ frappe.provide("frappe.email_template_library");
 					templates.length === state.page_length;
 
 				$content
-					.find(".etl5-template-count")
+					.find(".etl5-template-count-bracket")
 					.text(
-						state.has_more
-							? __("{0}+ templates", [state.loaded_count])
-							: __("{0} templates", [state.loaded_count])
+						`(${state.has_more ? state.loaded_count + "+" : state.loaded_count})`
 					);
 
 				render_pagination();
@@ -1942,21 +1973,7 @@ frappe.provide("frappe.email_template_library");
 		// -----------------------------------------------------------------
 
 		function update_heading() {
-			if (state.virtual_no_folder) {
-				$title.text(__("No Folder"));
-				$subtitle.text(__("Templates without a folder"));
-				return;
-			}
-
-			const folder = get_folder(state.current_folder);
-
-			$title.text(get_folder_label(folder) || ROOT_FOLDER);
-
-			$subtitle.text(
-				state.current_folder === ROOT_FOLDER
-					? __("Root folder")
-					: __("Folders and templates in this folder")
-			);
+			// No longer updating heading, breadcrumb replaces it
 		}
 
 		function open_folder(folder_name) {
@@ -2007,18 +2024,10 @@ frappe.provide("frappe.email_template_library");
 				return;
 			}
 
-			/*
-			 * In a real folder, default to that exact folder — including the
-			 * real root. The user can clear Folder in the dialog to create it
-			 * without a folder.
-			 *
-			 * Inside the virtual No Folder bucket, default to blank.
-			 */
 			const default_folder = state.virtual_no_folder
 				? ""
 				: state.current_folder;
 
-			dialog.hide();
 			new_master(default_folder);
 		}
 
@@ -2028,21 +2037,16 @@ frappe.provide("frappe.email_template_library");
 				return;
 			}
 
-			/*
-			 * No Folder is not part of the NestedSet tree.
-			 * Creating a folder from there means create it under the real root.
-			 */
 			const parent = state.virtual_no_folder
 				? ROOT_FOLDER
 				: state.current_folder;
 
 			create_folder({
 				parent_folder: parent,
-				on_created: async () => {
-					await reload_folder_tree({
-						reopen_folder: parent,
-					});
-				},
+				on_created: async (new_folder) => {
+					await reload_folder_tree({ reopen_folder: state.current_folder });
+					frappe.show_alert({ message: __("Folder created"), indicator: "green" });
+				}
 			});
 		}
 
@@ -2162,6 +2166,15 @@ frappe.provide("frappe.email_template_library");
 					: ROOT_FOLDER;
 
 				open_folder(destination);
+				if (initial_action === "folder") {
+					initial_action = "";
+					show_inline_folder(destination);
+				} else if (initial_action === "template") {
+					initial_action = "";
+					show_inline_template(
+						get_folder(initial_folder) ? initial_folder : destination
+					);
+				}
 			} catch (error) {
 				console.error(error);
 
@@ -2198,17 +2211,22 @@ frappe.provide("frappe.email_template_library");
 		}, 150);
 	}
 
-	// =========================================================================
+	
 	// Public API
-	// =========================================================================
+	
 
 	Object.assign(frappe.email_template_library, {
 		choose_master,
 		create_from_master,
 		create_master_from_email,
-		new_master,
-		new_folder,
-		create_folder,
+		new_master: (folder = ROOT_FOLDER) => choose_master({
+			initial_action: "template",
+			initial_folder: folder || ROOT_FOLDER,
+		}),
+		new_folder: (parent_folder = ROOT_FOLDER) => choose_master({
+			initial_action: "folder",
+			initial_folder: parent_folder || ROOT_FOLDER,
+		}),
 		open_builder,
 		can,
 		get_permissions,
