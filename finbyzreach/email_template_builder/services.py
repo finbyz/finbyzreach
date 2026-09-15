@@ -8,16 +8,21 @@ from frappe import _
 from frappe.utils.jinja import validate_template
 
 from .tokens import compile_tokens, validate_semantic_tokens
+from .targets import normalize_template_doctype
 
 
 def get_campaign_snapshot(
-	template_name: str, subject_override: str | None = None, check_permission: bool = True
+	template_name: str,
+	subject_override: str | None = None,
+	check_permission: bool = True,
+	template_doctype: str | None = None,
 ) -> frappe._dict:
-	"""Return send-ready source directly from a saved Email Template."""
-	template = frappe.get_doc("Email Template", template_name)
+	"""Return send-ready source directly from a saved builder target."""
+	template_doctype = normalize_template_doctype(template_doctype)
+	template = frappe.get_doc(template_doctype, template_name)
 	if check_permission:
 		template.check_permission("read")
-	meta = frappe.get_meta("Email Template")
+	meta = frappe.get_meta(template_doctype)
 	mode = template.get("custom_builder_mode") if meta.has_field("custom_builder_mode") else "Standard"
 	reference_doctype = (
 		template.get("custom_reference_doctype") if meta.has_field("custom_reference_doctype") else ""
@@ -30,9 +35,9 @@ def get_campaign_snapshot(
 		subject = template.subject
 
 	if not str(subject or "").strip():
-		frappe.throw(_("The selected Email Template has no subject"))
+		frappe.throw(_("The selected template has no subject"))
 	if not str(html or "").strip():
-		frappe.throw(_("The selected Email Template has no email content"))
+		frappe.throw(_("The selected template has no email content"))
 	validate_template(subject)
 	validate_template(html)
 

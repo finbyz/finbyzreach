@@ -7,8 +7,6 @@ from copy import deepcopy
 import frappe
 from frappe import _
 
-from urllib.parse import quote
-
 from frappe.utils.jinja import validate_template
 
 from .api import (
@@ -20,10 +18,11 @@ from .api import (
 	_subject_source,
 	_template,
 )
-from .constants import BLOCK_TYPES, LAYOUTS, MAX_SCHEMA_BYTES, SCHEMA_VERSION
+from .constants import BLOCK_TYPES, EMAIL_TEMPLATE_DOCTYPE, EMAIL_TEMPLATE_MASTER_DOCTYPE, LAYOUTS, MAX_SCHEMA_BYTES, SCHEMA_VERSION
 from .design_defaults import apply_design_defaults, repair_text
 from .schema import parse_json, validate_schema
 from .tokens import TOKEN_RE, validate_semantic_tokens
+from .targets import builder_route, normalize_template_doctype
 
 # The AI Agent used for rewriting is configured on the "Followup Settings" single,
 # consistent with the other AI Content Engine agents (smart reply, timeline, ...).
@@ -77,16 +76,23 @@ def _sample_prompts():
 	return [{"title": row.title, "prompt": (row.prompt or row.title)} for row in rows if row.title]
 
 
-def _chat_doc_name(template_name, user=None):
-	user = user or frappe.session.user
-	return f"{template_name}-{user}"
+def _chat_filters(template_name, user=None, template_doctype=None):
+	return {
+		"template_doctype": normalize_template_doctype(template_doctype),
+		"template": template_name,
+		"user": user or frappe.session.user,
+	}
 
 
-def _get_saved_chat_history(template_name, user=None):
+def _get_saved_chat_history(template_name, user=None, template_doctype=None):
 	if not template_name or not frappe.db.exists("DocType", "Email Builder AI Chat"):
 		return []
-	name = _chat_doc_name(template_name, user)
-	if not frappe.db.exists("Email Builder AI Chat", name):
+	name = frappe.db.get_value(
+		"Email Builder AI Chat",
+		_chat_filters(template_name, user, template_doctype),
+		"name",
+	)
+	if not name:
 		return []
 	try:
 		raw = frappe.db.get_value("Email Builder AI Chat", name, "chat_history_json")
@@ -124,18 +130,24 @@ def _sanitize_turns_for_storage(chat_turns):
 	return sanitized
 
 
-def _save_chat_history(template_name, chat_turns, user=None):
+def _save_chat_history(template_name, chat_turns, user=None, template_doctype=None):
 	if not template_name or not frappe.db.exists("DocType", "Email Builder AI Chat"):
 		return
 	user = user or frappe.session.user
-	name = _chat_doc_name(template_name, user)
+	template_doctype = normalize_template_doctype(template_doctype)
+	name = frappe.db.get_value(
+		"Email Builder AI Chat",
+		_chat_filters(template_name, user, template_doctype),
+		"name",
+	)
 	clean_turns = _sanitize_turns_for_storage(chat_turns)
 	json_text = json.dumps(clean_turns, separators=(",", ":"))
-	if frappe.db.exists("Email Builder AI Chat", name):
+	if name:
 		frappe.db.set_value("Email Builder AI Chat", name, "chat_history_json", json_text, update_modified=True)
 	else:
 		doc = frappe.get_doc({
 			"doctype": "Email Builder AI Chat",
+			"template_doctype": template_doctype,
 			"template": template_name,
 			"user": user,
 			"chat_history_json": json_text,
@@ -144,7 +156,7 @@ def _save_chat_history(template_name, chat_turns, user=None):
 
 
 @frappe.whitelist(methods=["GET"])
-def get_builder_ai_settings(template_name=None):
+def get_builder_ai_settings(template_name=None, template_doctype=None):
 	"""Lightweight capability probe the builder UI calls on load."""
 	_require_designer()
 	settings = _settings()
@@ -155,7 +167,7 @@ def get_builder_ai_settings(template_name=None):
 		"rewrite_configured": bool(template_agent),
 		"generator_configured": bool(generator_agent),
 		"sample_prompts": _sample_prompts(),
-		"chat_history": _get_saved_chat_history(template_name) if template_name else [],
+		"chat_history": _get_saved_chat_history(template_name, template_doctype=template_doctype) if template_name else [],
 	}
 
 
@@ -552,9 +564,10 @@ except Exception:
 
 class EmailBuilderThinkingCallback(BaseCallbackHandler):
 	"""LangChain callback handler that emits real agent thinking & tool events via Socket.io."""
-	def __init__(self, template_name, user):
+	def __init__(self, template_name, user, template_doctype=None):
 		super().__init__()
 		self.template_name = template_name
+		self.template_doctype = normalize_template_doctype(template_doctype)
 		self.user = user
 		self.steps = []
 
@@ -564,7 +577,7 @@ class EmailBuilderThinkingCallback(BaseCallbackHandler):
 		try:
 			frappe.publish_realtime(
 				"email_builder_ai_step",
-				{"template_name": self.template_name, "step": step},
+				{"template_name": self.template_name, "template_doctype": self.template_doctype, "step": step},
 				user=self.user,
 			)
 		except Exception:
@@ -698,13 +711,15 @@ def _recover_unparsed_completion(exc):
 # ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
-def _log_run(template, prompt, agent, before_schema, after_schema, summary, change_notes, warnings, issues, status, error=""):
+def _log_run(template, prompt, agent, before_schema, after_schema, summary, change_notes, warnings, issues, status, error="", template_doctype=None):
 	if not frappe.db.exists("DocType", "Email Builder AI Run"):
 		return None
 	try:
+		template_doctype = normalize_template_doctype(template_doctype)
 		run = frappe.get_doc(
 			{
 				"doctype": "Email Builder AI Run",
+				"template_doctype": template_doctype,
 				"template": template,
 				"agent": agent,
 				"status": status,
@@ -732,15 +747,16 @@ def _log_run(template, prompt, agent, before_schema, after_schema, summary, chan
 # Public API
 # ---------------------------------------------------------------------------
 @frappe.whitelist(methods=["POST"])
-def create_template_with_ai(prompt, template_name=None, subject=None, reference_doctype=None):
+def create_template_with_ai(prompt, template_name=None, subject=None, reference_doctype=None, template_doctype=None, folder=None):
 	"""Build a complete visual email template from scratch using AI without requiring
 	the user to create an Email Template document first.
 
-	Creates the Email Template record with visual mode, saves initial chat history,
+	Creates the requested builder record in visual mode, saves initial chat history,
 	and returns the route to directly open the builder with the newly generated design.
 	"""
 	_require_designer()
-	frappe.has_permission("Email Template", "create", throw=True)
+	template_doctype = normalize_template_doctype(template_doctype)
+	frappe.has_permission(template_doctype, "create", throw=True)
 
 	settings = _settings()
 	prompt = str(prompt or "").strip()
@@ -771,7 +787,7 @@ def create_template_with_ai(prompt, template_name=None, subject=None, reference_
 	}
 
 	callback_name = str(template_name or "New Template")
-	callback_handler = EmailBuilderThinkingCallback(callback_name, frappe.session.user)
+	callback_handler = EmailBuilderThinkingCallback(callback_name, frappe.session.user, template_doctype)
 
 	try:
 		raw = _invoke_rewrite_agent(agent_name, prompt, starter_context, callback_handler=callback_handler)
@@ -798,13 +814,13 @@ def create_template_with_ai(prompt, template_name=None, subject=None, reference_
 
 		candidate = base_name
 		counter = 1
-		while frappe.db.exists("Email Template", candidate):
+		while frappe.db.exists(template_doctype, candidate):
 			counter += 1
 			candidate = f"{base_name} {counter}"
 		final_template_name = candidate
 	else:
-		if frappe.db.exists("Email Template", final_template_name):
-			frappe.throw(_("Email Template {0} already exists").format(frappe.bold(final_template_name)))
+		if frappe.db.exists(template_doctype, final_template_name):
+			frappe.throw(_("{0} {1} already exists").format(template_doctype, frappe.bold(final_template_name)))
 
 	if not proposed_subject:
 		proposed_subject = final_template_name
@@ -842,7 +858,7 @@ def create_template_with_ai(prompt, template_name=None, subject=None, reference_
 	issues = compiled.get("issues") or []
 
 	doc = frappe.get_doc({
-		"doctype": "Email Template",
+		"doctype": template_doctype,
 		"name": final_template_name,
 		"subject": compiled_subject,
 		"use_html": 1,
@@ -853,11 +869,15 @@ def create_template_with_ai(prompt, template_name=None, subject=None, reference_
 		"custom_builder_content_hash": _content_hash(compiled["html"]),
 		"custom_builder_subject_source": subject_source,
 	})
+	if template_doctype == EMAIL_TEMPLATE_MASTER_DOCTYPE:
+		doc.folder = folder or None
+		doc.enabled = 1
 	doc.insert()
 
 	proposal_id = _log_run(
 		final_template_name, prompt, agent_name, starter_schema, normalized_schema,
 		summary, change_notes, warnings, issues, status="Success",
+		template_doctype=template_doctype,
 	)
 
 	result_payload = {
@@ -889,25 +909,26 @@ def create_template_with_ai(prompt, template_name=None, subject=None, reference_
 		"proposal": result_payload,
 		"status": "accepted",
 	}
-	_save_chat_history(final_template_name, [user_turn, assistant_turn])
+	_save_chat_history(final_template_name, [user_turn, assistant_turn], template_doctype=template_doctype)
 
 	return {
 		"name": doc.name,
-		"route": f"/builder?template={quote(doc.name, safe='')}",
+		"route": builder_route(doc.name, template_doctype),
 		"subject": compiled_subject,
 		"summary": summary,
 	}
 
 
 @frappe.whitelist(methods=["POST"])
-def generate_ai_rewrite(template_name, schema, metadata=None, prompt=None, chat_history=None, scope="template", section_id=None):
+def generate_ai_rewrite(template_name, schema, metadata=None, prompt=None, chat_history=None, scope="template", section_id=None, template_doctype=None):
 	"""Generate an AI rewrite proposal for the current builder document.
 
 	Returns a validated, compiled proposal. Nothing is persisted to the
 	Email Template - the builder applies it locally (undoable) and the user
 	saves through the normal path.
 	"""
-	doc = _template(template_name)
+	template_doctype = normalize_template_doctype(template_doctype)
+	doc = _template(template_name, template_doctype=template_doctype)
 
 	settings = _settings()
 	prompt = str(prompt or "").strip()
@@ -930,7 +951,7 @@ def generate_ai_rewrite(template_name, schema, metadata=None, prompt=None, chat_
 		scope=scope, section_id=section_id,
 	)
 
-	callback_handler = EmailBuilderThinkingCallback(template_name, frappe.session.user)
+	callback_handler = EmailBuilderThinkingCallback(template_name, frappe.session.user, template_doctype)
 	try:
 		raw = _invoke_rewrite_agent(agent_name, prompt, context, callback_handler=callback_handler)
 	except Exception as exc:
@@ -938,16 +959,17 @@ def generate_ai_rewrite(template_name, schema, metadata=None, prompt=None, chat_
 		_log_run(
 			template_name, prompt, agent_name, current_schema, None, "", [], [], [],
 			status="Failed", error=str(exc),
+			template_doctype=template_doctype,
 		)
 		# Persist error turn so the UI conversation thread remains intact
 		try:
 			error_msg = _("The AI agent could not complete the rewrite: {0}").format(str(exc)[:200])
 			timestamp = int(frappe.utils.now_datetime().timestamp() * 1000)
-			existing = _get_saved_chat_history(template_name)
+			existing = _get_saved_chat_history(template_name, template_doctype=template_doctype)
 			_save_chat_history(template_name, existing + [
 				{"id": f"u-{timestamp}", "role": "user", "text": prompt},
 				{"id": f"e-{timestamp}", "role": "assistant", "text": error_msg, "isError": True},
-			])
+			], template_doctype=template_doctype)
 		except Exception:
 			pass
 		frappe.throw(error_msg)
@@ -961,11 +983,11 @@ def generate_ai_rewrite(template_name, schema, metadata=None, prompt=None, chat_
 		try:
 			err_text = str(exc)
 			timestamp = int(frappe.utils.now_datetime().timestamp() * 1000)
-			existing = _get_saved_chat_history(template_name)
+			existing = _get_saved_chat_history(template_name, template_doctype=template_doctype)
 			_save_chat_history(template_name, existing + [
 				{"id": f"u-{timestamp}", "role": "user", "text": prompt},
 				{"id": f"e-{timestamp}", "role": "assistant", "text": err_text, "isError": True},
-			])
+			], template_doctype=template_doctype)
 		except Exception:
 			pass
 		raise
@@ -1017,16 +1039,17 @@ def generate_ai_rewrite(template_name, schema, metadata=None, prompt=None, chat_
 		_log_run(
 			template_name, prompt, agent_name, current_schema, proposed_schema,
 			summary, change_notes, warnings, [], status="Rejected", error=str(exc),
+			template_doctype=template_doctype,
 		)
 		# Persist error turn so the UI conversation thread remains intact
 		try:
 			error_msg = _("The AI produced a design the builder cannot use: {0}").format(str(exc))
 			timestamp = int(frappe.utils.now_datetime().timestamp() * 1000)
-			existing = _get_saved_chat_history(template_name)
+			existing = _get_saved_chat_history(template_name, template_doctype=template_doctype)
 			_save_chat_history(template_name, existing + [
 				{"id": f"u-{timestamp}", "role": "user", "text": prompt},
 				{"id": f"e-{timestamp}", "role": "assistant", "text": error_msg, "isError": True},
-			])
+			], template_doctype=template_doctype)
 		except Exception:
 			pass
 		frappe.throw(error_msg)
@@ -1056,6 +1079,7 @@ def generate_ai_rewrite(template_name, schema, metadata=None, prompt=None, chat_
 	proposal_id = _log_run(
 		template_name, prompt, agent_name, current_schema, normalized_schema,
 		summary, change_notes, warnings, issues, status="Success",
+		template_doctype=template_doctype,
 	)
 
 	result_payload = {
@@ -1082,7 +1106,7 @@ def generate_ai_rewrite(template_name, schema, metadata=None, prompt=None, chat_
 
 	# Persist conversation turn to Email Builder AI Chat
 	try:
-		existing_turns = _get_saved_chat_history(template_name)
+		existing_turns = _get_saved_chat_history(template_name, template_doctype=template_doctype)
 		timestamp = int(frappe.utils.now_datetime().timestamp() * 1000)
 		user_turn = {"id": f"u-{timestamp}", "role": "user", "text": prompt}
 		assistant_turn = {
@@ -1092,7 +1116,7 @@ def generate_ai_rewrite(template_name, schema, metadata=None, prompt=None, chat_
 			"proposal": result_payload,
 			"status": "pending",
 		}
-		_save_chat_history(template_name, existing_turns + [user_turn, assistant_turn])
+		_save_chat_history(template_name, existing_turns + [user_turn, assistant_turn], template_doctype=template_doctype)
 	except Exception:
 		frappe.log_error(frappe.get_traceback(), "Save Email Builder AI Chat history failed")
 
@@ -1100,7 +1124,7 @@ def generate_ai_rewrite(template_name, schema, metadata=None, prompt=None, chat_
 
 
 @frappe.whitelist(methods=["POST"])
-def accept_ai_proposal(proposal_id: str, template_name: str | None = None):
+def accept_ai_proposal(proposal_id: str, template_name: str | None = None, template_doctype=None):
 	"""Mark an AI proposal as accepted (audit only; no template mutation)."""
 	_require_designer()
 	accepted = False
@@ -1114,7 +1138,7 @@ def accept_ai_proposal(proposal_id: str, template_name: str | None = None):
 		accepted = True
 	if template_name:
 		try:
-			turns = _get_saved_chat_history(template_name)
+			turns = _get_saved_chat_history(template_name, template_doctype=template_doctype)
 			updated = False
 			for turn in turns:
 				p = turn.get("proposal")
@@ -1122,7 +1146,7 @@ def accept_ai_proposal(proposal_id: str, template_name: str | None = None):
 					turn["status"] = "accepted"
 					updated = True
 			if updated:
-				_save_chat_history(template_name, turns)
+				_save_chat_history(template_name, turns, template_doctype=template_doctype)
 				accepted = True
 		except Exception:
 			pass
@@ -1130,14 +1154,15 @@ def accept_ai_proposal(proposal_id: str, template_name: str | None = None):
 
 
 @frappe.whitelist(methods=["POST"])
-def clear_builder_ai_chat(template_name):
+def clear_builder_ai_chat(template_name, template_doctype=None):
 	"""Clear saved chat history for current template and user."""
 	_require_designer()
 	if not template_name or not frappe.db.exists("DocType", "Email Builder AI Chat"):
 		return {"ok": True}
-	name = _chat_doc_name(template_name)
-	if frappe.db.exists("Email Builder AI Chat", name):
-		frappe.db.delete("Email Builder AI Chat", name)
+	frappe.db.delete(
+		"Email Builder AI Chat",
+		_chat_filters(template_name, template_doctype=template_doctype),
+	)
 	return {"ok": True}
 
 
@@ -1150,7 +1175,7 @@ def get_ai_run_preview(proposal_id: str):
 		frappe.throw(_("AI proposal record not found."), frappe.DoesNotExistError)
 
 	run = frappe.get_doc("Email Builder AI Run", proposal_id)
-	doc = _template(run.template)
+	doc = _template(run.template, template_doctype=run.get("template_doctype") or EMAIL_TEMPLATE_DOCTYPE)
 
 	before_schema = json.loads(run.before_schema_json) if run.before_schema_json else None
 	after_schema = json.loads(run.after_schema_json) if run.after_schema_json else None

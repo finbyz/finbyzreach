@@ -3,7 +3,6 @@ from __future__ import annotations
 import hashlib
 import json
 import time
-from urllib.parse import quote
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import frappe
@@ -14,7 +13,7 @@ from frappe.utils.verified_command import get_signed_params
 from frappe.utils.jinja import validate_template
 
 from .compiler import compile_schema
-from .constants import MAX_COMPONENT_BYTES, MAX_METADATA_BYTES
+from .constants import EMAIL_TEMPLATE_DOCTYPE, EMAIL_TEMPLATE_MASTER_DOCTYPE, MAX_COMPONENT_BYTES, MAX_METADATA_BYTES
 from .reference_fields import (
 	is_permitted_reference_path,
 	link_target_doctype,
@@ -23,6 +22,7 @@ from .reference_fields import (
 )
 from .realtime import publish_builder_revision_created, publish_builder_saved
 from .schema import validate_component, validate_schema
+from .targets import builder_route, normalize_template_doctype, reference_matches, target_reference_filters
 from .tokens import compile_tokens, token_fields, validate_semantic_tokens
 
 
@@ -31,9 +31,10 @@ def _require_designer():
 		frappe.throw(_("The Email Designer role is required"), frappe.PermissionError)
 
 
-def _template(name, ptype="read", for_update=False):
+def _template(name, ptype="read", for_update=False, template_doctype=None):
 	_require_designer()
-	doc = frappe.get_doc("Email Template", name, for_update=for_update)
+	doctype = normalize_template_doctype(template_doctype)
+	doc = frappe.get_doc(doctype, name, for_update=for_update)
 	doc.check_permission(ptype)
 	return doc
 
@@ -296,24 +297,25 @@ def _manual_html_state(doc):
 
 
 @frappe.whitelist(methods=["POST"])
-def create_visual_template(template_name, subject=None):
+def create_visual_template(template_name, subject=None, template_doctype=None, folder=None):
 	_require_designer()
-	frappe.has_permission("Email Template", "create", throw=True)
+	template_doctype = normalize_template_doctype(template_doctype)
+	frappe.has_permission(template_doctype, "create", throw=True)
 	template_name = str(template_name or "").strip()[:140]
 	subject_source = validate_semantic_tokens(str(subject or template_name or "").strip()[:140])
 	if not template_name:
 		frappe.throw(_("Template name is required"))
 	if not subject_source:
 		frappe.throw(_("Subject is required"))
-	if frappe.db.exists("Email Template", template_name):
-		frappe.throw(_("Email Template {0} already exists").format(frappe.bold(template_name)))
+	if frappe.db.exists(template_doctype, template_name):
+		frappe.throw(_("{0} {1} already exists").format(template_doctype, frappe.bold(template_name)))
 	schema = validate_schema(None)
 	compiled = compile_schema(schema, "", normalized=True)
 	compiled_subject = _compiled_subject(subject_source)
 	validate_template(compiled_subject)
 	validate_template(compiled["html"])
 	doc = frappe.get_doc({
-		"doctype": "Email Template",
+		"doctype": template_doctype,
 		"name": template_name,
 		"subject": compiled_subject,
 		"use_html": 1,
@@ -324,8 +326,11 @@ def create_visual_template(template_name, subject=None):
 		"custom_builder_content_hash": _content_hash(compiled["html"]),
 		"custom_builder_subject_source": subject_source,
 	})
+	if template_doctype == EMAIL_TEMPLATE_MASTER_DOCTYPE:
+		doc.folder = folder or None
+		doc.enabled = 1
 	doc.insert()
-	return {"name": doc.name, "modified": doc.modified, "route": f"/builder?template={quote(doc.name, safe='')}"}
+	return {"name": doc.name, "modified": doc.modified, "route": builder_route(doc.name, template_doctype)}
 
 
 @frappe.whitelist(methods=["GET"])
@@ -369,7 +374,7 @@ def _is_public_image_file(row):
 	return file_type in IMAGE_FILE_TYPES or file_url.lower().split("?", 1)[0].endswith(IMAGE_EXTENSIONS) or file_name.lower().endswith(IMAGE_EXTENSIONS)
 
 
-def _image_file_payload(row, template_name):
+def _image_file_payload(row, template_name, template_doctype=EMAIL_TEMPLATE_DOCTYPE):
 	return {
 		"name": row.get("name"),
 		"file_name": row.get("file_name") or row.get("name"),
@@ -379,13 +384,14 @@ def _image_file_payload(row, template_name):
 		"file_type": row.get("file_type") or "",
 		"attached_to_doctype": row.get("attached_to_doctype") or "",
 		"attached_to_name": row.get("attached_to_name") or "",
-		"is_attached_to_template": bool(row.get("attached_to_doctype") == "Email Template" and row.get("attached_to_name") == template_name),
+		"is_attached_to_template": bool(row.get("attached_to_doctype") == template_doctype and row.get("attached_to_name") == template_name),
 	}
 
 
 @frappe.whitelist(methods=["GET", "POST"])
-def list_builder_images(template_name, scope="template", search="", start=0, page_length=24):
-	_template(template_name, "read")
+def list_builder_images(template_name, scope="template", search="", start=0, page_length=24, template_doctype=None):
+	template_doctype = normalize_template_doctype(template_doctype)
+	_template(template_name, "read", template_doctype=template_doctype)
 	frappe.has_permission("File", "read", throw=True)
 	scope = str(scope or "template").strip().lower()
 	search = str(search or "").strip()[:120]
@@ -393,7 +399,7 @@ def list_builder_images(template_name, scope="template", search="", start=0, pag
 	start = max(0, cint(start))
 	filters = {"is_folder": 0, "is_private": 0}
 	if scope != "public":
-		filters.update({"attached_to_doctype": "Email Template", "attached_to_name": template_name})
+		filters.update({"attached_to_doctype": template_doctype, "attached_to_name": template_name})
 	if search:
 		filters["file_name"] = ["like", f"%{search}%"]
 
@@ -420,7 +426,7 @@ def list_builder_images(template_name, scope="template", search="", start=0, pag
 			if seen_images < start:
 				seen_images += 1
 				continue
-			rows.append(_image_file_payload(row, template_name))
+			rows.append(_image_file_payload(row, template_name, template_doctype))
 			seen_images += 1
 			if len(rows) >= page_length + 1:
 				has_more = True
@@ -439,8 +445,9 @@ def list_builder_images(template_name, scope="template", search="", start=0, pag
 
 
 @frappe.whitelist(methods=["POST"])
-def attach_builder_image(template_name, file_name):
-	_template(template_name, "write", for_update=True)
+def attach_builder_image(template_name, file_name, template_doctype=None):
+	template_doctype = normalize_template_doctype(template_doctype)
+	_template(template_name, "write", for_update=True, template_doctype=template_doctype)
 	if not file_name:
 		frappe.throw(_("Choose an image first"))
 	file_doc = frappe.get_doc("File", file_name)
@@ -448,12 +455,12 @@ def attach_builder_image(template_name, file_name):
 	row = file_doc.as_dict()
 	if not _is_public_image_file(row):
 		frappe.throw(_("Only public image files can be used in email templates"))
-	if file_doc.attached_to_doctype == "Email Template" and file_doc.attached_to_name == template_name:
-		return _image_file_payload(row, template_name)
+	if file_doc.attached_to_doctype == template_doctype and file_doc.attached_to_name == template_name:
+		return _image_file_payload(row, template_name, template_doctype)
 	existing = frappe.db.get_value(
 		"File",
 		{
-			"attached_to_doctype": "Email Template",
+			"attached_to_doctype": template_doctype,
 			"attached_to_name": template_name,
 			"file_url": file_doc.file_url,
 			"is_private": 0,
@@ -461,11 +468,11 @@ def attach_builder_image(template_name, file_name):
 		"name",
 	)
 	if existing:
-		return _image_file_payload(frappe.get_doc("File", existing).as_dict(), template_name)
+		return _image_file_payload(frappe.get_doc("File", existing).as_dict(), template_name, template_doctype)
 	attached = frappe.get_doc(
 		{
 			"doctype": "File",
-			"attached_to_doctype": "Email Template",
+			"attached_to_doctype": template_doctype,
 			"attached_to_name": template_name,
 			"folder": file_doc.folder or "Home/Attachments",
 			"file_name": file_doc.file_name,
@@ -474,12 +481,13 @@ def attach_builder_image(template_name, file_name):
 		}
 	)
 	attached.insert()
-	return _image_file_payload(attached.as_dict(), template_name)
+	return _image_file_payload(attached.as_dict(), template_name, template_doctype)
 
 
 @frappe.whitelist(methods=["GET"])
-def load_builder(template_name):
-	doc = _template(template_name)
+def load_builder(template_name, template_doctype=None):
+	template_doctype = normalize_template_doctype(template_doctype)
+	doc = _template(template_name, template_doctype=template_doctype)
 	state = _manual_html_state(doc)
 	mode = doc.get("custom_builder_mode") or "Raw HTML"
 	schema_status = "valid"
@@ -495,6 +503,7 @@ def load_builder(template_name):
 		schema = validate_schema(None)
 	return {
 		"name": doc.name,
+		"template_doctype": template_doctype,
 		"subject": _subject_source(doc),
 		"mode": mode,
 		"schema": schema,
@@ -515,10 +524,12 @@ def load_builder(template_name):
 
 
 def _revision(template, compiled, save_note=None):
-	last = frappe.db.get_value("Email Builder Revision", {"template": template.name}, "revision_number", order_by="revision_number desc") or 0
+	filters = target_reference_filters(template.doctype, template.name)
+	last = frappe.db.get_value("Email Builder Revision", filters, "revision_number", order_by="revision_number desc") or 0
 	revision = frappe.get_doc(
 		{
 			"doctype": "Email Builder Revision",
+			"template_doctype": template.doctype,
 			"template": template.name,
 			"revision_number": int(last) + 1,
 			"content_hash": _content_hash(compiled["html"]),
@@ -533,7 +544,7 @@ def _revision(template, compiled, save_note=None):
 	revision.insert(ignore_permissions=True)
 	names = frappe.get_all(
 		"Email Builder Revision",
-		filters={"template": template.name},
+		filters=filters,
 		pluck="name",
 		order_by="revision_number desc",
 		limit=0,
@@ -551,7 +562,7 @@ def _revision(template, compiled, save_note=None):
 def _revision_changed(template, compiled):
 	last = frappe.get_all(
 		"Email Builder Revision",
-		filters={"template": template.name},
+		filters=target_reference_filters(template.doctype, template.name),
 		fields=["content_hash", "subject", "preheader"],
 		order_by="revision_number desc",
 		limit=1,
@@ -568,10 +579,11 @@ def _revision_changed(template, compiled):
 
 
 @frappe.whitelist(methods=["POST"])
-def save_builder(template_name, expected_modified=None, schema=None, metadata=None, save_note=None, allow_overwrite_html=0, client_id=None):
+def save_builder(template_name, expected_modified=None, schema=None, metadata=None, save_note=None, allow_overwrite_html=0, client_id=None, template_doctype=None):
 	# Hold the template row while compiling and saving. This serializes visual-builder
 	# mutations so two requests with the same version cannot both pass the version check.
-	doc = _template(template_name, "write", for_update=True)
+	template_doctype = normalize_template_doctype(template_doctype)
+	doc = _template(template_name, "write", for_update=True, template_doctype=template_doctype)
 	_check_modified(doc, expected_modified)
 	manual_state = _manual_html_state(doc)
 	if manual_state["requires_overwrite_confirmation"] and not cint(allow_overwrite_html):
@@ -599,7 +611,7 @@ def save_builder(template_name, expected_modified=None, schema=None, metadata=No
 	doc.save()
 	revision = _revision(doc, compiled, save_note) if _revision_changed(doc, compiled) else None
 	publish_builder_saved(doc, revision=revision, client_id=client_id)
-	publish_builder_revision_created(doc.name, revision, client_id=client_id)
+	publish_builder_revision_created(doc.name, revision, template_doctype=template_doctype, client_id=client_id)
 	return {
 		"name": doc.name,
 		"modified": doc.modified,
@@ -651,8 +663,9 @@ def _check_test_email_rate_limit():
 
 
 @frappe.whitelist(methods=["POST"])
-def send_test_email(template_name, schema, metadata=None, recipient=None, reference_doctype=None, reference_name=None):
-	template = _template(template_name, "email")
+def send_test_email(template_name, schema, metadata=None, recipient=None, reference_doctype=None, reference_name=None, template_doctype=None):
+	template_doctype = normalize_template_doctype(template_doctype)
+	template = _template(template_name, "email", template_doctype=template_doctype)
 	recipient = str(recipient or "").strip()
 	if not recipient:
 		frappe.throw(_("A test recipient is required"))
@@ -660,7 +673,7 @@ def send_test_email(template_name, schema, metadata=None, recipient=None, refere
 		frappe.throw(_("Send a test to one email address at a time"))
 	validate_email_address(recipient, throw=True)
 	_check_test_email_rate_limit()
-	test_params = {"is_test": "1", "template": template.name}
+	test_params = {"is_test": "1", "template": template.name, "template_doctype": template_doctype}
 	if reference_doctype:
 		test_params["reference_doctype"] = reference_doctype
 		if reference_name:
@@ -680,7 +693,7 @@ def send_test_email(template_name, schema, metadata=None, recipient=None, refere
 		content=state["html_content"],
 		raw_html=True,
 		delayed=True,
-		reference_doctype="Email Template",
+		reference_doctype=template_doctype,
 		reference_name=template.name,
 	)
 	return {"status": "queued", "recipient": recipient, "warnings": state["compiled"]["warnings"], "issues": state["compiled"]["issues"]}
@@ -715,12 +728,13 @@ def load_component(component_name):
 
 
 @frappe.whitelist(methods=["GET"])
-def list_revisions(template_name, start=0, page_length=50):
-	_template(template_name, "read")
+def list_revisions(template_name, start=0, page_length=50, template_doctype=None):
+	template_doctype = normalize_template_doctype(template_doctype)
+	_template(template_name, "read", template_doctype=template_doctype)
 	frappe.has_permission("Email Builder Revision", "read", throw=True)
 	revisions = frappe.get_list(
 		"Email Builder Revision",
-		filters={"template": template_name},
+		filters=target_reference_filters(template_doctype, template_name),
 		fields=["name", "revision_number", "subject", "preheader", "save_note", "creation", "content_hash", "html_bytes"],
 		offset=max(0, cint(start)),
 		limit=max(1, min(cint(page_length) or 50, 50)),
@@ -757,14 +771,15 @@ def save_component(component):
 
 
 @frappe.whitelist(methods=["POST"])
-def render_revision_preview(template_name, revision_name):
-	_template(template_name, "read")
+def render_revision_preview(template_name, revision_name, template_doctype=None):
+	template_doctype = normalize_template_doctype(template_doctype)
+	_template(template_name, "read", template_doctype=template_doctype)
 	revision = frappe.get_doc("Email Builder Revision", revision_name)
 	revision.check_permission("read")
-	if revision.template != template_name:
+	if not reference_matches(revision, template_doctype, template_name):
 		frappe.throw(_("The revision does not belong to this template"))
 	schema, compiled, compiled_subject = _revision_compiled(revision)
-	template = frappe.get_doc("Email Template", template_name)
+	template = frappe.get_doc(template_doctype, template_name)
 	context = _reference_context(template.get("custom_reference_doctype"), template.get("custom_preview_document"))
 	subject = frappe.render_template(compiled_subject, context)
 	html_content = frappe.render_template(compiled["html"], context)
@@ -784,12 +799,13 @@ def render_revision_preview(template_name, revision_name):
 
 
 @frappe.whitelist(methods=["POST"])
-def restore_revision(template_name, revision_name, expected_modified=None, client_id=None):
-	doc = _template(template_name, "write", for_update=True)
+def restore_revision(template_name, revision_name, expected_modified=None, client_id=None, template_doctype=None):
+	template_doctype = normalize_template_doctype(template_doctype)
+	doc = _template(template_name, "write", for_update=True, template_doctype=template_doctype)
 	_check_modified(doc, expected_modified)
 	revision = frappe.get_doc("Email Builder Revision", revision_name)
 	revision.check_permission("read")
-	if revision.template != template_name:
+	if not reference_matches(revision, template_doctype, template_name):
 		frappe.throw(_("The revision does not belong to this template"))
 	schema, compiled, compiled_subject = _revision_compiled(revision)
 	_validate_reference_usage(
@@ -811,13 +827,18 @@ def restore_revision(template_name, revision_name, expected_modified=None, clien
 	doc.save()
 	new_revision = _revision(doc, compiled, _("Restored from revision {0}").format(revision.revision_number))
 	publish_builder_saved(doc, revision=new_revision, client_id=client_id)
-	publish_builder_revision_created(doc.name, new_revision, client_id=client_id)
+	publish_builder_revision_created(doc.name, new_revision, template_doctype=template_doctype, client_id=client_id)
 	return {"name": doc.name, "modified": doc.modified, "revision": new_revision.name, "revision_number": new_revision.revision_number}
 
 
 @frappe.whitelist(methods=["POST"])
-def switch_to_raw_html(template_name, expected_modified=None):
-	doc = _template(template_name, "write", for_update=True)
+def switch_to_raw_html(template_name, expected_modified=None, template_doctype=None):
+	doc = _template(
+		template_name,
+		"write",
+		for_update=True,
+		template_doctype=normalize_template_doctype(template_doctype),
+	)
 	_check_modified(doc, expected_modified)
 	doc.custom_builder_mode = "Raw HTML"
 	doc.save()

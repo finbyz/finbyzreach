@@ -4,14 +4,25 @@ from typing import Any
 
 import frappe
 
+from .constants import BUILDER_TARGET_DOCTYPES, EMAIL_TEMPLATE_DOCTYPE
 
-def _publish_to_template(template_name: str, event: str, message: dict[str, Any]) -> None:
+
+def _publish_to_template(
+	template_name: str,
+	event: str,
+	message: dict[str, Any],
+	*,
+	template_doctype: str = EMAIL_TEMPLATE_DOCTYPE,
+) -> None:
 	if not template_name:
 		return
+	if template_doctype not in BUILDER_TARGET_DOCTYPES:
+		return
+	message = {**message, "template_doctype": template_doctype}
 	frappe.publish_realtime(
 		event,
 		message=message,
-		doctype="Email Template",
+		doctype=template_doctype,
 		docname=template_name,
 		after_commit=True,
 	)
@@ -30,10 +41,17 @@ def publish_builder_saved(template, *, revision=None, client_id: str | None = No
 			"actor": frappe.session.user,
 			"client_id": str(client_id or "")[:80],
 		},
+		template_doctype=template.doctype,
 	)
 
 
-def publish_builder_revision_created(template_name: str, revision, *, client_id: str | None = None) -> None:
+def publish_builder_revision_created(
+	template_name: str,
+	revision,
+	*,
+	template_doctype: str = EMAIL_TEMPLATE_DOCTYPE,
+	client_id: str | None = None,
+) -> None:
 	if not revision:
 		return
 	_publish_to_template(
@@ -46,10 +64,16 @@ def publish_builder_revision_created(template_name: str, revision, *, client_id:
 			"actor": frappe.session.user,
 			"client_id": str(client_id or "")[:80],
 		},
+		template_doctype=template_doctype,
 	)
 
 
-def publish_builder_assets_changed(template_name: str, *, file_name: str | None = None) -> None:
+def publish_builder_assets_changed(
+	template_name: str,
+	*,
+	template_doctype: str = EMAIL_TEMPLATE_DOCTYPE,
+	file_name: str | None = None,
+) -> None:
 	_publish_to_template(
 		template_name,
 		"email_builder_assets_changed",
@@ -58,9 +82,14 @@ def publish_builder_assets_changed(template_name: str, *, file_name: str | None 
 			"file_name": file_name,
 			"actor": frappe.session.user,
 		},
+		template_doctype=template_doctype,
 	)
 
 
 def on_file_after_insert(doc, method=None) -> None:
-	if doc.attached_to_doctype == "Email Template" and doc.attached_to_name and not doc.is_private:
-		publish_builder_assets_changed(doc.attached_to_name, file_name=doc.name)
+	if doc.attached_to_doctype in BUILDER_TARGET_DOCTYPES and doc.attached_to_name and not doc.is_private:
+		publish_builder_assets_changed(
+			doc.attached_to_name,
+			template_doctype=doc.attached_to_doctype,
+			file_name=doc.name,
+		)
