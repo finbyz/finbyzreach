@@ -235,6 +235,7 @@ frappe.provide("frappe.email_template_library");
 					fieldtype: "Data",
 					label: __("New Email Name"),
 					reqd: 1,
+					default: `${master_name} - ${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
 					placeholder: __("Enter a unique name"),
 					description: __("This creates a separate Email Template. Future master edits will not change it."),
 				},
@@ -243,6 +244,7 @@ frappe.provide("frappe.email_template_library");
 					fieldtype: "Data",
 					label: __("Email Subject"),
 					reqd: 1,
+					default: master_subject || master_name,
 					placeholder: __("Write the subject for this email"),
 				},
 			],
@@ -787,8 +789,8 @@ frappe.provide("frappe.email_template_library");
 					align-items:center;
 					justify-content:center;
 					border-radius:9px;
-					background:#E8F4FD;
-					color:#2490EF;
+					background:var(--control-bg);
+					color:var(--text-color);
 				}
 
 				.etl5-folder-text {
@@ -888,11 +890,10 @@ frappe.provide("frappe.email_template_library");
 				.etl5-live-preview iframe {
 					position:absolute;
 					top:0;
-					left:50%;
-					width:640px;
-					height:460px;
-					transform:translateX(-50%) scale(.35);
-					transform-origin:top center;
+					left:0;
+					width:900px;
+					height:650px;
+					transform-origin: 0 0;
 					border:0;
 					background:#fff;
 					pointer-events:none;
@@ -1027,6 +1028,39 @@ frappe.provide("frappe.email_template_library");
 					padding-top:12px;
 				}
 
+				.etl5-view-toggle.btn-group {
+					background-color: var(--control-bg, #f3f4f6);
+					border-radius: 14px;
+					padding: 3px;
+					display: inline-flex;
+					border: none;
+					box-shadow: none;
+				}
+
+				.etl5-view-toggle.btn-group .btn {
+					border: none !important;
+					background: transparent !important;
+					box-shadow: none !important;
+					color: var(--text-muted);
+					border-radius: 12px !important;
+					padding: 3px 10px !important;
+					margin: 0 !important;
+					display: flex;
+					align-items: center;
+					justify-content: center;
+				}
+
+				.etl5-view-toggle.btn-group .btn:hover {
+					color: var(--text-color);
+				}
+
+				.etl5-view-toggle.btn-group .btn.active {
+					background-color: var(--fg-color, #ffffff) !important;
+					color: var(--text-color) !important;
+					box-shadow: 0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06) !important;
+				}
+
+
 				@media(max-width:850px) {
 					.etl5-toolbar {
 						flex-wrap:wrap;
@@ -1082,7 +1116,7 @@ frappe.provide("frappe.email_template_library");
 			current_folder: ROOT_FOLDER,
 			virtual_no_folder: false,
 			breadcrumb: [],
-			view_mode: "grid",
+			view_mode: "list",
 
 			// Search applies only to current location.
 			search: "",
@@ -1101,6 +1135,9 @@ frappe.provide("frappe.email_template_library");
 		const dialog = new frappe.ui.Dialog({
 			title: __("Email Template Library"),
 			size: "extra-large",
+			on_hide: () => {
+				preview_observer?.disconnect();
+			},
 			fields: [
 				{
 					fieldname: "library_html",
@@ -1196,25 +1233,44 @@ frappe.provide("frappe.email_template_library");
 				return preview_requests.get(master_name);
 			}
 
-			// NOTE: this whitelisted backend method is only allowed to be
-			// called over POST. Forcing `type: "GET"` here used to make the
-			// server reject every request in is_valid_http_method() with
-			// frappe.exceptions.PermissionError: Not permitted - which is
-			// why every preview silently fell into the catch block below
-			// ("Preview unavailable"). Don't pass an explicit `type` at all;
-			// frappe.call() already defaults to POST.
-			const request = frappe.call({
-				method: GET_MASTER_PREVIEW_METHOD,
-				type: "GET",
-				args: { master_name },
-			}).then((response) => {
-				const preview = response.message || {};
-				preview_cache.set(master_name, preview);
-				return preview;
-			}).finally(() => preview_requests.delete(master_name));
+			// frappe.call() returns a jQuery promise in some versions, which lacks .finally()
+			const request = (async () => {
+				try {
+					const response = await frappe.call({
+						method: GET_MASTER_PREVIEW_METHOD,
+						type: "GET",
+						args: { master_name },
+					});
+					const preview = response.message || {};
+					preview_cache.set(master_name, preview);
+					return preview;
+				} finally {
+					preview_requests.delete(master_name);
+				}
+			})();
 
 			preview_requests.set(master_name, request);
 			return request;
+		}
+
+		function with_preview_fit_styles(html) {
+			const safe_html = (html || "")
+				.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
+				.replace(/\s+on[a-z]+=("[^"]*"|'[^']*'|[^\s>]+)/gi, "")
+				.replace(/{%[\s\S]*?%}/g, "");
+			
+			const preview_styles = [
+				'<style id="etb-preview-fit">',
+				'html,body{height:auto!important;min-height:0!important;overflow:hidden!important;background:transparent!important;}',
+				'body{display:block!important;margin:0!important;padding:0!important;}',
+				'body>table[role="presentation"]{height:auto!important;min-height:0!important;background:transparent!important;}',
+				'table.etb-content{height:auto!important;min-height:0!important;}',
+				'</style>'
+			].join("");
+
+			return safe_html.includes("</head>")
+				? safe_html.replace("</head>", preview_styles + "</head>")
+				: preview_styles + safe_html;
 		}
 
 		async function hydrate_live_preview(element, master_name) {
@@ -1237,9 +1293,9 @@ frappe.provide("frappe.email_template_library");
 					tabindex: "-1",
 				});
 				$frame.attr("sandbox", "");
-				$frame.prop("srcdoc", preview.html);
-				const scale = Math.max(0.2, element.clientWidth / 640);
-				$frame.css("transform", `translateX(-50%) scale(${scale})`);
+				$frame.prop("srcdoc", with_preview_fit_styles(preview.html));
+				const scale = element.clientWidth / 900;
+				$frame.css("transform", `scale(${scale})`);
 				$live.append($frame);
 				$(element).find(".etl5-preview-loading, .etl5-placeholder").remove();
 				$(element).prepend($live);
@@ -1457,6 +1513,7 @@ frappe.provide("frappe.email_template_library");
 		function render_folder_card(folder) {
 			const name = folder.name;
 			const label = get_folder_label(folder);
+			const is_fake = folder.is_fake;
 
 			const $card = $(`
 				<div
@@ -1482,7 +1539,7 @@ frappe.provide("frappe.email_template_library");
 					<div class="etl5-folder-arrow">›</div>
 
 					${
-						perm.folder.create
+						(perm.folder.create && !is_fake)
 							? `
 								<button
 									type="button"
@@ -1501,7 +1558,11 @@ frappe.provide("frappe.email_template_library");
 			`);
 
 			function open() {
-				open_folder(name);
+				if (is_fake) {
+					open_no_folder();
+				} else {
+					open_folder(name);
+				}
 			}
 
 			$card.on("click", (event) => {
@@ -1552,8 +1613,8 @@ frappe.provide("frappe.email_template_library");
 					"is",
 					"not set",
 				]);
-			} else {
-				// This includes templates directly assigned to the root folder.
+			} else if (state.current_folder !== ROOT_FOLDER) {
+				// Filter by specific folder if we are not at the root
 				filters.push([
 					MASTER,
 					"folder",
@@ -1619,9 +1680,12 @@ frappe.provide("frappe.email_template_library");
 				`
 				: '<div class="etl5-preview-loading" aria-label="Loading template preview"></div>';
 
-			const location_label = state.virtual_no_folder
-				? __("No Folder")
-				: get_folder_label(get_folder(state.current_folder));
+			const actual_folder = template.folder;
+			let location_label = __("No Folder");
+			if (actual_folder) {
+				const f = get_folder(actual_folder);
+				location_label = f ? get_folder_label(f) : actual_folder;
+			}
 
 			const $card = $(`
 				<div
@@ -1743,7 +1807,17 @@ frappe.provide("frappe.email_template_library");
 		function current_visible_children() {
 			if (state.virtual_no_folder) return [];
 
-			return get_direct_children(state.current_folder).filter((folder) =>
+			const children = get_direct_children(state.current_folder).slice();
+			
+			if (state.current_folder === ROOT_FOLDER) {
+				children.push({
+					name: "__NO_FOLDER__",
+					[FOLDER_NAME_FIELD]: __("Without Folder"),
+					is_fake: true
+				});
+			}
+
+			return children.filter((folder) =>
 				matches_search(
 					folder[FOLDER_NAME_FIELD],
 					folder.name
@@ -1806,35 +1880,25 @@ frappe.provide("frappe.email_template_library");
 				$content.append($folders);
 			}
 
-			$content.append(`
-				<section class="etl5-section etl5-template-section">
+			const is_root = state.current_folder === ROOT_FOLDER && !state.virtual_no_folder;
+			const show_templates = state.search || !is_root;
 
-					<div class="etl5-section-head">
-						<div class="etl5-section-title" style="color: var(--text-color); font-size: 13px; font-weight: 600; text-transform: none; letter-spacing: normal;">
-								${__("Templates")} <span class="etl5-template-count-bracket">(...)</span>
+			if (show_templates) {
+				$content.append(`
+					<section class="etl5-section etl5-template-section">
+
+						<div class="etl5-section-head">
+							<div class="etl5-section-title" style="color: var(--text-color); font-size: 13px; font-weight: 600; text-transform: none; letter-spacing: normal;">
+									${__("Templates")} <span class="etl5-template-count-bracket">(...)</span>
+							</div>
 						</div>
 
-						<div class="text-muted small etl5-unfiled-link" style="cursor: pointer; color: var(--primary);">
-							${__("Without Folder")}
-						</div>
-					</div>
+						<div class="etl5-template-grid"></div>
 
-					<div class="etl5-template-grid"></div>
+						<div class="etl5-pagination"></div>
 
-					<div class="etl5-pagination"></div>
-
-				</section>
-			`);
-
-			$content.find(".etl5-unfiled-link").on("click", () => {
-				open_no_folder();
-			});
-
-			// Just show a plain link — no count badge (the count previously
-			// shown here didn't reliably match what the user saw when they
-			// opened it, so we don't compute or display one anymore).
-			if (state.virtual_no_folder) {
-				$content.find(".etl5-unfiled-link").hide();
+					</section>
+				`);
 			}
 		}
 
@@ -1896,6 +1960,11 @@ frappe.provide("frappe.email_template_library");
 
 		async function load_more_templates() {
 			if (state.loading || !state.has_more) return;
+
+			const is_root = state.current_folder === ROOT_FOLDER && !state.virtual_no_folder;
+			if (is_root && !state.search) {
+				return;
+			}
 
 			state.loading = true;
 
@@ -2095,7 +2164,7 @@ frappe.provide("frappe.email_template_library");
 		// Infinite scroll for templates
 		// -----------------------------------------------------------------
 
-		$content.on("scroll", () => {
+		$content.on("scroll", debounce(() => {
 			if (state.loading || !state.has_more) return;
 
 			const element = $content.get(0);
@@ -2110,7 +2179,7 @@ frappe.provide("frappe.email_template_library");
 			if (remaining <= LOAD_MORE_THRESHOLD) {
 				void load_more_templates();
 			}
-		});
+		}, 50));
 
 		// -----------------------------------------------------------------
 		// Reload complete folder NestedSet
