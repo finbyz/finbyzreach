@@ -185,6 +185,26 @@ def build_candidates(campaign_name: str, score_with_ai: int = 1):
 	}
 
 
+
+def resolve_relevance_agent(campaign=None):
+	"""The agent that scores candidates.
+
+	A campaign may name its own; otherwise the shared one from Followup
+	Settings is used, so a change there applies everywhere at once. Nothing is
+	hardcoded — an agent that has been renamed or removed simply resolves to
+	nothing and the caller reports it.
+	"""
+	if campaign and campaign.get("relevance_agent"):
+		name = campaign.get("relevance_agent")
+		if frappe.db.exists("AI Agent", name):
+			return name
+
+	name = frappe.db.get_single_value("Followup Settings", "relevance_agent")
+	if name and frappe.db.exists("AI Agent", name):
+		return name
+	return None
+
+
 def enqueue_scoring(campaign_name: str):
 	frappe.enqueue(
 		"finbyzreach.ai_email_outreach.campaign_selection.score_candidates",
@@ -200,9 +220,11 @@ def score_candidates(campaign_name: str, limit: int = 0):
 	campaign = frappe.get_doc("AI Email Campaign", campaign_name)
 	if not campaign.description:
 		return {"ok": False, "message": _("Add a campaign description before scoring.")}
-	agent_name = campaign.get("relevance_agent") or "Campaign Relevance"
-	if not frappe.db.exists("AI Agent", agent_name):
-		return {"ok": False, "message": _("Relevance agent {0} does not exist.").format(agent_name)}
+	agent_name = resolve_relevance_agent(campaign)
+	if not agent_name:
+		return {"ok": False, "message": _(
+			"No relevance agent configured. Set one on the campaign, or in Followup Settings."
+		)}
 
 	names = frappe.get_all(
 		CANDIDATE,

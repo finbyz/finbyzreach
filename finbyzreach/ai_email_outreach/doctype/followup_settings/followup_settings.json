@@ -5,16 +5,21 @@
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
-  "section_ai_agents",
+  "tab_ai_agents",
   "enable_check",
-  "email_agent",
+  "section_research",
+  "company_research_agent",
+  "col_research",
   "person_research_agent",
-  "company_research_agent"
+  "section_outreach",
+  "relevance_agent",
+  "col_outreach",
+  "email_agent"
  ],
  "fields": [
   {
-   "fieldname": "section_ai_agents",
-   "fieldtype": "Section Break",
+   "fieldname": "tab_ai_agents",
+   "fieldtype": "Tab Break",
    "label": "AI Agents"
   },
   {
@@ -24,10 +29,20 @@
    "label": "Enable"
   },
   {
-   "fieldname": "email_agent",
+   "fieldname": "section_research",
+   "fieldtype": "Section Break",
+   "label": "Research",
+   "description": "Agents that gather background on a company or a person before any email is written."
+  },
+  {
+   "fieldname": "company_research_agent",
    "fieldtype": "Link",
-   "label": "Email Agent",
+   "label": "Company Research Agent",
    "options": "AI Agent"
+  },
+  {
+   "fieldname": "col_research",
+   "fieldtype": "Column Break"
   },
   {
    "fieldname": "person_research_agent",
@@ -36,9 +51,26 @@
    "options": "AI Agent"
   },
   {
-   "fieldname": "company_research_agent",
+   "fieldname": "section_outreach",
+   "fieldtype": "Section Break",
+   "label": "Selection & Outreach",
+   "description": "Agents used once a campaign is running."
+  },
+  {
+   "fieldname": "relevance_agent",
    "fieldtype": "Link",
-   "label": "Company Research Agent",
+   "options": "AI Agent",
+   "label": "Campaign Relevance Agent",
+   "description": "Scores each candidate against the campaign brief. A campaign can override this."
+  },
+  {
+   "fieldname": "col_outreach",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "email_agent",
+   "fieldtype": "Link",
+   "label": "Email Agent",
    "options": "AI Agent"
   }
  ],

@@ -175,8 +175,7 @@
    "fieldtype": "Link",
    "options": "AI Agent",
    "label": "Relevance Agent",
-   "default": "Campaign Relevance",
-   "description": "Scores each candidate against the brief. Separate from the agent that writes the emails."
+   "description": "Leave empty to use the agent set in Followup Settings."
   }
  ],
  "grid_page_length": 50,
