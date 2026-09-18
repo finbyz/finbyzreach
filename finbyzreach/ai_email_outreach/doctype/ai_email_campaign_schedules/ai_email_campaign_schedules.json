@@ -6,30 +6,44 @@
  "editable_grid": 1,
  "engine": "InnoDB",
  "field_order": [
+  "send_after",
   "description",
-  "send_after"
+  "email_template"
  ],
  "fields": [
   {
    "fieldname": "send_after",
    "fieldtype": "Int",
    "in_list_view": 1,
+   "columns": 1,
    "label": "Send After (Days)",
    "reqd": 1
   },
   {
+   "depends_on": "eval:!doc.email_template",
+   "description": "What this email should achieve. Written by AI. Leave the template empty to use this.",
    "fieldname": "description",
    "fieldtype": "Small Text",
    "in_list_view": 1,
+   "columns": 4,
    "label": "Description",
-   "reqd": 1
+   "mandatory_depends_on": "eval:!doc.email_template"
+  },
+  {
+   "description": "Send this template instead of letting the AI write. Clear it to go back to AI.",
+   "fieldname": "email_template",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "columns": 3,
+   "label": "Email Template",
+   "options": "Email Template"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2025-10-27 16:04:56.692275",
+ "modified": "2026-09-18 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "AI Email Outreach",
  "name": "AI Email Campaign Schedules",

@@ -85,9 +85,13 @@ class OutboundEmail(Document):
         if not campaign_schedules:
             frappe.throw("No campaign schedules configured in the campaign")
 
-        emails_objective = ""
+        # A step with a template is rendered, not written. Only the remaining
+        # steps are sent to the agent, renumbered so it is never asked for a
+        # step it should not produce.
+        ai_schedules = [s for s in campaign_schedules if not s.get("email_template")]
 
-        for i, schedule in enumerate(campaign_schedules, start=1):
+        emails_objective = ""
+        for i, schedule in enumerate(ai_schedules, start=1):
             emails_objective += get_schedule_objective(schedule, i)
 
         input_data = {
@@ -98,17 +102,18 @@ class OutboundEmail(Document):
             "country": country,
             "customer_details": customer_details,
             "person_details": person_details,
-            "number_of_emails": len(campaign_schedules)
+            "number_of_emails": len(ai_schedules)
         }
 
-        # Get AI agent and generate emails
-        agent = frappe.get_doc("AI Agent", email_campaign.ai_agent)
-        agent_service = agent.agent_service
-        email_list_output = agent_service.invoke(**input_data)
+        drafted_emails = []
+        if ai_schedules:
+            agent = frappe.get_doc("AI Agent", email_campaign.ai_agent)
+            agent_service = agent.agent_service
+            email_list_output = agent_service.invoke(**input_data)
 
-        drafted_emails = getattr(email_list_output, "emails", None) or []
-        if not drafted_emails:
-            frappe.throw(f"Agent {email_campaign.ai_agent} returned no emails")
+            drafted_emails = getattr(email_list_output, "emails", None) or []
+            if not drafted_emails:
+                frappe.throw(f"Agent {email_campaign.ai_agent} returned no emails")
 
         # The agent call above takes tens of seconds. Anything that touched this
         # document meanwhile (the every-10-minute outreach scheduler, a desk
@@ -125,17 +130,32 @@ class OutboundEmail(Document):
         # Calculate send times based on campaign schedules
         base_time = now_datetime()
 
+        # Build in schedule order and take content from whichever source the step
+        # uses. Iterating the schedules rather than the agent's output also stops
+        # the rows silently misaligning when the agent returns fewer emails than
+        # there are steps.
+        template_context = self.get_template_context(contact, party_link, email_campaign)
+        ai_queue = list(drafted_emails)
+
         self.set("communication_email", [])
-        for idx, email in enumerate(drafted_emails):
-            schedule = campaign_schedules[idx] if idx < len(campaign_schedules) else None
-            send_after_days = (schedule.send_after or 0) if schedule else idx
+        for schedule in campaign_schedules:
+            if schedule.get("email_template"):
+                rendered = frappe.get_doc("Email Template", schedule.email_template).get_formatted_email(
+                    template_context
+                )
+                subject, content = rendered.get("subject"), rendered.get("message")
+            elif ai_queue:
+                email = ai_queue.pop(0)
+                subject, content = email.subject, email.body
+            else:
+                continue
 
             self.append("communication_email", {
-                "subject": email.subject,
-                "content": email.body,
-                "time": add_days(base_time, send_after_days),
+                "subject": subject,
+                "content": content,
+                "time": add_days(base_time, schedule.send_after or 0),
                 "status": "Queued",
-                "custom_branch_condition": schedule.get("custom_branch_condition") if schedule else None,
+                "custom_branch_condition": schedule.get("custom_branch_condition"),
             })
 
         # A successful re-draft must clear a previous failure, otherwise the doc
@@ -151,6 +171,95 @@ class OutboundEmail(Document):
         # published half-drafted sequences that the outreach scheduler could pick
         # up and start sending.
         self.save(ignore_permissions=True)
+
+
+    def get_template_context(self, contact, party_link, email_campaign):
+        """Variables an Email Template can use.
+
+        Every key is always present, because a missing key renders as empty in
+        Jinja without complaining, which hides mistakes in a template.
+        """
+        lead = {}
+        if party_link and party_link.link_doctype == "Lead":
+            lead = frappe.db.get_value(
+                "Lead", party_link.link_name,
+                ["name", "lead_name", "company_name", "website", "city", "country"],
+                as_dict=True,
+            ) or {}
+
+        context = {
+            "doctype": "Outbound Email",
+            "name": self.name,
+            "campaign_name": email_campaign.campaign_name,
+            "first_name": contact.first_name or "",
+            "last_name": contact.last_name or "",
+            "full_name": " ".join(filter(None, [contact.first_name, contact.last_name])),
+            "email_id": contact.email_id or "",
+            "company_name": contact.company_name or lead.get("company_name") or "",
+            "salutation_lettertext": "",
+            "lead_name": lead.get("name") or "",
+            "website": lead.get("website") or "",
+            "city": lead.get("city") or "",
+            "country": lead.get("country") or "",
+            "role": "",
+            "project_id": "",
+            "project_title": "",
+            "street": "",
+            "postcode": "",
+            "town": "",
+            "planstage_name": "",
+            "projecttype_name": "",
+            "rooftype_name": "",
+            "project_value": 0,
+        }
+        context.update(self.get_infomanager_context(lead.get("name")))
+        return context
+
+    def get_infomanager_context(self, lead_name):
+        """Project details for the lead, when the lead came from Infomanager.
+
+        Resolved through Infomanager Company.lead, so no extra field on Lead is
+        needed. Returns an empty dict when the app or the link is absent.
+        """
+        if not lead_name or not frappe.db.has_table("Infomanager Company"):
+            return {}
+
+        company = frappe.db.get_value("Infomanager Company", {"lead": lead_name},
+                                      ["name", "salutation_lettertext"], as_dict=True)
+        if not company:
+            return {}
+
+        # Lead with the project most worth writing about: a solar signal first,
+        # then a granted permit, then the largest build value.
+        row = frappe.db.sql("""
+            select p.name, p.title, p.street, p.postcode, p.town, p.planstage_name,
+                   p.projecttype_name, p.rooftype_name, p.value, pp.roletype_name,
+                   exists(select 1 from `tabInfomanager Project Detail` d
+                          where d.parent = p.name
+                            and d.detailtype_name in ('Solarenergie', 'Flachdach', 'Dachbegrünungen')) as solar
+            from `tabInfomanager Project Participant` pp
+            join `tabInfomanager Project` p on p.name = pp.parent
+            where pp.company = %s
+            order by solar desc, (p.planstage_name = 'Baubewilligung erteilt') desc, p.value desc
+            limit 1
+        """, company.name, as_dict=True)
+
+        context = {"salutation_lettertext": company.salutation_lettertext or ""}
+        if row:
+            p = row[0]
+            context.update({
+                "role": p.roletype_name or "",
+                "project_id": p.name,
+                "project_title": p.title or "",
+                "street": p.street or "",
+                "postcode": p.postcode or "",
+                "town": p.town or "",
+                "planstage_name": p.planstage_name or "",
+                "projecttype_name": p.projecttype_name or "",
+                "rooftype_name": p.rooftype_name or "",
+                "project_value": p.value or 0,
+            })
+        return context
 
 
 def get_schedule_objective(schedule, index):
