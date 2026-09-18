@@ -291,3 +291,19 @@ def set_status(names, status: str):
 	if blocked:
 		message += " " + _("{0} skipped, already contacted.").format(blocked)
 	return {"ok": True, "changed": changed, "blocked": blocked, "message": message}
+
+
+@frappe.whitelist()
+def candidate_counts(campaign_name: str):
+	"""Candidates per status, for the campaign dashboard.
+
+	Done server-side because the client get_list API rejects aggregate
+	expressions such as count(name).
+	"""
+	rows = frappe.db.sql(
+		"""select status, count(*) as n from `tabCampaign Candidate`
+		   where ai_email_campaign = %s group by status""",
+		campaign_name,
+		as_dict=True,
+	)
+	return {row.status: row.n for row in rows}

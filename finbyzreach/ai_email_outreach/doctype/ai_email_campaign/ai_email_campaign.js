@@ -4,25 +4,20 @@
 const SEL = "finbyzreach.ai_email_outreach.campaign_selection";
 const PROM = "finbyzreach.ai_email_outreach.campaign_promotion";
 
-function counts(frm) {
-	return frappe.db.get_list("Campaign Candidate", {
-		filters: { ai_email_campaign: frm.doc.name },
-		fields: ["status", "count(name) as n"],
-		group_by: "status",
-		limit: 0,
-	});
-}
-
 function show_counts(frm) {
-	counts(frm).then((rows) => {
-		if (!rows || !rows.length) return;
+	frappe.call({
+		method: `${SEL}.candidate_counts`,
+		args: { campaign_name: frm.doc.name },
+	}).then((r) => {
+		const counts = r.message || {};
 		const colour = {
 			Suggested: "orange", Approved: "blue", Promoted: "green",
 			Rejected: "gray", Skipped: "gray",
 		};
-		rows.forEach((r) =>
-			frm.dashboard.add_indicator(`${r.status}: ${r.n}`, colour[r.status] || "gray")
-		);
+		Object.keys(colour).forEach((status) => {
+			if (counts[status])
+				frm.dashboard.add_indicator(`${__(status)}: ${counts[status]}`, colour[status]);
+		});
 	});
 }
 
