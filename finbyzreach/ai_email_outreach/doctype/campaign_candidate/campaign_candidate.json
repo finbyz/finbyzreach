@@ -1,0 +1,61 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "hash",
+ "creation": "2026-09-18 10:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "ai_email_campaign","status","column_break_head","party_type","recipient_name","email",
+  "project_section","project","project_title","role","column_break_proj","town","planstage_name","project_value","has_solar",
+  "party_section","company","contact","column_break_party","lead","promoted_on",
+  "ai_section","ai_score","ai_reason","skip_reason"
+ ],
+ "fields": [
+  {"fieldname":"ai_email_campaign","fieldtype":"Link","options":"AI Email Campaign","label":"Campaign","reqd":1,"in_list_view":1,"in_standard_filter":1,"read_only":1},
+  {"fieldname":"status","fieldtype":"Select","label":"Status","default":"Suggested","in_list_view":1,"in_standard_filter":1,
+   "options":"Suggested\nApproved\nRejected\nPromoted\nSkipped"},
+  {"fieldname":"column_break_head","fieldtype":"Column Break"},
+  {"fieldname":"party_type","fieldtype":"Select","label":"Party Type","options":"Company\nContact","read_only":1,"in_list_view":1},
+  {"fieldname":"recipient_name","fieldtype":"Data","label":"Recipient","read_only":1,"in_list_view":1},
+  {"fieldname":"email","fieldtype":"Data","label":"Email","read_only":1,"in_list_view":1},
+
+  {"fieldname":"project_section","fieldtype":"Section Break","label":"Project"},
+  {"fieldname":"project","fieldtype":"Link","options":"Infomanager Project","label":"Project","read_only":1},
+  {"fieldname":"project_title","fieldtype":"Data","label":"Title","read_only":1},
+  {"fieldname":"role","fieldtype":"Data","label":"Role on Project","read_only":1,"in_standard_filter":1},
+  {"fieldname":"column_break_proj","fieldtype":"Column Break"},
+  {"fieldname":"town","fieldtype":"Data","label":"Town","read_only":1},
+  {"fieldname":"planstage_name","fieldtype":"Data","label":"Plan Stage","read_only":1},
+  {"fieldname":"project_value","fieldtype":"Currency","label":"Build Value","read_only":1},
+  {"fieldname":"has_solar","fieldtype":"Check","label":"Solar Signal","read_only":1},
+
+  {"fieldname":"party_section","fieldtype":"Section Break","label":"Links"},
+  {"fieldname":"company","fieldtype":"Link","options":"Infomanager Company","label":"Infomanager Company","read_only":1},
+  {"fieldname":"contact","fieldtype":"Link","options":"Infomanager Contact","label":"Infomanager Contact","read_only":1},
+  {"fieldname":"column_break_party","fieldtype":"Column Break"},
+  {"fieldname":"lead","fieldtype":"Link","options":"Lead","label":"Lead","read_only":1},
+  {"fieldname":"promoted_on","fieldtype":"Datetime","label":"Promoted On","read_only":1},
+
+  {"fieldname":"ai_section","fieldtype":"Section Break","label":"Relevance"},
+  {"fieldname":"ai_score","fieldtype":"Int","label":"AI Score","read_only":1,"in_list_view":1,"description":"0 to 100, judged against the campaign brief."},
+  {"fieldname":"ai_reason","fieldtype":"Small Text","label":"AI Reason","read_only":1},
+  {"fieldname":"skip_reason","fieldtype":"Small Text","label":"Skip Reason","read_only":1}
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-09-18 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "AI Email Outreach",
+ "name": "Campaign Candidate",
+ "owner": "Administrator",
+ "permissions": [
+  {"create":1,"delete":1,"email":1,"export":1,"print":1,"read":1,"role":"System Manager","share":1,"write":1},
+  {"read":1,"write":1,"role":"Sales Manager"}
+ ],
+ "sort_field": "ai_score",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "recipient_name"
+}

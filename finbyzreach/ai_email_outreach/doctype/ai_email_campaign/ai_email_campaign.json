@@ -17,7 +17,20 @@
   "status",
   "email_accounts",
   "section_break_ocbw",
-  "campaign_schedules"
+  "campaign_schedules",
+  "brief_section",
+  "description",
+  "selection_section",
+  "require_solar_signal",
+  "plan_stages",
+  "cantons",
+  "col_sel",
+  "project_types",
+  "min_project_value",
+  "max_project_value",
+  "excluded_roles",
+  "sending_section",
+  "approval_mode"
  ],
  "fields": [
   {
@@ -82,6 +95,79 @@
    "fieldtype": "Link",
    "label": "AI Agent",
    "options": "AI Agent"
+  },
+  {
+   "fieldname": "brief_section",
+   "fieldtype": "Section Break",
+   "label": "Campaign Brief"
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Small Text",
+   "label": "What this campaign is about",
+   "description": "Plain description of the product, use case or offer. The AI judges each project and party against this to decide relevance."
+  },
+  {
+   "fieldname": "selection_section",
+   "fieldtype": "Section Break",
+   "label": "Which projects qualify"
+  },
+  {
+   "fieldname": "require_solar_signal",
+   "fieldtype": "Check",
+   "label": "Only projects with a solar signal",
+   "description": "Project details mentioning Solarenergie, Flachdach or Dachbegrünungen."
+  },
+  {
+   "fieldname": "plan_stages",
+   "fieldtype": "Small Text",
+   "label": "Plan Stages",
+   "description": "One per line, e.g. Baubewilligung erteilt. Leave empty for any."
+  },
+  {
+   "fieldname": "cantons",
+   "fieldtype": "Small Text",
+   "label": "Cantons",
+   "description": "One per line. Leave empty for any."
+  },
+  {
+   "fieldname": "col_sel",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "project_types",
+   "fieldtype": "Small Text",
+   "label": "Project Types",
+   "description": "One per line. Leave empty for any."
+  },
+  {
+   "fieldname": "min_project_value",
+   "fieldtype": "Currency",
+   "label": "Minimum Build Value"
+  },
+  {
+   "fieldname": "max_project_value",
+   "fieldtype": "Currency",
+   "label": "Maximum Build Value"
+  },
+  {
+   "fieldname": "excluded_roles",
+   "fieldtype": "Small Text",
+   "label": "Exclude Roles",
+   "description": "One per line, e.g. Bauherr. Everyone else on a qualifying project is eligible."
+  },
+  {
+   "fieldname": "sending_section",
+   "fieldtype": "Section Break",
+   "label": "Sending"
+  },
+  {
+   "fieldname": "approval_mode",
+   "fieldtype": "Select",
+   "label": "Approval",
+   "default": "Review Before Sending",
+   "options": "Review Before Sending\nSend Automatically",
+   "description": "Review holds every drafted email until someone approves it."
   }
  ],
  "grid_page_length": 50,

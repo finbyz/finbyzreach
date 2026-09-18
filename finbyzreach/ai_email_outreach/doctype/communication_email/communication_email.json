@@ -36,7 +36,7 @@
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Status",
-   "options": "Sent\nQueued\nFailed\nCancelled",
+   "options": "Queued\nAwaiting Approval\nPending\nSent\nFailed\nCancelled",
    "reqd": 1
   },
   {
