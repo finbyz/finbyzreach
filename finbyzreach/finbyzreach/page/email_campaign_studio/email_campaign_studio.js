@@ -571,7 +571,7 @@ class EmailCampaignStudio {
 		// Embedded groups have no filter_button, but add_filters() still calls
 		// update_filter_button(). Keep the instance contract safe without changing
 		// Frappe core.
-		filterGroup.update_filter_button = function () {};
+		filterGroup.update_filter_button = function () { };
 
 		return filterGroup;
 	}
@@ -646,6 +646,7 @@ class EmailCampaignStudio {
 		return frappe.call({
 			method: this.method + "get_bootstrap",
 			args: { campaign_name: campaignName },
+			type: "GET"
 		}).then((response) => {
 			if (requestId !== this.bootstrapRequest || route.key !== this.routeKey) return null;
 			const data = response.message || {};
@@ -1198,7 +1199,7 @@ class EmailCampaignStudio {
 		}).join("");
 		$panel.html(
 			"<div class='ecs-metrics'><div class='ecs-metric'><strong>" + data.candidate_count + "</strong><span>" + __("Candidates") + "</span></div><div class='ecs-metric eligible'><strong>" + data.eligible_count + "</strong><span>" + __("Eligible") + "</span></div><div class='ecs-metric excluded'><strong>" + data.excluded_count + "</strong><span>" + __("Excluded") + "</span></div></div>" +
-				(reasons ? "<div class='ecs-reasons'>" + reasons + "</div>" : "")
+			(reasons ? "<div class='ecs-reasons'>" + reasons + "</div>" : "")
 		);
 	}
 
@@ -1228,8 +1229,8 @@ class EmailCampaignStudio {
 		}).join("");
 		$details.html(
 			"<div class='ecs-health-toolbar'>" +
-				"<div class='ecs-health-search-wrap'><input type='search' class='form-control input-sm' id='ecs-health-search-input' autocomplete='off' placeholder='" + __("Search by lead, company, or email…") + "'><button type='button' class='btn btn-xs ecs-health-search-clear' data-health-search-clear aria-label='" + __("Clear search") + "'>×</button></div>" +
-				"<label class='ecs-page-size'><span>" + __("Rows per page") + "</span><select class='form-control input-xs' data-health-page-length>" + pageLengthOptions + "</select></label>" +
+			"<div class='ecs-health-search-wrap'><input type='search' class='form-control input-sm' id='ecs-health-search-input' autocomplete='off' placeholder='" + __("Search by lead, company, or email…") + "'><button type='button' class='btn btn-xs ecs-health-search-clear' data-health-search-clear aria-label='" + __("Clear search") + "'>×</button></div>" +
+			"<label class='ecs-page-size'><span>" + __("Rows per page") + "</span><select class='form-control input-xs' data-health-page-length>" + pageLengthOptions + "</select></label>" +
 			"</div>" +
 			"<div class='ecs-health-results' id='ecs-health-results'><div class='ecs-preview-empty'>" + __("Checking the current audience…") + "</div></div>"
 		);
