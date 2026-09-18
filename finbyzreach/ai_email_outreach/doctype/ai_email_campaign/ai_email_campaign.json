@@ -20,6 +20,7 @@
   "campaign_schedules",
   "brief_section",
   "description",
+  "relevance_agent",
   "selection_section",
   "require_solar_signal",
   "plan_stages",
@@ -168,6 +169,14 @@
    "default": "Review Before Sending",
    "options": "Review Before Sending\nSend Automatically",
    "description": "Review holds every drafted email until someone approves it."
+  },
+  {
+   "fieldname": "relevance_agent",
+   "fieldtype": "Link",
+   "options": "AI Agent",
+   "label": "Relevance Agent",
+   "default": "Campaign Relevance",
+   "description": "Scores each candidate against the brief. Separate from the agent that writes the emails."
   }
  ],
  "grid_page_length": 50,

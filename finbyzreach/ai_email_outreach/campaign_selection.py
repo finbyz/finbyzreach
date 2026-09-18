@@ -200,8 +200,9 @@ def score_candidates(campaign_name: str, limit: int = 0):
 	campaign = frappe.get_doc("AI Email Campaign", campaign_name)
 	if not campaign.description:
 		return {"ok": False, "message": _("Add a campaign description before scoring.")}
-	if not campaign.ai_agent:
-		return {"ok": False, "message": _("Set an AI Agent on the campaign before scoring.")}
+	agent_name = campaign.get("relevance_agent") or "Campaign Relevance"
+	if not frappe.db.exists("AI Agent", agent_name):
+		return {"ok": False, "message": _("Relevance agent {0} does not exist.").format(agent_name)}
 
 	names = frappe.get_all(
 		CANDIDATE,
@@ -211,8 +212,7 @@ def score_candidates(campaign_name: str, limit: int = 0):
 	if not names:
 		return {"ok": True, "scored": 0, "message": _("Nothing left to score.")}
 
-	agent = frappe.get_doc("AI Agent", campaign.ai_agent)
-	service = agent.agent_service
+	service = frappe.get_doc("AI Agent", agent_name).agent_service
 	scored = failed = 0
 
 	for name in names:
