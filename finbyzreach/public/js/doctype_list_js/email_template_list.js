@@ -64,7 +64,14 @@ frappe.listview_settings["Email Template"] = frappe.listview_settings["Email Tem
 		});
 	}
 
-	function show_ai_create_dialog(template_doctype = "Email Template") {
+	function show_ai_create_dialog(template_doctype) {
+		// Frappe passes the click event to a button handler, so a bare reference
+		// would arrive here as an Event rather than a doctype name. Sending that
+		// on to frappe.call makes jQuery.param throw "Illegal invocation", which
+		// leaves the freeze overlay up for ever.
+		if (typeof template_doctype !== "string" || !template_doctype) {
+			template_doctype = "Email Template";
+		}
 		const is_master = template_doctype === "Email Template Master";
 		const sample_prompts = [
 			{ label: __("Product Launch"), text: "Product launch announcement with hero banner, headline, 3 feature columns, and a prominent 'Get Started' CTA button." },
@@ -166,11 +173,11 @@ frappe.listview_settings["Email Template"] = frappe.listview_settings["Email Tem
 		if (existing_onload) existing_onload(listview);
 		if (!can_design_email() || listview._visual_builder_actions_added) return;
 
-		listview.page.add_button(__("Build with AI ✨"), show_ai_create_dialog);
+		listview.page.add_button(__("Build with AI ✨"), () => show_ai_create_dialog("Email Template"));
 		listview.page.add_button(__("Choose Template"), () => frappe.email_template_library.choose_master());
 		listview.page.add_inner_button(__("Choose from Library"), () => frappe.email_template_library.choose_master(), __("Builder"));
 		listview.page.add_inner_button(__("Manage Master Templates"), () => frappe.set_route("List", "Email Template Master"), __("Builder"));
-		listview.page.add_inner_button(__("Build with AI ✨"), show_ai_create_dialog, __("Builder"));
+		listview.page.add_inner_button(__("Build with AI ✨"), () => show_ai_create_dialog("Email Template"), __("Builder"));
 		listview.page.add_inner_button(__("New Visual Email"), show_new_visual_template_dialog, __("Builder"));
 		listview.page.add_action_item(__("Open Visual Builder"), () => {
 			const selected = listview.get_checked_items();
