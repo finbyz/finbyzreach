@@ -35,7 +35,7 @@ frappe.ui.form.on("Email Template", {
 
 function analyze_template(frm) {
 	frappe.call({
-		method: "finbyzreach.finbyzreach.ai_engine.analyze_email_template",
+		method: "megasol_customisation.megasol_customisation.ai_engine.analyze_email_template",
 		args: {
 			template_name: frm.doc.name
 		},
