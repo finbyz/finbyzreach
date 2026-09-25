@@ -175,9 +175,25 @@ def run_research(lead, contact, candidate):
 	if not contact.get("person_details"):
 		frappe.db.set_value("Contact", contact.name, "person_details",
 		                    candidate_context_summary(candidate), update_modified=False)
+		contact.reload()
 		notes.append(_("Used project details in place of person research"))
 
+	# Person research lives on the Contact. The Lead keeps a copy, but only
+	# refreshes it on save — and by this point the Lead has already been saved
+	# by the company research above, so the copy would otherwise stay empty.
+	copy_person_research_to_lead(lead, contact)
+
 	return " · ".join(notes)
+
+
+def copy_person_research_to_lead(lead, contact):
+	if not lead.meta.has_field("custom_person_research"):
+		return
+	summary = contact.get("person_details")
+	if summary and not lead.get("custom_person_research"):
+		frappe.db.set_value("Lead", lead.name, "custom_person_research", summary,
+		                    update_modified=False)
+		lead.reload()
 
 
 @frappe.whitelist()
