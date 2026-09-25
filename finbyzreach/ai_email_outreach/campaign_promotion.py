@@ -104,11 +104,6 @@ def ensure_contact(candidate, lead):
 	if not any(l.link_doctype == "Lead" and l.link_name == lead.name for l in contact.links):
 		contact.append("links", {"link_doctype": "Lead", "link_name": lead.name})
 
-	# draft_emails refuses to run without this, and a company inbox has no
-	# person to research, so the project context stands in for it.
-	if not contact.get("person_details"):
-		contact.person_details = candidate_context_summary(candidate)
-
 	contact.flags.ignore_permissions = True
 	contact.save(ignore_permissions=True)
 	return contact
@@ -124,6 +119,65 @@ def candidate_context_summary(candidate):
 	if candidate.has_solar:
 		bits.append("The project records a solar or flat-roof indicator.")
 	return ". ".join(bits) + "."
+
+
+
+def _research_call(default_path):
+	"""Resolve a research entry point, honouring any site override.
+
+	A site can remap these through override_whitelisted_methods — this one
+	does — so the promotion path must use the same implementation the rest of
+	the system uses rather than hardcoding one.
+	"""
+	overrides = frappe.get_hooks("override_whitelisted_methods") or {}
+	target = overrides.get(default_path)
+	if isinstance(target, list):
+		target = target[-1] if target else None
+	return frappe.get_attr(target or default_path)
+
+
+def run_research(lead, contact, candidate):
+	"""Research the company and the person before any email is written.
+
+	The outreach automation normally does this, but it bails out as soon as an
+	Outbound Email exists — and promotion creates one deliberately, to keep the
+	recipient on their own campaign. So it has to happen here instead.
+
+	Failure is reported, never fatal: an email written without research is worth
+	more than no email, as long as it is obvious that is what happened.
+	"""
+	notes = []
+
+	try:
+		_research_call("finbyzreach.api.lead.research_lead")(lead.name)
+		lead.reload()
+		notes.append(
+			_("Company research: done") if lead.get("customer_details")
+			else _("Company research: returned nothing")
+		)
+	except Exception as exc:
+		frappe.log_error(title=f"Company research failed - {lead.name}", message=frappe.get_traceback())
+		notes.append(_("Company research: failed ({0})").format(str(exc)[:120]))
+
+	try:
+		_research_call("finbyzreach.api.contact.research_contact")(contact.name)
+		contact.reload()
+		notes.append(
+			_("Person research: done") if contact.get("person_details")
+			else _("Person research: returned nothing")
+		)
+	except Exception as exc:
+		frappe.log_error(title=f"Person research failed - {contact.name}", message=frappe.get_traceback())
+		notes.append(_("Person research: failed ({0})").format(str(exc)[:120]))
+
+	# draft_emails refuses to run without person_details, so stand in with the
+	# project context rather than blocking the whole sequence.
+	if not contact.get("person_details"):
+		frappe.db.set_value("Contact", contact.name, "person_details",
+		                    candidate_context_summary(candidate), update_modified=False)
+		notes.append(_("Used project details in place of person research"))
+
+	return " · ".join(notes)
 
 
 @frappe.whitelist()
@@ -164,10 +218,13 @@ def promote(names=None, campaign_name: str = None):
 				frappe.db.set_value("Infomanager Contact", source.name, "contact", contact.name,
 				                    update_modified=False)
 
+			research_note = run_research(lead, contact, candidate)
+
 			outbound = frappe.get_doc({
 				"doctype": "Outbound Email",
 				"contact": contact.name,
 				"ai_email_campaign": candidate.ai_email_campaign,
+				"research_note": research_note,
 			})
 			outbound.flags.ignore_permissions = True
 			outbound.insert(ignore_permissions=True)

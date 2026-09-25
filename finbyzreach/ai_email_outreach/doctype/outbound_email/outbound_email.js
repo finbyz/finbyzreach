@@ -5,6 +5,15 @@ frappe.ui.form.on("Outbound Email", {
 	refresh(frm) {
 		if (frm.is_new()) return;
 
+		// Say plainly whether the emails were written with research behind them.
+		if (frm.doc.research_note) {
+			const failed = /failed|returned nothing|in place of/i.test(frm.doc.research_note);
+			frm.dashboard.add_indicator(
+				__("Research: {0}", [frm.doc.research_note]),
+				failed ? "orange" : "green"
+			);
+		}
+
 		const held = (frm.doc.communication_email || []).filter(
 			(r) => r.status === "Awaiting Approval"
 		);

@@ -14,7 +14,8 @@
   "section_break_emails",
   "communication_email",
   "communication",
-  "replied"
+  "replied",
+  "research_note"
  ],
  "fields": [
   {
@@ -73,6 +74,13 @@
    "hidden": 1,
    "label": "Naming Series",
    "options": "OE-.YY.MM.DD.-"
+  },
+  {
+   "fieldname": "research_note",
+   "fieldtype": "Small Text",
+   "label": "Research Status",
+   "read_only": 1,
+   "description": "Whether company and person research ran before the emails were written."
   }
  ],
  "index_web_pages_for_search": 1,
