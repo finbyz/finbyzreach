@@ -833,7 +833,9 @@ class EmailCampaignStudio {
 		} else {
 			$banner.addClass("visible").html(
 				"<strong>" + frappe.utils.escape_html(status) + "</strong><span>" +
-				__("Audience, content and delivery settings were frozen when this campaign was scheduled. Use Campaign actions to pause, resume, cancel or retry without changing its audit history.") +
+				(status === "Queued for scheduling"
+					? __("The campaign passed validation and is waiting for background scheduling. Refresh to see its current status.")
+					: __("Audience, content and delivery settings were frozen when this campaign was scheduled. Use Campaign actions to pause, resume, cancel or retry without changing its audit history.")) +
 				"</span>"
 			);
 		}
@@ -1606,7 +1608,7 @@ class EmailCampaignStudio {
 			this.preview = result.preview || this.preview;
 			frappe.show_alert({
 				message: mode === "schedule"
-					? __("Campaign scheduled successfully")
+					? __("Campaign passed validation and was queued for scheduling")
 					: (result.created ? __("Campaign draft created") : __("Campaign draft saved")),
 				indicator: "green",
 			}, 6);
@@ -1616,7 +1618,7 @@ class EmailCampaignStudio {
 				return result;
 			}
 			this.rememberCampaignInStudio(result.campaign);
-			this.setEditableState(false, result.status || __("Scheduled"));
+			this.setEditableState(false, result.status || __("Queued for scheduling"));
 			this.updateSummary();
 			this.updateDeliveryCapacity();
 			return result;

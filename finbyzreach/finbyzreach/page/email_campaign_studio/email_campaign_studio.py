@@ -3,8 +3,9 @@ from __future__ import annotations
 import json
 import math
 from collections import Counter
-from datetime import timedelta
+from datetime import UTC, timedelta
 from email.utils import formataddr
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import frappe
 from frappe import _
@@ -12,9 +13,9 @@ from frappe.query_builder.functions import Count
 from frappe.utils import (
 	cint,
 	get_datetime,
+	get_system_timezone,
 	get_url,
 	now_datetime,
-	nowdate,
 	slug,
 	strip_html,
 	validate_email_address,
@@ -47,6 +48,36 @@ def _time_string(value):
 	if hasattr(value, "strftime"):
 		return value.strftime("%H:%M:%S")
 	return str(value)
+
+
+def _studio_timezone():
+	"""Use the same user timezone that Frappe uses for Datetime controls."""
+	name = frappe.get_cached_value("User", frappe.session.user, "time_zone") or get_system_timezone()
+	try:
+		return ZoneInfo(name)
+	except ZoneInfoNotFoundError:
+		frappe.throw(_("The user timezone {0} is invalid").format(frappe.bold(name)))
+
+
+def _studio_to_system_datetime(value):
+	"""Store a Studio wall-clock choice as Frappe's system-local Datetime."""
+	local = get_datetime(value)
+	zone = _studio_timezone()
+	aware = local.replace(tzinfo=zone)
+	if aware.astimezone(UTC).astimezone(zone).replace(tzinfo=None) != local:
+		frappe.throw(_("The selected start time does not exist in your timezone"))
+	if aware.replace(fold=1).utcoffset() != aware.utcoffset():
+		frappe.throw(_("The selected start time is ambiguous in your timezone"))
+	return aware.astimezone(ZoneInfo(get_system_timezone())).replace(tzinfo=None)
+
+
+def _system_to_studio_datetime(value):
+	"""Show a stored system-local Datetime in the current user's timezone."""
+	return (
+		get_datetime(value)
+		.replace(tzinfo=ZoneInfo(get_system_timezone()))
+		.astimezone(_studio_timezone())
+	)
 
 
 def _parse_payload(payload):
@@ -434,11 +465,11 @@ def _campaign_for_studio(campaign_name):
 		return None
 	campaign = frappe.get_doc("Campaign", campaign_name)
 	campaign.check_permission("read")
-	start_on = get_datetime(campaign.custom_start_on) if campaign.custom_start_on else None
+	start_on = _system_to_studio_datetime(campaign.custom_start_on) if campaign.custom_start_on else None
 	return {
 		"name": campaign.name,
 		"campaign_title": campaign.campaign_name or campaign.name,
-		"broadcast_status": campaign.custom_broadcast_status or "Draft",
+		"broadcast_status": "Queued for scheduling" if campaign.custom_queued else (campaign.custom_broadcast_status or "Draft"),
 		"editable": (campaign.custom_broadcast_status or "Draft") == "Draft" and not campaign.custom_queued,
 		"email_template": campaign.custom_email_template,
 		"subject_override": campaign.custom_subject_override,
@@ -488,9 +519,9 @@ def get_bootstrap(campaign_name=None):
 		order_by="title asc",
 		limit=500,
 	)
-	start = now_datetime() + timedelta(minutes=5)
+	start = _system_to_studio_datetime(now_datetime() + timedelta(minutes=5))
 	return {
-		"start_date": nowdate(),
+		"start_date": start.strftime("%Y-%m-%d"),
 		"start_time": start.strftime("%H:%M:%S"),
 		"email_accounts": [
 			{
@@ -669,7 +700,8 @@ def _campaign_values(payload, context, require_ready=True, preview=None):
 		"custom_lead_filters_json": context.include_filters_json,
 		"custom_exclude_filters_json": context.exclude_filters_json,
 		"custom_exclude_email_groups_json": frappe.as_json(context.email_groups),
-		"custom_start_on": f"{start_date} {start_time}" if start_date and start_time else None,
+		"custom_start_on": _studio_to_system_datetime(f"{start_date} {start_time}") if start_date and start_time else None,
+		"custom_schedule_timezone": _studio_timezone().key,
 		"custom_batch_size": batch_size,
 		"custom_repeat_every": cint(_default_if_blank(payload.get("repeat_every"), 1)),
 		"custom_repeat_unit": _default_if_blank(payload.get("repeat_unit"), "Hours"),
@@ -745,6 +777,7 @@ def create_campaign(payload=None, launch="schedule"):
 	else:
 		campaign = frappe.get_doc(values).insert()
 	if launch == "schedule":
+		email_marketing.validate_schedule_preflight(campaign, preview["eligible_count"])
 		campaign.db_set("custom_queued", 1)
 		frappe.enqueue(
 			"finbyzreach.email_marketing.schedule_campaign",
@@ -754,7 +787,7 @@ def create_campaign(payload=None, launch="schedule"):
 			now=frappe.flags.in_test,
 			enqueue_after_commit=True
 		)
-		status = "Scheduled"
+		status = "Queued for scheduling"
 	else:
 		status = "Draft"
 

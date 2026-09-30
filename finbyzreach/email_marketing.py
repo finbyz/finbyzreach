@@ -70,7 +70,8 @@ WEEKDAY_FIELDS = (
 	"send_saturday",
 	"send_sunday",
 )
-TERMINAL_DELIVERY_STATUSES = ("Sent", "Failed", "Skipped", "Cancelled")
+FEEDBACK_DELIVERY_STATUSES = ("Bounced", "Soft-Bounced", "Marked As Spam")
+TERMINAL_DELIVERY_STATUSES = ("Sent", "Failed", "Skipped", "Cancelled", *FEEDBACK_DELIVERY_STATUSES)
 REPEAT_UNITS = ("Minutes", "Hours", "Days")
 MAX_AUDIENCE_FILTERS = 50
 MAX_AUDIENCE_FILTER_GROUPS = 25
@@ -96,7 +97,8 @@ CAMPAIGN_COPY_COUNT_FIELDS = (
 	"custom_unsubscribed_count",
 	"custom_batch_count",
 )
-CAMPAIGN_COPY_FROZEN_FIELDS = (																																																										
+CAMPAIGN_COPY_FROZEN_FIELDS = (
+	"custom_schedule_timezone",
 	"custom_first_scheduled_at",
 	"custom_last_scheduled_at",
 	"custom_template_mode",
@@ -223,6 +225,15 @@ def _system_zone():
 		return ZoneInfo(timezone_name)
 	except ZoneInfoNotFoundError:
 		frappe.throw(_("The system timezone {0} is invalid").format(frappe.bold(timezone_name)))
+
+
+def _campaign_zone(campaign):
+	"""Keep sending weekdays and windows in the timezone chosen in Studio."""
+	name = campaign.get("custom_schedule_timezone") or get_system_timezone()
+	try:
+		return ZoneInfo(name)
+	except ZoneInfoNotFoundError:
+		frappe.throw(_("The campaign timezone {0} is invalid").format(frappe.bold(name)))
 
 
 def apply_campaign_defaults(doc):
@@ -836,20 +847,21 @@ def _next_valid_slot(value, campaign, timezone):
 
 
 def calculate_batch_slots(campaign, batch_count, start_local=None):
-	timezone = _system_zone()
+	system_zone = _system_zone()
+	campaign_zone = _campaign_zone(campaign)
 	if start_local is None:
 		start_local = get_datetime(campaign.custom_start_on)
-	else:
-		start_local = _normalize_local_datetime(start_local, timezone)
-	current = _next_valid_slot(start_local, campaign, timezone)
+	if start_local.tzinfo is None:
+		start_local = start_local.replace(tzinfo=system_zone)
+	current = _next_valid_slot(start_local.astimezone(campaign_zone), campaign, campaign_zone)
 	interval = _interval(campaign)
 	slots = []
 	for index in range(batch_count):
 		if index:
-			current = _next_valid_slot(current + interval, campaign, timezone)
-		# Frappe stores and compares Datetime values in the configured system
-		# timezone. Strip the timezone only after calculating the local slot.
-		slots.append(current.replace(tzinfo=None))
+			current = _next_valid_slot(current + interval, campaign, campaign_zone)
+		# Datetime fields are stored in the system timezone. Weekdays and
+		# optional sending hours remain local to the campaign's timezone.
+		slots.append(current.astimezone(system_zone).replace(tzinfo=None))
 	return slots
 
 
@@ -973,8 +985,11 @@ def schedule_campaign(campaign_name):
             update_modified=False,
         )
 
-def _schedule_campaign_internal(campaign_name):
-	campaign = frappe.get_doc("Campaign", campaign_name, for_update=True)
+def validate_schedule_preflight(campaign, eligible_count=None):
+	"""Check predictable scheduling failures before Studio enqueues work.
+
+	The worker repeats this check because related records may change while it waits.
+	"""
 	campaign.check_permission("write")
 	campaign.check_permission("email")
 	if campaign.custom_broadcast_status != "Draft":
@@ -987,16 +1002,21 @@ def _schedule_campaign_internal(campaign_name):
 	validate_lead_filter_groups(campaign.custom_lead_filters_json, require_filters=True)
 	validate_lead_filter_groups(campaign.custom_exclude_filters_json)
 	validate_excluded_email_groups(campaign.custom_exclude_email_groups_json)
-	start_slot = calculate_batch_slots(campaign, 1)[0]
-	# if start_slot < now_datetime() - timedelta(minutes=1):
-	# 	frappe.throw(_("Campaign start time cannot be in the past"))
-
+	calculate_batch_slots(campaign, 1)
+	if eligible_count is not None and cint(eligible_count) <= 0:
+		frappe.throw(_("No eligible recipients remain after exclusions"))
 	snapshot = get_campaign_snapshot(
 		campaign.custom_email_template,
 		campaign.custom_subject_override,
 	)
 	if snapshot.reference_doctype and snapshot.reference_doctype != "Lead":
 		frappe.throw(_("Campaign templates must use Lead personalization"))
+	return snapshot
+
+
+def _schedule_campaign_internal(campaign_name):
+	campaign = frappe.get_doc("Campaign", campaign_name, for_update=True)
+	snapshot = validate_schedule_preflight(campaign)
 	resolved = resolve_campaign_audience(campaign)
 	eligible = [row for row in resolved if row.eligible]
 	if not eligible:
@@ -1575,10 +1595,31 @@ def sync_marketing_email_statuses():
 		""",
 		as_dict=True,
 	)
+	# Provider integrations may update Communication after Email Queue has already
+	# reached Sent. Reconcile those later outcomes in bounded batches as well.
+	feedback_rows = frappe.db.sql(
+		"""
+			select ec.name, ec.campaign_name, ec.recipient, ec.custom_email_queue,
+				ec.custom_communication, ec.custom_opened, ec.custom_delivery_status,
+				comm.delivery_status as communication_delivery_status
+			from `tabEmail Campaign` ec
+			inner join `tabCommunication` comm on comm.name = ec.custom_communication
+			where ec.custom_delivery_status in ('Queued', 'Sent')
+				and comm.delivery_status in ('Bounced', 'Soft-Bounced', 'Marked As Spam')
+			order by comm.modified asc, ec.name asc
+			limit 500
+		""",
+		as_dict=True,
+	)
 	rows_by_name = {row.name: row for row in queued_rows}
 	for row in opened_rows:
 		if row.name in rows_by_name:
 			rows_by_name[row.name].read_by_recipient_on = row.read_by_recipient_on
+		else:
+			rows_by_name[row.name] = row
+	for row in feedback_rows:
+		if row.name in rows_by_name:
+			rows_by_name[row.name].communication_delivery_status = row.communication_delivery_status
 		else:
 			rows_by_name[row.name] = row
 	rows = list(rows_by_name.values())
@@ -1604,7 +1645,7 @@ def sync_marketing_email_statuses():
 			for row in frappe.get_all(
 				"Communication",
 				filters={"name": ["in", communication_names]},
-				fields=["name", "read_by_recipient", "read_by_recipient_on"],
+				fields=["name", "read_by_recipient", "read_by_recipient_on", "delivery_status"],
 				limit_page_length=0,
 			)
 		}
@@ -1657,6 +1698,11 @@ def sync_marketing_email_statuses():
 						"custom_error_message": queue.error,
 					}
 				)
+		communication = communications_by_name.get(row.custom_communication)
+		feedback_status = row.get("communication_delivery_status") or (
+			communication.delivery_status if communication else None
+		)
+		updates.update(_feedback_delivery_updates(feedback_status))
 		if row.get("read_by_recipient_on"):
 			updates.update(
 				{
@@ -1694,12 +1740,25 @@ def sync_marketing_email_statuses():
 		refresh_campaign_metrics(campaign_name)
 
 
+def _feedback_delivery_updates(delivery_status):
+	if delivery_status not in FEEDBACK_DELIVERY_STATUSES:
+		return {}
+	return {"status": "Completed", "custom_delivery_status": delivery_status}
+
+
 def _queued_delivery_status_updates(recipient):
 	if (
 		getattr(recipient, "custom_delivery_status", None) != "Queued"
 		or not getattr(recipient, "custom_email_queue", None)
 	):
 		return {}
+	if recipient.custom_communication:
+		feedback_status = frappe.db.get_value(
+			"Communication", recipient.custom_communication, "delivery_status"
+		)
+		feedback_updates = _feedback_delivery_updates(feedback_status)
+		if feedback_updates:
+			return feedback_updates
 	queue_status = frappe.db.get_value(
 		"Email Queue",
 		recipient.custom_email_queue,
@@ -2037,6 +2096,12 @@ def get_unsubscribed_user_emails(self):
 	return _original_get_unsubscribed_user_emails(self)
 
 
+def _is_campaign_recipient_reply(communication, recipient):
+	"""A delivery notice can reference the sent message but is not a person's reply."""
+	recipient_email = _normalized_email(recipient.custom_recipient_email)
+	return bool(recipient_email and _normalized_email(communication.sender) == recipient_email)
+
+
 def communication_after_insert(doc, method=None):
 	if doc.communication_medium != "Email" or doc.sent_or_received != "Received":
 		return
@@ -2062,6 +2127,8 @@ def communication_after_insert(doc, method=None):
 	if not recipient_name:
 		return
 	recipient = frappe.get_doc("Email Campaign", recipient_name)
+	if not _is_campaign_recipient_reply(doc, recipient):
+		return
 	frappe.db.set_value(
 		"Email Campaign",
 		recipient.name,
