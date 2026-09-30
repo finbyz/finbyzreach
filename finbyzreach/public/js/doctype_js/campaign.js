@@ -21,6 +21,10 @@ frappe.ui.form.on("Campaign", {
 		set_campaign_form_mode(frm, isBroadcast);
 		if (frm.is_new()) return;
 		if (!isBroadcast) return;
+		frm.add_custom_button(__("View Email Campaign Report"), () => {
+			frappe.route_options = { campaign: frm.doc.name };
+			frappe.set_route("email-campaign-report");
+		}, __("Email Broadcast"));
 
 		const status = frm.doc.custom_broadcast_status || "Draft";
 		frm.set_intro(__("Email broadcast status: {0}", [status]), broadcast_indicator(status));

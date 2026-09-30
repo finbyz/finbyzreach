@@ -3,6 +3,12 @@ frappe.ui.form.on("Email Template", {
 		const can_design = frappe.user.has_role("Email Designer") || frappe.user.has_role("System Manager");
 		if (frm.fields_dict.custom_builder_mode) frm.set_df_property("custom_builder_mode", "read_only", 1);
 		const visual = frm.doc.custom_builder_mode === "Visual";
+		if (!frm.is_new()) {
+			frm.add_custom_button(__("View Campaign Report"), () => {
+				frappe.route_options = { template: frm.doc.name };
+				frappe.set_route("email-campaign-report");
+			});
+		}
 		frm.set_df_property("response_html", "read_only", visual ? 1 : 0);
 		if (!frm.is_new() && can_design) {
 			frm.add_custom_button(__(visual ? "Open Visual Builder" : "Start Visual Builder"), () => {
