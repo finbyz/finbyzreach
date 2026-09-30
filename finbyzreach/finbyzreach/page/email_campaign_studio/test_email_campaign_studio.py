@@ -459,8 +459,13 @@ class TestEmailCampaignStudio(UnitTestCase):
 		)
 		get_doc.return_value = campaign
 
-		result = _campaign_for_studio("Existing Studio Campaign")
+		with patch(
+			"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio._system_to_studio_datetime",
+			return_value=datetime(2026, 7, 21, 10, 30),
+		) as convert:
+			result = _campaign_for_studio("Existing Studio Campaign")
 
+		convert.assert_called_once_with("2026-07-21 10:30:00")
 		self.assertEqual(result["name"], "Existing Studio Campaign")
 		self.assertEqual(result["filters"], [["Lead", "email_id", "is", "set"]])
 		self.assertEqual(result["exclude_email_groups"], ["Suppression"])
@@ -525,9 +530,13 @@ class TestEmailCampaignStudio(UnitTestCase):
 		campaign.insert.return_value = campaign
 		get_doc.return_value = campaign
 
-		result = create_campaign(payload="{}", launch="schedule")
+		with patch(
+			"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio.email_marketing.validate_schedule_preflight"
+		) as preflight:
+			result = create_campaign(payload="{}", launch="schedule")
 
-		self.assertEqual(result["status"], "Scheduled")
+		preflight.assert_called_once_with(campaign, 1)
+		self.assertEqual(result["status"], "Queued for scheduling")
 		self.assertTrue(result["created"])
 		self.assertEqual(result["route"], ["Form", "Campaign", "Studio Launch"])
 		self.assertEqual(get_doc.call_count, 1)
