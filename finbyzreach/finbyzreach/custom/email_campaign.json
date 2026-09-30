@@ -311,7 +311,7 @@
    "name": "Email Campaign-custom_delivery_status",
    "no_copy": 0,
    "non_negative": 0,
-   "options": "Planned\nProcessing\nQueued\nSent\nFailed\nSkipped\nCancelled",
+   "options": "Planned\nProcessing\nQueued\nSent\nBounced\nSoft-Bounced\nMarked As Spam\nFailed\nSkipped\nCancelled",
    "owner": "Administrator",
    "permlevel": 0,
    "placeholder": null,
