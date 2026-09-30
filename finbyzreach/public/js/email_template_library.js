@@ -973,14 +973,23 @@ frappe.provide("frappe.email_template_library");
 					font-size:10px;
 				}
 
-				.etl5-template-edit {
+				.etl5-template-actions {
 					position:absolute;
 					right:7px;
 					top:7px;
 					z-index:2;
 					display:none;
+					gap:4px;
+				}
+
+				.etl5-template-card:hover .etl5-template-actions {
+					display:flex;
+				}
+
+				.etl5-action-btn {
 					width:30px;
 					height:30px;
+					display:flex;
 					align-items:center;
 					justify-content:center;
 					border:1px solid rgba(255,255,255,.8);
@@ -989,10 +998,15 @@ frappe.provide("frappe.email_template_library");
 					color:#111827;
 					cursor:pointer;
 					box-shadow:0 2px 7px rgba(0,0,0,.1);
+					transition: transform 0.1s ease;
 				}
 
-				.etl5-template-card:hover .etl5-template-edit {
-					display:flex;
+				.etl5-action-btn:hover {
+					transform: scale(1.05);
+				}
+
+				.etl5-action-btn.btn-danger {
+					color: var(--error, #ef4444);
 				}
 
 				.etl5-empty {
@@ -1694,12 +1708,13 @@ frappe.provide("frappe.email_template_library");
 					tabindex="0"
 				>
 
+					<div class="etl5-template-actions">
 					${
 						perm.master.write
 							? `
 								<button
 									type="button"
-									class="etl5-template-edit"
+									class="etl5-action-btn etl5-action-edit"
 									title="${escape_attr(
 										__("Edit Master Template")
 									)}"
@@ -1709,6 +1724,52 @@ frappe.provide("frappe.email_template_library");
 							`
 							: ""
 					}
+					${
+						perm.master.create
+							? `
+								<button
+									type="button"
+									class="etl5-action-btn etl5-action-duplicate"
+									title="${escape_attr(
+										__("Duplicate")
+									)}"
+								>
+									${icon("duplicate", "sm") || "⧉"}
+								</button>
+							`
+							: ""
+					}
+					${
+						perm.master.write
+							? `
+								<button
+									type="button"
+									class="etl5-action-btn etl5-action-move"
+									title="${escape_attr(
+										__("Move to Folder")
+									)}"
+								>
+									${icon("folder-open", "sm") || "📁"}
+								</button>
+							`
+							: ""
+					}
+					${
+						perm.master.delete
+							? `
+								<button
+									type="button"
+									class="etl5-action-btn btn-danger etl5-action-delete"
+									title="${escape_attr(
+										__("Delete")
+									)}"
+								>
+									${icon("delete", "sm") || "🗑"}
+								</button>
+							`
+							: ""
+					}
+					</div>
 
 					<div class="etl5-preview">
 						${preview}
@@ -1775,7 +1836,7 @@ frappe.provide("frappe.email_template_library");
 			}
 
 			$card.on("click", (event) => {
-				if ($(event.target).closest(".etl5-template-edit").length) {
+				if ($(event.target).closest(".etl5-template-actions").length) {
 					return;
 				}
 
@@ -1789,12 +1850,130 @@ frappe.provide("frappe.email_template_library");
 				}
 			});
 
-			$card.find(".etl5-template-edit").on("click", (event) => {
+			$card.find(".etl5-action-edit").on("click", (event) => {
 				event.preventDefault();
 				event.stopPropagation();
 
 				dialog.hide();
 				open_builder(template.name, MASTER);
+			});
+
+			$card.find(".etl5-action-delete").on("click", (event) => {
+				event.preventDefault();
+				event.stopPropagation();
+
+				frappe.confirm(__("Are you sure you want to delete {0}?", [escape_html(name).bold()]), () => {
+					frappe.call({
+						method: "frappe.client.delete",
+						args: { doctype: MASTER, name: template.name },
+						freeze: true,
+						callback: function(r) {
+							if (!r.exc) {
+								frappe.show_alert({message: __("Deleted"), indicator: "green"});
+								reset_template_pagination();
+								render_shell();
+								void load_more_templates();
+							}
+						}
+					});
+				});
+			});
+
+			$card.find(".etl5-action-move").on("click", (event) => {
+				event.preventDefault();
+				event.stopPropagation();
+				
+				const move_dialog = new frappe.ui.Dialog({
+					title: __("Move to Folder"),
+					fields: [
+						{
+							fieldname: "folder",
+							fieldtype: "Link",
+							label: __("Folder"),
+							options: FOLDER,
+							default: template.folder || "",
+							get_query: () => ({ filters: { [IS_GROUP_FIELD]: 1 } })
+						}
+					],
+					primary_action_label: __("Move"),
+					primary_action(values) {
+						frappe.call({
+							method: "frappe.client.set_value",
+							args: {
+								doctype: MASTER,
+								name: template.name,
+								fieldname: "folder",
+								value: values.folder || ""
+							},
+							freeze: true,
+							callback: function(r) {
+								if (!r.exc) {
+									frappe.show_alert({message: __("Moved successfully"), indicator: "green"});
+									move_dialog.hide();
+									reset_template_pagination();
+									render_shell();
+									void load_more_templates();
+								}
+							}
+						});
+					}
+				});
+				move_dialog.show();
+			});
+
+			$card.find(".etl5-action-duplicate").on("click", (event) => {
+				event.preventDefault();
+				event.stopPropagation();
+
+				const duplicate_dialog = new frappe.ui.Dialog({
+					title: __("Duplicate Template"),
+					fields: [
+						{
+							fieldname: "new_name",
+							fieldtype: "Data",
+							label: __("New Template Name"),
+							reqd: 1,
+							default: template.name + " Copy"
+						}
+					],
+					primary_action_label: __("Duplicate"),
+					primary_action(values) {
+						frappe.call({
+							method: "frappe.client.get",
+							args: { doctype: MASTER, name: template.name },
+							freeze: true,
+							callback: function(r) {
+								if (r.message) {
+									let doc = r.message;
+									delete doc.name;
+									delete doc.creation;
+									delete doc.modified;
+									delete doc.owner;
+									delete doc.modified_by;
+									doc.template_name = values.new_name;
+									doc.name = values.new_name;
+									doc.master_name = values.new_name;
+									
+									frappe.call({
+										method: "frappe.client.insert",
+										args: { doc: doc },
+										freeze: true,
+										callback: function(insert_r) {
+											if (!insert_r.exc) {
+												frappe.show_alert({message: __("Duplicated successfully"), indicator: "green"});
+												duplicate_dialog.hide();
+												reset_template_pagination();
+												render_shell();
+												void load_more_templates();
+											}
+										}
+									});
+								}
+							}
+						});
+					}
+				});
+				duplicate_dialog.show();
 			});
 
 			return $card;
