@@ -241,6 +241,10 @@ def promote(names=None, campaign_name: str = None):
 				"contact": contact.name,
 				"ai_email_campaign": candidate.ai_email_campaign,
 				"research_note": research_note,
+				# Recorded so a message can always be traced to the prospect and
+				# the building it was written about.
+				"lead": lead.name,
+				"infomanager_project": candidate.project,
 			})
 			outbound.flags.ignore_permissions = True
 			outbound.insert(ignore_permissions=True)

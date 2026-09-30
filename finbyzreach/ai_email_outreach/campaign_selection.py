@@ -69,22 +69,29 @@ def qualifying_projects(campaign):
 
 
 def contacted_emails():
-	"""Every address already written to, as one lowercase set.
+	"""Every address already written to, mapped to the campaigns that did it.
 
 	Two queries in total. Checking per candidate instead cost two or three
 	queries each, which is the bulk of the work when a campaign produces
-	thousands of candidates.
+	thousands of candidates. Naming the campaign lets a reviewer see why
+	someone was held back rather than just that they were.
 	"""
-	rows = frappe.db.sql(
-		"""select distinct ct.email_id from `tabContact` ct
+	contacted = {}
+
+	for email, campaign in frappe.db.sql(
+		"""select ct.email_id, oe.ai_email_campaign from `tabContact` ct
 		   join `tabOutbound Email` oe on oe.contact = ct.name
 		   where ifnull(ct.email_id, '') != ''"""
-	)
-	claimed = frappe.db.sql(
-		"""select distinct email from `tabCampaign Candidate`
+	):
+		contacted.setdefault(email.strip().lower(), set()).add(campaign)
+
+	for email, campaign in frappe.db.sql(
+		"""select email, ai_email_campaign from `tabCampaign Candidate`
 		   where status in ('Approved', 'Promoted') and ifnull(email, '') != ''"""
-	)
-	return {r[0].strip().lower() for r in rows + claimed if r[0]}
+	):
+		contacted.setdefault(email.strip().lower(), set()).add(campaign)
+
+	return contacted
 
 
 def already_contacted(email):
@@ -94,7 +101,7 @@ def already_contacted(email):
 	return email.strip().lower() in contacted_emails()
 
 
-def party_rows(project_name, excluded_roles):
+def party_rows(project_name, excluded_roles, excluded_companies=None, excluded_contacts=None):
 	"""Every contactable party on a project, company or person.
 
 	Aaron wants all parties eligible rather than a fixed role whitelist, so the
@@ -112,9 +119,18 @@ def party_rows(project_name, excluded_roles):
 		as_dict=True,
 	)
 
+	excluded_companies = excluded_companies or set()
+	excluded_contacts = excluded_contacts or set()
+
 	parties = []
 	for row in rows:
 		if row.roletype_name in excluded_roles:
+			continue
+		# A campaign can drop one specific firm or person without touching the
+		# imported record, which stays available to every other campaign.
+		if row.company and row.company in excluded_companies:
+			continue
+		if row.contact and row.contact in excluded_contacts:
 			continue
 		if row.party_type == "Contact":
 			# Prefer a person's own address; fall back to nothing rather than
@@ -135,6 +151,53 @@ def party_rows(project_name, excluded_roles):
 	return parties
 
 
+def notify_progress(
+	campaign_name: str,
+	step: str,
+	message: str,
+	completed: int = 0,
+	total: int = 0,
+	user: str = None,
+):
+	"""Publish realtime progress to whoever has the campaign open."""
+	percent = int((completed / total) * 100) if total else (100 if step in ("completed", "done") else 0)
+	title = _("AI Relevance Scoring") if step == "scoring" else _("Finding Project Candidates")
+	payload = {
+		"campaign_name": campaign_name,
+		"step": step,
+		"title": title,
+		"message": str(message),
+		"completed": completed,
+		"total": total,
+		"percent": percent,
+	}
+
+	# 1. Custom realtime event for form listeners
+	frappe.publish_realtime(
+		event="campaign_candidate_progress",
+		message=payload,
+		doctype="AI Email Campaign",
+		docname=campaign_name,
+		after_commit=False,
+	)
+	if user:
+		frappe.publish_realtime(
+			event="campaign_candidate_progress",
+			message=payload,
+			user=user,
+			after_commit=False,
+		)
+
+	# 2. Frappe native progress dialog (socketio_client.js -> frappe.show_progress)
+	frappe.publish_progress(
+		percent=percent,
+		title=title,
+		description=str(message),
+		doctype="AI Email Campaign",
+		docname=campaign_name,
+	)
+
+
 @frappe.whitelist()
 def build_candidates(campaign_name: str, score_with_ai: int = 1):
 	"""Queue the selection pass.
@@ -144,22 +207,27 @@ def build_candidates(campaign_name: str, score_with_ai: int = 1):
 	"""
 	frappe.only_for("System Manager")
 	frappe.get_doc("AI Email Campaign", campaign_name)  # exists, and permission-checked
+	user = frappe.session.user
 
 	frappe.enqueue(
 		"finbyzreach.ai_email_outreach.campaign_selection.run_build",
 		queue="long", timeout=7200, enqueue_after_commit=True,
-		campaign_name=campaign_name, score_with_ai=cint(score_with_ai),
+		campaign_name=campaign_name, score_with_ai=cint(score_with_ai), user=user,
 		job_name=f"Find candidates for {campaign_name}",
 	)
 	return {"ok": True, "message": _(
-		"Finding candidates in the background. Reopen the campaign shortly to see the counts."
+		"Finding candidates in the background. Live progress will appear below."
 	)}
 
 
-def run_build(campaign_name: str, score_with_ai: int = 1):
+def run_build(campaign_name: str, score_with_ai: int = 1, user: str = None):
 	"""Find everyone this campaign could approach and store them for review."""
+	notify_progress(campaign_name, "finding", _("Scanning matching projects and candidates…"), 0, 0, user=user)
+
 	campaign = frappe.get_doc("AI Email Campaign", campaign_name)
 	excluded_roles = set(_lines(campaign.excluded_roles))
+	excluded_companies = set(_lines(campaign.get("excluded_companies")))
+	excluded_contacts = set(_lines(campaign.get("excluded_contacts")))
 
 	# Loaded once rather than per candidate.
 	contacted = contacted_emails()
@@ -173,11 +241,17 @@ def run_build(campaign_name: str, score_with_ai: int = 1):
 	}
 
 	projects = qualifying_projects(campaign)
+	notify_progress(
+		campaign_name, "finding",
+		_("Found {0} qualifying project(s). Extracting participants…").format(len(projects)),
+		0, len(projects), user=user
+	)
+
 	seen = set()
 	rows = []
 
 	for project in projects:
-		for party in party_rows(project.name, excluded_roles):
+		for party in party_rows(project.name, excluded_roles, excluded_companies, excluded_contacts):
 			email = party["email"].strip().lower()
 			# One candidate per address per campaign: a firm on six projects is
 			# one conversation, not six.
@@ -185,12 +259,13 @@ def run_build(campaign_name: str, score_with_ai: int = 1):
 				continue
 			seen.add(email)
 
-			is_contacted = email in contacted
+			prior = contacted.get(email)
 			rows.append((
 				frappe.generate_hash(length=10),
 				campaign_name,
-				"Skipped" if is_contacted else "Suggested",
-				_("Already contacted by an earlier campaign") if is_contacted else None,
+				"Skipped" if prior else "Suggested",
+				_("Already contacted by: {0}").format(", ".join(sorted(c for c in prior if c)))
+				if prior else None,
 				project.name, project.title, project.town, project.planstage_name,
 				project.value, cint(project.has_solar),
 				party["party_type"], party["company"], party["contact"],
@@ -211,8 +286,23 @@ def run_build(campaign_name: str, score_with_ai: int = 1):
 	frappe.db.commit()
 
 	skipped = sum(1 for r in rows if r[2] == "Skipped")
+	added = len(rows) - skipped
+
 	if cint(score_with_ai) and rows:
-		enqueue_scoring(campaign_name)
+		notify_progress(
+			campaign_name, "finding",
+			_("Added {0} candidates ({1} skipped). Starting AI scoring…").format(added, skipped),
+			len(rows), len(rows), user=user
+		)
+		enqueue_scoring(campaign_name, user=user)
+	else:
+		notify_progress(
+			campaign_name, "completed",
+			_("{0} project(s) matched. {1} candidate(s) added, {2} skipped.").format(
+				len(projects), added, skipped
+			),
+			len(rows), len(rows), user=user
+		)
 
 	return {
 		"ok": True, "projects": len(projects), "created": len(rows), "skipped": skipped,
@@ -241,60 +331,112 @@ def resolve_relevance_agent(campaign=None):
 	return None
 
 
-def enqueue_scoring(campaign_name: str):
+def enqueue_scoring(campaign_name: str, user: str = None, force: int = 0):
 	frappe.enqueue(
 		"finbyzreach.ai_email_outreach.campaign_selection.score_candidates",
 		queue="long", timeout=3600, enqueue_after_commit=True,
-		campaign_name=campaign_name,
+		campaign_name=campaign_name, user=user, force=cint(force),
 		job_name=f"Score candidates for {campaign_name}",
 	)
 
 
 @frappe.whitelist()
-def score_candidates(campaign_name: str, limit: int = 0):
+def trigger_scoring(campaign_name: str, force: int = 0):
+	"""Queue AI scoring pass in background with realtime updates."""
+	frappe.only_for("System Manager")
+	frappe.get_doc("AI Email Campaign", campaign_name)
+	user = frappe.session.user
+
+	enqueue_scoring(campaign_name, user=user, force=cint(force))
+	return {"ok": True, "message": _("Scoring candidates in the background. Live progress will appear below.")}
+
+
+@frappe.whitelist()
+def score_candidates(campaign_name: str, limit: int = 0, user: str = None, force: int = 0):
 	"""Ask the campaign's agent how relevant each candidate is to the brief."""
+	user = user or frappe.session.user
 	campaign = frappe.get_doc("AI Email Campaign", campaign_name)
 	if not campaign.description:
-		return {"ok": False, "message": _("Add a campaign description before scoring.")}
+		msg = _("Add a campaign description before scoring.")
+		notify_progress(campaign_name, "failed", msg, user=user)
+		return {"ok": False, "message": msg}
 	agent_name = resolve_relevance_agent(campaign)
 	if not agent_name:
-		return {"ok": False, "message": _(
-			"No relevance agent configured. Set one on the campaign, or in Followup Settings."
-		)}
+		msg = _("No relevance agent configured. Set one on the campaign, or in Followup Settings.")
+		notify_progress(campaign_name, "failed", msg, user=user)
+		return {"ok": False, "message": msg}
+
+	filters = {"ai_email_campaign": campaign_name, "status": "Suggested"}
+	if not cint(force):
+		filters["ai_score"] = 0
 
 	names = frappe.get_all(
 		CANDIDATE,
-		filters={"ai_email_campaign": campaign_name, "status": "Suggested", "ai_score": 0},
+		filters=filters,
 		pluck="name", limit=cint(limit) or None,
 	)
+
+	# If all candidates already have a score, re-score the Suggested candidates
 	if not names:
-		return {"ok": True, "scored": 0, "message": _("Nothing left to score.")}
+		names = frappe.get_all(
+			CANDIDATE,
+			filters={"ai_email_campaign": campaign_name, "status": "Suggested"},
+			pluck="name", limit=cint(limit) or None,
+		)
+
+	total = len(names)
+	if not names:
+		msg = _("No candidates found in this campaign.")
+		notify_progress(campaign_name, "completed", msg, 0, 0, user=user)
+		return {"ok": True, "scored": 0, "message": msg}
+
+	notify_progress(
+		campaign_name, "scoring",
+		_("Starting AI relevance scoring for {0} candidates…").format(total),
+		0, total, user=user
+	)
 
 	service = frappe.get_doc("AI Agent", agent_name).agent_service
 	scored = failed = 0
 
-	for name in names:
+	for idx, name in enumerate(names, start=1):
 		candidate = frappe.get_doc(CANDIDATE, name)
+		recipient = candidate.recipient_name or candidate.email or "Candidate"
 		try:
 			result = service.invoke(**relevance_input(campaign, candidate))
+			score = max(0, min(100, cint(getattr(result, "score", 0))))
+			reason = (getattr(result, "reason", "") or "")[:500]
 			candidate.db_set({
-				"ai_score": max(0, min(100, cint(getattr(result, "score", 0)))),
-				"ai_reason": (getattr(result, "reason", "") or "")[:500],
+				"ai_score": score,
+				"ai_reason": reason,
 			}, update_modified=False)
 			scored += 1
+			notify_progress(
+				campaign_name, "scoring",
+				_("Scored {0} ({1}/{2}) — Score: {3}").format(recipient, idx, total, score),
+				idx, total, user=user
+			)
 		except Exception:
 			failed += 1
 			frappe.log_error(
 				title=f"Campaign relevance scoring failed - {name}",
 				message=frappe.get_traceback(),
 			)
+			notify_progress(
+				campaign_name, "scoring",
+				_("Failed scoring {0} ({1}/{2})").format(recipient, idx, total),
+				idx, total, user=user
+			)
 		frappe.db.commit()
+
+	msg = _("AI scoring complete! {0} scored, {1} failed.").format(scored, failed)
+	notify_progress(campaign_name, "completed", msg, total, total, user=user)
 
 	return {
 		"ok": not failed,
 		"scored": scored,
 		"failed": failed,
-		"message": _("Scored {0} candidate(s), {1} failed.").format(scored, failed),
+		"message": msg,
 	}
 
 
@@ -333,21 +475,24 @@ def set_status(names, status: str):
 
 	names = frappe.parse_json(names) if isinstance(names, str) else names
 	# Loaded once for the whole batch, not per row.
-	contacted = contacted_emails() if status == "Approved" else set()
+	contacted = contacted_emails() if status == "Approved" else {}
 	changed = blocked = 0
 
 	for name in names:
 		candidate = frappe.get_doc(CANDIDATE, name)
-		if status == "Approved" and (candidate.email or "").strip().lower() in contacted:
+		prior = contacted.get((candidate.email or "").strip().lower())
+		if status == "Approved" and prior:
 			candidate.db_set({"status": "Skipped",
-			                  "skip_reason": _("Already contacted by an earlier campaign")},
+			                  "skip_reason": _("Already contacted by: {0}").format(
+			                      ", ".join(sorted(c for c in prior if c)))},
 			                 update_modified=False)
 			blocked += 1
 			continue
 		candidate.db_set("status", status, update_modified=False)
 		# Approving claims the address, so later rows in the same batch see it.
 		if status == "Approved" and candidate.email:
-			contacted.add(candidate.email.strip().lower())
+			contacted.setdefault(candidate.email.strip().lower(), set()).add(
+				candidate.ai_email_campaign)
 		changed += 1
 	frappe.db.commit()
 

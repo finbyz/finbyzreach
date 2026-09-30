@@ -135,6 +135,13 @@ class OutboundEmail(Document):
         # the rows silently misaligning when the agent returns fewer emails than
         # there are steps.
         template_context = self.get_template_context(contact, party_link, email_campaign)
+
+        # Record what the sequence was written about, for outbounds that were not
+        # created through campaign promotion.
+        if not self.get("infomanager_project") and template_context.get("project_id"):
+            self.infomanager_project = template_context["project_id"]
+        if not self.get("lead") and party_link and party_link.link_doctype == "Lead":
+            self.lead = party_link.link_name
         ai_queue = list(drafted_emails)
 
         self.set("communication_email", [])

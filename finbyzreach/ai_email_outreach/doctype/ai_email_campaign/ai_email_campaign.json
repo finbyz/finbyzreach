@@ -30,6 +30,8 @@
   "min_project_value",
   "max_project_value",
   "excluded_roles",
+  "excluded_contacts",
+  "excluded_companies",
   "sending_section",
   "approval_mode"
  ],
@@ -176,6 +178,18 @@
    "options": "AI Agent",
    "label": "Relevance Agent",
    "description": "Leave empty to use the agent set in Followup Settings."
+  },
+  {
+   "fieldname": "excluded_companies",
+   "fieldtype": "Small Text",
+   "label": "Exclude Companies",
+   "description": "Infomanager company IDs, one per line. Excluded from this campaign only; the source record is untouched."
+  },
+  {
+   "fieldname": "excluded_contacts",
+   "fieldtype": "Small Text",
+   "label": "Exclude People",
+   "description": "Infomanager contact IDs, one per line. Excluded from this campaign only."
   }
  ],
  "grid_page_length": 50,
