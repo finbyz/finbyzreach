@@ -887,6 +887,7 @@ class EmailCampaignStudio {
 	loadSegment(segmentName) {
 		return frappe.call({
 			method: "finbyzreach.segments.get_segment_filters",
+			type: 'GET',
 			args: { segment_name: segmentName },
 		}).then((response) => {
 			const segment = response.message || {};
