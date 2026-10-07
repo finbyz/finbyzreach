@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
+import json
 
 import frappe
 from frappe import _
@@ -33,6 +34,13 @@ REPLY_CONDITION = (
     "where reply.in_reply_to = ec.custom_communication "
     "and reply.sent_or_received = 'Received' "
     "and lower(trim(reply.sender)) = lower(trim(ec.custom_recipient_email)))"
+)
+COMPLETED_STATUSES = ("Sent", "Failed", "Bounced", "Soft-Bounced", "Marked As Spam")
+COHORT_TIME = "coalesce(q.modified, ec.modified)"
+AGGREGATE_FIELDS = ("eligible", "sent", "failed", "hard_bounce", "soft_bounce", "spam", "opened", "clicked", "unsubscribed", "replied")
+COHORT_NOTE = (
+    "Period membership uses Email Queue update time, or the recipient update time when no queue exists. "
+    "Older send dates may be approximate if these records were updated later. Engagement includes later recorded actions."
 )
 
 
@@ -90,6 +98,171 @@ def _summary(names):
     data = {key: cint(value) for key, value in (rows[0] if rows else {}).items()}
     data["delivered"] = None
     return data
+
+
+def _period_range(period="previous_month", from_date=None, to_date=None):
+    if period == "custom":
+        first, last, label = _timeline_range(30, from_date, to_date)
+    elif period == "previous_month":
+        if from_date or to_date:
+            frappe.throw(_("Custom dates require the Custom period"))
+        first_of_month = getdate(nowdate()).replace(day=1)
+        last = first_of_month - timedelta(days=1)
+        first = last.replace(day=1)
+        label = _("Previous calendar month: {0} to {1}").format(first.isoformat(), last.isoformat())
+    elif str(period) in ("7", "30", "90"):
+        if from_date or to_date:
+            frappe.throw(_("Custom dates require the Custom period"))
+        first, last, label = _timeline_range(period)
+    else:
+        frappe.throw(_("Choose a valid period"))
+    return first, last, {"from_date": first.isoformat(), "to_date": last.isoformat(), "label": label}
+
+
+def _read_reporting_permissions():
+    for doctype in ("Campaign", "Email Campaign", "Lead"):
+        frappe.has_permission(doctype, "read", throw=True)
+
+
+def _broadcast_names():
+    _read_reporting_permissions()
+    return [
+        row.name for row in frappe.get_list(
+            "Campaign", filters={"custom_email_template": ["is", "set"]},
+            fields=["name", "custom_email_template"], limit_page_length=0,
+        ) if row.custom_email_template
+    ]
+
+
+@frappe.whitelist()
+def get_comparison_options(scope="campaign"):
+    _read_reporting_permissions()
+    if scope not in ("campaign", "template"):
+        frappe.throw(_("Choose a valid comparison type"))
+    campaigns = frappe.get_list(
+        "Campaign", filters={"custom_email_template": ["is", "set"]},
+        fields=["name", "custom_email_template"], limit_page_length=0,
+    )
+    if scope == "campaign":
+        return sorted(row.name for row in campaigns if row.custom_email_template)
+    frappe.has_permission("Email Template", "read", throw=True)
+    template_names = {row.custom_email_template for row in campaigns if row.custom_email_template}
+    if not template_names:
+        return []
+    return frappe.get_list(
+        "Email Template", filters={"name": ["in", sorted(template_names)]},
+        pluck="name", limit_page_length=0, order_by="name asc",
+    )
+
+
+def _empty_aggregate():
+    return {**{key: 0 for key in AGGREGATE_FIELDS}, "delivered": None}
+
+
+def _rates(counts):
+    accepted = sum(cint(counts.get(key)) for key in ("sent", "hard_bounce", "soft_bounce", "spam"))
+    completed = accepted + cint(counts.get("failed"))
+    return {
+        "accepted": accepted,
+        "completed": completed,
+        "acceptance_rate": round(100 * accepted / completed, 1) if completed else None,
+        "open_rate": round(100 * cint(counts.get("opened")) / accepted, 1) if accepted else None,
+        "click_rate": round(100 * cint(counts.get("clicked")) / accepted, 1) if accepted else None,
+        "reply_rate": round(100 * cint(counts.get("replied")) / accepted, 1) if accepted else None,
+    }
+
+
+def _cohort_rows(names, first, last, daily=False):
+    if not names:
+        return []
+    grouped = "date(cohort_time), ec.campaign_name" if daily else "ec.campaign_name"
+    day_column = "date(cohort_time) as day," if daily else ""
+    rows = []
+    for offset in range(0, len(names), 500):
+        batch = names[offset:offset + 500]
+        rows.extend(frappe.db.sql(
+            f"""
+            select ec.campaign_name, {day_column}
+                count(*) eligible,
+                sum(effective_status = 'Sent') sent,
+                sum(effective_status = 'Failed') failed,
+                sum(effective_status = 'Bounced') hard_bounce,
+                sum(effective_status = 'Soft-Bounced') soft_bounce,
+                sum(effective_status = 'Marked As Spam') spam,
+                sum(ec.custom_opened = 1) opened,
+                sum(ec.custom_clicked = 1) clicked,
+                sum(ec.custom_unsubscribed = 1) unsubscribed,
+                sum(({REPLY_CONDITION})) replied
+            from (
+                select ec.name, ec.campaign_name, ec.custom_communication, ec.custom_recipient_email,
+                    ec.custom_opened, ec.custom_clicked, ec.custom_unsubscribed, ec.custom_replied,
+                    {EFFECTIVE_STATUS} effective_status, {COHORT_TIME} cohort_time
+                from `tabEmail Campaign` ec
+                left join `tabEmail Queue` q on q.name = ec.custom_email_queue
+                left join `tabCommunication` comm on comm.name = ec.custom_communication
+                where {_where(batch)}
+            ) ec
+            where effective_status in ({', '.join(['%s'] * len(COMPLETED_STATUSES))})
+                and cohort_time >= %s and cohort_time < %s
+            group by {grouped}
+            """,
+            [*batch, *COMPLETED_STATUSES, first, last + timedelta(days=1)],
+            as_dict=True,
+        ))
+    return rows
+
+
+def _add_counts(target, row):
+    for key in AGGREGATE_FIELDS:
+        target[key] += cint(row.get(key))
+
+
+@frappe.whitelist()
+def get_overview(period="previous_month", from_date=None, to_date=None):
+    first, last, selected_range = _period_range(period, from_date, to_date)
+    names = _broadcast_names()
+    summary = _empty_aggregate()
+    daily = {}
+    for row in _cohort_rows(names, first, last, daily=True):
+        _add_counts(summary, row)
+        day = str(row.day)
+        _add_counts(daily.setdefault(day, _empty_aggregate()), row)
+    return {
+        "summary": {**summary, **_rates(summary)},
+        "trend": [
+            {"date": str(first + timedelta(days=offset)), **daily.get(str(first + timedelta(days=offset)), _empty_aggregate())}
+            for offset in range((last - first).days + 1)
+        ],
+        "campaign_count": len(names),
+        "range": selected_range,
+        "note": _(COHORT_NOTE),
+    }
+
+
+@frappe.whitelist()
+def get_comparison(scope="campaign", values=None, period="previous_month", from_date=None, to_date=None):
+    first, last, selected_range = _period_range(period, from_date, to_date)
+    if isinstance(values, str):
+        try:
+            values = json.loads(values)
+        except ValueError:
+            frappe.throw(_("Select 2 to 5 campaigns or email templates"))
+    if scope not in ("campaign", "template") or not isinstance(values, list) or not 2 <= len(values) <= 5 or any(not isinstance(value, str) or not value.strip() for value in values) or len(set(values)) != len(values):
+        frappe.throw(_("Select 2 to 5 distinct campaigns or email templates"))
+    selections = {}
+    for value in values:
+        selections[value] = _campaign_names(scope, value)
+    all_names = list(dict.fromkeys(name for names in selections.values() for name in names))
+    counts_by_campaign = {name: _empty_aggregate() for name in all_names}
+    for row in _cohort_rows(all_names, first, last):
+        _add_counts(counts_by_campaign[row.campaign_name], row)
+    results = []
+    for value, names in selections.items():
+        summary = _empty_aggregate()
+        for name in names:
+            _add_counts(summary, counts_by_campaign[name])
+        results.append({"name": value, "campaign_count": len(names), "summary": {**summary, **_rates(summary)}})
+    return {"scope": scope, "items": results, "range": selected_range, "note": _(COHORT_NOTE)}
 
 
 def _timeline_range(days, from_date=None, to_date=None):

@@ -1,5 +1,6 @@
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
+from datetime import date
 
 from finbyzreach.finbyzreach.page.email_campaign_report import email_campaign_report as report
 
@@ -7,6 +8,7 @@ from finbyzreach.finbyzreach.page.email_campaign_report import email_campaign_re
 class TestEmailCampaignReport(TestCase):
     def setUp(self):
         self.enterContext(patch.object(report, "_", side_effect=lambda value: value))
+        self.enterContext(patch.object(report, "nowdate", return_value="2026-10-06"))
 
     @patch.object(report.frappe, "get_doc")
     @patch.object(report.frappe, "has_permission")
@@ -104,3 +106,76 @@ class TestEmailCampaignReport(TestCase):
         query = db.sql.call_args_list[0].args[0]
         self.assertIn("reply.in_reply_to = ec.custom_communication", query)
         self.assertIn("lower(trim(reply.sender)) = lower(trim(ec.custom_recipient_email))", query)
+
+    @patch.object(report, "nowdate", return_value="2026-01-06")
+    def test_previous_month_crosses_year_boundary(self, nowdate):
+        first, last, selected_range = report._period_range()
+        self.assertEqual((first, last), (date(2025, 12, 1), date(2025, 12, 31)))
+        self.assertEqual(selected_range["to_date"], "2025-12-31")
+
+    def test_acceptance_and_engagement_denominators(self):
+        rates = report._rates({"sent": 6, "hard_bounce": 1, "soft_bounce": 1, "spam": 1, "failed": 1, "opened": 3, "clicked": 2, "replied": 1})
+        self.assertEqual(rates["accepted"], 9)
+        self.assertEqual(rates["acceptance_rate"], 90.0)
+        self.assertEqual(rates["open_rate"], 33.3)
+        self.assertIsNone(report._rates(report._empty_aggregate())["acceptance_rate"])
+
+    @patch.object(report.frappe, "db", new_callable=MagicMock)
+    def test_cohort_query_filters_completed_outcomes_by_inclusive_send_period(self, db):
+        db.sql.return_value = []
+        report._cohort_rows(["Campaign-1"], date(2026, 9, 1), date(2026, 9, 30))
+        query, args = db.sql.call_args.args[:2]
+        self.assertIn("coalesce(q.modified, ec.modified) cohort_time", query)
+        self.assertIn("effective_status in", query)
+        self.assertEqual(args[-2:], [date(2026, 9, 1), date(2026, 10, 1)])
+
+    @patch.object(report.frappe, "get_list")
+    @patch.object(report.frappe, "has_permission")
+    def test_overview_campaigns_are_permission_filtered(self, has_permission, get_list):
+        get_list.return_value = [report.frappe._dict(name="Broadcast-1", custom_email_template="Welcome"), report.frappe._dict(name="Draft-2", custom_email_template="")]
+        self.assertEqual(report._broadcast_names(), ["Broadcast-1"])
+        get_list.assert_called_once_with("Campaign", filters={"custom_email_template": ["is", "set"]}, fields=["name", "custom_email_template"], limit_page_length=0)
+        has_permission.assert_any_call("Email Campaign", "read", throw=True)
+
+    @patch.object(report.frappe, "get_list")
+    @patch.object(report.frappe, "has_permission")
+    def test_comparison_options_allow_manual_lookup_of_permitted_items(self, has_permission, get_list):
+        get_list.side_effect = [
+            [report.frappe._dict(name="Campaign-2", custom_email_template="Welcome"), report.frappe._dict(name="Campaign-1", custom_email_template="Welcome")],
+            [report.frappe._dict(name="Campaign-2", custom_email_template="Welcome"), report.frappe._dict(name="Campaign-1", custom_email_template="Welcome")],
+            ["Welcome"],
+        ]
+        self.assertEqual(report.get_comparison_options("campaign"), ["Campaign-1", "Campaign-2"])
+        self.assertEqual(report.get_comparison_options("template"), ["Welcome"])
+        has_permission.assert_any_call("Email Template", "read", throw=True)
+        self.assertEqual(get_list.call_args.args[0], "Email Template")
+
+    @patch.object(report.frappe, "throw", side_effect=ValueError)
+    def test_comparison_rejects_invalid_selection(self, throw):
+        for values in (["one"], ["one"] * 2, ["one", "two", "three", "four", "five", "six"], ["one", 2]):
+            with self.subTest(values=values), self.assertRaises(ValueError):
+                report.get_comparison(values=values)
+
+    @patch.object(report, "_cohort_rows")
+    @patch.object(report, "_campaign_names")
+    def test_template_comparison_groups_permitted_campaigns(self, campaign_names, cohort_rows):
+        campaign_names.side_effect = [["A", "B"], ["C"]]
+        cohort_rows.return_value = [
+            report.frappe._dict(campaign_name="A", eligible=2, sent=2, opened=1),
+            report.frappe._dict(campaign_name="C", eligible=1, sent=1, clicked=1),
+        ]
+        data = report.get_comparison("template", ["Welcome", "Follow up"])
+        self.assertEqual([item["campaign_count"] for item in data["items"]], [2, 1])
+        self.assertEqual(data["items"][0]["summary"]["sent"], 2)
+        self.assertEqual(data["items"][1]["summary"]["click_rate"], 100.0)
+        cohort_rows.assert_called_once()
+
+    @patch.object(report, "_cohort_rows", return_value=[])
+    @patch.object(report, "_broadcast_names", return_value=[])
+    @patch.object(report, "nowdate", return_value="2026-10-06")
+    def test_empty_overview_has_no_attempts(self, nowdate, broadcast_names, cohort_rows):
+        data = report.get_overview()
+        self.assertEqual(data["campaign_count"], 0)
+        self.assertEqual(data["summary"]["accepted"], 0)
+        self.assertIsNone(data["summary"]["acceptance_rate"])
+        self.assertEqual(len(data["trend"]), 30)
