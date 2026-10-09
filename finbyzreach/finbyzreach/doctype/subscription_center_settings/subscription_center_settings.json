@@ -1,0 +1,15 @@
+{
+ "doctype": "DocType",
+ "name": "Subscription Center Settings",
+ "module": "Finbyzreach",
+ "issingle": 1,
+ "field_order": ["allowed_embed_origins", "translations"],
+ "fields": [
+  {"fieldname": "allowed_embed_origins", "fieldtype": "Small Text", "label": "Allowed Embed Origins", "description": "One website origin per line, for example https://www.example.com. Only these websites may embed the subscription form."},
+  {"fieldname": "translations", "fieldtype": "Table", "label": "Text Translations", "options": "Subscription Center Translation"}
+ ],
+ "permissions": [
+  {"role": "Marketing Manager", "read": 1, "write": 1},
+  {"role": "System Manager", "read": 1, "write": 1}
+ ]
+}

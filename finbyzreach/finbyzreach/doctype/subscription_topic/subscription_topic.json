@@ -1,14 +1,16 @@
 {
  "actions": [],
  "allow_import": 1,
- "allow_rename": 1,
+ "allow_rename": 0,
  "autoname": "field:topic_name",
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
   "topic_name",
+  "category",
   "disabled",
-  "description"
+  "description",
+  "translations"
  ],
  "fields": [
   {
@@ -22,6 +24,15 @@
    "unique": 1
   },
   {
+   "default": "Mailing Type",
+   "fieldname": "category",
+   "fieldtype": "Select",
+   "in_standard_filter": 1,
+   "label": "Category",
+   "options": "Mailing Type\nTopic",
+   "reqd": 1
+  },
+  {
    "default": "0",
    "fieldname": "disabled",
    "fieldtype": "Check",
@@ -33,6 +44,12 @@
    "fieldname": "description",
    "fieldtype": "Small Text",
    "label": "Description"
+  },
+  {
+   "fieldname": "translations",
+   "fieldtype": "Table",
+   "label": "Translations",
+   "options": "Subscription Topic Translation"
   }
  ],
  "links": [],

@@ -1,0 +1,22 @@
+{
+ "doctype": "DocType",
+ "name": "Subscription Center Translation",
+ "module": "Finbyzreach",
+ "istable": 1,
+ "field_order": ["language", "title", "intro", "mailing", "topics", "current", "save", "register", "pending", "waiting", "saving", "error"],
+ "fields": [
+  {"fieldname": "language", "fieldtype": "Select", "label": "Language", "options": "de\nen\nfr\nit", "reqd": 1, "in_list_view": 1},
+  {"fieldname": "title", "fieldtype": "Data", "label": "Page Title", "in_list_view": 1},
+  {"fieldname": "intro", "fieldtype": "Small Text", "label": "Introduction"},
+  {"fieldname": "mailing", "fieldtype": "Data", "label": "Email Types Heading"},
+  {"fieldname": "topics", "fieldtype": "Data", "label": "Topics Heading"},
+  {"fieldname": "current", "fieldtype": "Data", "label": "Current Topic Label"},
+  {"fieldname": "save", "fieldtype": "Data", "label": "Update Button"},
+  {"fieldname": "register", "fieldtype": "Data", "label": "Subscribe Button"},
+  {"fieldname": "pending", "fieldtype": "Small Text", "label": "Confirmation Notice"},
+  {"fieldname": "waiting", "fieldtype": "Data", "label": "Pending Label"},
+  {"fieldname": "saving", "fieldtype": "Data", "label": "Saving Label"},
+  {"fieldname": "error", "fieldtype": "Small Text", "label": "Error Notice"}
+ ],
+ "permissions": []
+}

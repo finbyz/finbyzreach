@@ -1,0 +1,20 @@
+{
+ "doctype": "DocType",
+ "name": "Email Subscription Event",
+ "module": "Finbyzreach",
+ "autoname": "hash",
+ "field_order": ["email", "subscription_topic", "status", "source", "event_time"],
+ "fields": [
+  {"fieldname": "email", "fieldtype": "Data", "label": "Email", "reqd": 1, "in_list_view": 1, "in_standard_filter": 1},
+  {"fieldname": "subscription_topic", "fieldtype": "Link", "options": "Subscription Topic", "label": "Subscription Type or Topic", "reqd": 1, "in_list_view": 1, "in_standard_filter": 1},
+  {"fieldname": "status", "fieldtype": "Select", "options": "Pending\nSubscribed\nUnsubscribed", "label": "Status", "reqd": 1, "in_list_view": 1, "in_standard_filter": 1},
+  {"fieldname": "source", "fieldtype": "Data", "label": "Source", "reqd": 1},
+  {"fieldname": "event_time", "fieldtype": "Datetime", "label": "Event Time", "reqd": 1, "in_list_view": 1}
+ ],
+ "permissions": [
+  {"role": "Marketing Manager", "read": 1, "report": 1},
+  {"role": "System Manager", "read": 1, "report": 1}
+ ],
+ "sort_field": "event_time",
+ "sort_order": "DESC"
+}

@@ -1,0 +1,24 @@
+{
+ "doctype": "DocType",
+ "name": "Email Subscription Preference",
+ "module": "Finbyzreach",
+ "autoname": "hash",
+ "field_order": ["email", "subscription_topic", "status", "consent_source", "requested_on", "confirmed_on", "unsubscribed_on", "confirmation_hash", "confirmation_expires_on"],
+ "fields": [
+  {"fieldname": "email", "fieldtype": "Data", "label": "Email", "reqd": 1, "in_list_view": 1, "in_standard_filter": 1},
+  {"fieldname": "subscription_topic", "fieldtype": "Link", "options": "Subscription Topic", "label": "Subscription Type or Topic", "reqd": 1, "in_list_view": 1, "in_standard_filter": 1},
+  {"fieldname": "status", "fieldtype": "Select", "options": "Pending\nSubscribed\nUnsubscribed", "label": "Status", "reqd": 1, "in_list_view": 1, "in_standard_filter": 1},
+  {"fieldname": "consent_source", "fieldtype": "Data", "label": "Consent Source", "read_only": 1},
+  {"fieldname": "requested_on", "fieldtype": "Datetime", "label": "Requested On", "read_only": 1},
+  {"fieldname": "confirmed_on", "fieldtype": "Datetime", "label": "Confirmed On", "read_only": 1},
+  {"fieldname": "unsubscribed_on", "fieldtype": "Datetime", "label": "Unsubscribed On", "read_only": 1},
+  {"fieldname": "confirmation_hash", "fieldtype": "Data", "label": "Confirmation Hash", "hidden": 1, "read_only": 1},
+  {"fieldname": "confirmation_expires_on", "fieldtype": "Datetime", "label": "Confirmation Expires On", "hidden": 1, "read_only": 1}
+ ],
+ "permissions": [
+  {"role": "Marketing Manager", "read": 1, "report": 1},
+  {"role": "System Manager", "read": 1, "report": 1}
+ ],
+ "track_changes": 1,
+ "search_fields": "email,subscription_topic,status"
+}
