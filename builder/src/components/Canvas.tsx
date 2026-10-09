@@ -858,6 +858,9 @@ export const Canvas = memo(function Canvas(props: CanvasProps) {
   useEffect(() => {
     const syncTextSelection = () => {
       const blockId = selectedEditorBlockId()
+      // Focusing the link URL field clears the browser's text selection. Keep the
+      // toolbar mounted so its saved selection can be restored when Apply runs.
+      if (!blockId && document.activeElement?.closest('.rich-text-toolbar')) return
       setTextToolbarBlockId((current) => current === blockId ? current : blockId)
       if (blockId && (props.selection?.kind !== 'block' || props.selection.id !== blockId)) props.onSelect({ kind: 'block', id: blockId })
     }
