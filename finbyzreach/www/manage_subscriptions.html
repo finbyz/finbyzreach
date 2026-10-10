@@ -1,6 +1,6 @@
 {% extends "templates/web.html" %}
 
-{% block title %}Manage Subscriptions{% endblock %}
+{% block title %}{{ copy.title if copy else "Manage Subscriptions" }}{% endblock %}
 
 {% block page_content %}
 <style>
@@ -264,31 +264,43 @@
         <p class="pref-subtitle">{{ error_message }}</p>
     </div>
     {% else %}
+    <div style="text-align:right;margin-bottom:16px">
+        <label for="preference-language">{{ copy.language }}</label>
+        <select id="preference-language" aria-label="{{ copy.language }}" onchange="window.location.href=this.value">
+            {% for lang, url in language_urls.items() %}
+            <option value="{{ url }}" {% if lang == language %}selected{% endif %}>{{ {"de":"Deutsch","en":"English","fr":"Français","it":"Italiano"}[lang] }}</option>
+            {% endfor %}
+        </select>
+    </div>
     <div class="pref-header">
-        <h2 class="pref-title">Email Preferences</h2>
-        <p class="pref-subtitle">Manage subscriptions for<br>{{ email }}</p>
+        <h2 class="pref-title">{{ copy.title }}</h2>
+        <p class="pref-subtitle">{{ copy.intro }}<br>{{ email }}</p>
     </div>
 
     <form id="subscription-form">
-        <div class="pref-topics-title">Select topics to unsubscribe from</div>
+        {% for category, heading in [("Mailing Type", copy.mailing), ("Topic", copy.topics)] %}
+        <div class="pref-topics-title">{{ heading }}</div>
         <div class="pref-topics-list">
-                {% for topic in topics %}
+                {% for topic in topics if topic.category == category %}
                 <label class="topic-item {% if topic.is_current %}highlight-current{% endif %}">
-                    <input type="checkbox" class="topic-checkbox" value="{{ topic.name }}" {% if topic.unsubscribed %}checked{% endif %}>
+                    <input type="checkbox" class="topic-checkbox" value="{{ topic.name }}" {% if topic.status == "Subscribed" %}checked{% endif %}>
                     <div class="custom-check"></div>
                     <div class="topic-content">
-                        <h5>{{ topic.name }} {% if topic.is_current %}<span class="current-topic-badge">Current Topic</span>{% endif %}</h5>
+                        <h5>{{ topic.label }} {% if topic.is_current %}<span class="current-topic-badge">{{ copy.current }}</span>{% endif %}</h5>
                         {% if topic.description %}
                         <p>{{ topic.description }}</p>
                         {% endif %}
+                        {% if topic.status == "Pending" %}<p>{{ copy.waiting }}</p>{% endif %}
                     </div>
                 </label>
                 {% endfor %}
             </div>
+            {% endfor %}
             
             <button type="submit" id="save-btn" class="pref-save-btn" disabled>
-                Save Preferences
+                {{ copy.save }}
             </button>
+            <p id="preference-result" role="status" aria-live="polite"></p>
         </form>
     {% endif %}
     </div>
@@ -320,12 +332,14 @@
             e.preventDefault();
             
             saveBtn.disabled = true;
-            saveBtn.innerHTML = '<span style="display:inline-block; margin-right:8px; animation: spin 1s linear infinite;">↻</span> Saving...';
+            saveBtn.textContent = {{ copy.saving | tojson }};
 
-            let unsubscribedTopics = [];
+            let selectedTopics = [];
+            let visibleTopics = [];
             checkboxes.forEach(cb => {
+                visibleTopics.push(cb.value);
                 if (cb.checked) {
-                    unsubscribedTopics.push(cb.value);
+                    selectedTopics.push(cb.value);
                 }
             });
 
@@ -344,34 +358,21 @@
                 args: {
                     campaign_recipient: campaign_recipient,
                     email: email,
-                    unsubscribed_topics: unsubscribedTopics,
+                    selected_topics: selectedTopics,
+                    visible_topics: visibleTopics,
                     signed_query_string: signed_query_string
                 },
                 callback: function(r) {
-                    saveBtn.textContent = "Save Preferences";
+                    saveBtn.textContent = {{ copy.save | tojson }};
                     if (r.message === "success") {
-                        // Update initial state to reflect new saved state
-                        initialState = Array.from(checkboxes).map(cb => cb.checked);
-                        checkChanges(); // Disables the button
-                        
-                        frappe.msgprint({
-                            title: 'Success',
-                            indicator: 'green',
-                            message: 'Your preferences have been saved successfully!'
-                        });
+                        window.location.reload();
                     }
                 },
                 error: function(r) {
-                    saveBtn.textContent = "Save Preferences";
+                    saveBtn.textContent = {{ copy.save | tojson }};
                     checkChanges(); // Re-enables the button so user can try again later
                     
-                    if (!r || (r.exc_type !== "TooManyRequestsError" && (!r.responseJSON || r.responseJSON.exc_type !== "TooManyRequestsError"))) {
-                        frappe.msgprint({
-                            title: 'Error',
-                            indicator: 'red',
-                            message: 'An error occurred while saving your preferences. Please try again.'
-                        });
-                    }
+                    document.getElementById('preference-result').textContent = {{ copy.error | tojson }};
                 }
             });
         });

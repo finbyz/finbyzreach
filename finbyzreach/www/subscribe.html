@@ -1,0 +1,235 @@
+{% extends "templates/web.html" %}
+{% block title %}{{ copy.title }}{% endblock %}
+{% block banner %}{% if not embedded %}{{ super() }}{% endif %}{% endblock %}
+{% block navbar %}{% if not embedded %}{{ super() }}{% endif %}{% endblock %}
+{% block footer %}{% if not embedded %}{{ super() }}{% endif %}{% endblock %}
+{% block page_content %}
+<style>
+  {% if embedded %}
+  body { background: #fff; }
+  .page-content-wrapper, .page-content-wrapper > main, .page_content { margin: 0; padding: 0; }
+  .page-content-wrapper > main.container { width: 100%; max-width: none; }
+  .page-breadcrumbs, .page-header-wrapper, .page-footer { display: none; }
+  {% endif %}
+  .subscription-signup {
+    box-sizing: border-box;
+    width: min(100%, 720px);
+    margin: 40px auto 64px;
+    padding: 40px 48px 48px;
+    border: 1px solid #e8edf3;
+    border-top: 3px solid #ec4899;
+    border-radius: 10px;
+    background: #fff;
+    box-shadow: 0 12px 32px rgba(15, 23, 42, .05);
+    color: #0f172a;
+  }
+  .subscription-signup *, .subscription-signup *::before, .subscription-signup *::after {
+    box-sizing: border-box;
+  }
+  .signup-languages {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 6px;
+    margin-bottom: 32px;
+  }
+  .signup-languages a {
+    padding: 6px 10px;
+    border-radius: 6px;
+    color: #475569;
+    font-size: 13px;
+    line-height: 1.4;
+    text-decoration: none;
+  }
+  .signup-languages a:hover, .signup-languages a[aria-current="page"] {
+    background: #f1f5f9;
+    color: #0f172a;
+  }
+  .signup-header { margin-bottom: 32px; }
+  .signup-header h1 {
+    margin: 0 0 10px;
+    font-size: clamp(28px, 4vw, 36px);
+    line-height: 1.2;
+    font-weight: 700;
+    letter-spacing: -.02em;
+  }
+  .signup-header p {
+    margin: 0;
+    color: #64748b;
+    font-size: 15px;
+    line-height: 1.6;
+  }
+  .signup-email-label {
+    display: block;
+    margin-bottom: 8px;
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .signup-email {
+    display: block;
+    width: 100%;
+    min-height: 46px;
+    margin: 0 0 32px;
+    padding: 10px 14px;
+    border: 1px solid #cbd5e1;
+    border-radius: 7px;
+    background: #fff;
+    color: #0f172a;
+    font-size: 15px;
+  }
+  .signup-email:focus, .signup-option input:focus-visible, .signup-languages a:focus-visible, .signup-submit:focus-visible {
+    outline: 2px solid #2563eb;
+    outline-offset: 2px;
+  }
+  .signup-group {
+    min-width: 0;
+    margin: 0 0 28px;
+    padding: 0;
+    border: 0;
+  }
+  .signup-group legend {
+    float: none;
+    display: block;
+    width: 100%;
+    margin-bottom: 12px;
+    padding: 0 0 10px;
+    border-bottom: 1px solid #e2e8f0;
+    color: #334155;
+    font-size: 14px;
+    font-weight: 700;
+  }
+  .signup-options { display: grid; gap: 8px; }
+  .signup-option {
+    display: grid;
+    grid-template-columns: 20px minmax(0, 1fr);
+    align-items: start;
+    gap: 12px;
+    width: 100%;
+    margin: 0;
+    padding: 13px 14px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: #f8fafc;
+    cursor: pointer;
+  }
+  .signup-option:hover { border-color: #cbd5e1; background: #fff; }
+  .signup-option input {
+    width: 18px;
+    height: 18px;
+    margin: 2px 0 0;
+    accent-color: #ec4899;
+  }
+  .signup-option strong {
+    display: block;
+    color: #0f172a;
+    font-size: 14px;
+    line-height: 1.4;
+  }
+  .signup-option-description {
+    display: block;
+    margin-top: 3px;
+    color: #64748b;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .signup-submit {
+    display: block;
+    width: 100%;
+    min-height: 46px;
+    padding: 10px 20px;
+    border: 0;
+    border-radius: 7px;
+    background: #0f172a;
+    color: #fff;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .signup-submit:hover { background: #1e293b; }
+  .signup-result {
+    min-height: 22px;
+    margin: 12px 0 0;
+    color: #475569;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  {% if embedded %}
+  .subscription-signup { width: 100%; max-width: none; margin: 0; padding: 24px; border: 0; border-radius: 0; box-shadow: none; }
+  {% endif %}
+  @media (max-width: 640px) {
+    .subscription-signup {
+      margin: 16px auto 32px;
+      padding: 24px 18px 28px;
+    }
+    .signup-languages { justify-content: flex-start; margin-bottom: 24px; }
+    .signup-header { margin-bottom: 24px; }
+    .signup-email { margin-bottom: 26px; }
+    .signup-option { padding: 12px; }
+  }
+</style>
+<main class="subscription-signup" aria-labelledby="signup-title">
+  <nav class="signup-languages" aria-label="{{ copy.language }}">
+    <a href="/subscribe?lang=de{% if embedded %}&amp;embed=1{% endif %}" {% if language == "de" %}aria-current="page"{% endif %}>Deutsch</a>
+    <a href="/subscribe?lang=en{% if embedded %}&amp;embed=1{% endif %}" {% if language == "en" %}aria-current="page"{% endif %}>English</a>
+    <a href="/subscribe?lang=fr{% if embedded %}&amp;embed=1{% endif %}" {% if language == "fr" %}aria-current="page"{% endif %}>Français</a>
+    <a href="/subscribe?lang=it{% if embedded %}&amp;embed=1{% endif %}" {% if language == "it" %}aria-current="page"{% endif %}>Italiano</a>
+  </nav>
+  <header class="signup-header">
+    <h1 id="signup-title">{{ copy.title }}</h1>
+    <p>{{ copy.intro }}</p>
+  </header>
+  <form id="subscription-registration">
+    <label class="signup-email-label" for="subscription-email">E-Mail</label>
+    <input class="signup-email" id="subscription-email" type="email" autocomplete="email" required>
+    {% for category, heading in [("Mailing Type", copy.mailing), ("Topic", copy.topics)] %}
+    <fieldset class="signup-group">
+      <legend>{{ heading }}</legend>
+      <div class="signup-options">
+        {% for topic in topics if topic.category == category %}
+        <label class="signup-option">
+          <input type="checkbox" name="topic" value="{{ topic.name }}">
+          <span><strong>{{ topic.label }}</strong>{% if topic.description %}<span class="signup-option-description">{{ topic.description }}</span>{% endif %}</span>
+        </label>
+        {% endfor %}
+      </div>
+    </fieldset>
+    {% endfor %}
+    <button type="submit" class="signup-submit">{{ copy.register }}</button>
+    <p id="registration-result" class="signup-result" role="status" aria-live="polite"></p>
+  </form>
+  <script>
+    document.getElementById('subscription-registration').addEventListener('submit', function (event) {
+      event.preventDefault();
+      const email = document.getElementById('subscription-email').value;
+      const selected_topics = Array.from(this.querySelectorAll('input[name="topic"]:checked')).map(input => input.value);
+      if (!selected_topics.length) return;
+      frappe.call({
+        method: 'finbyzreach.subscription_preferences.request_public_subscriptions',
+        args: {email, selected_topics},
+        callback: () => { document.getElementById('registration-result').textContent = {{ copy.pending | tojson }}; },
+        error: () => { document.getElementById('registration-result').textContent = {{ copy.error | tojson }}; }
+      });
+    });
+  </script>
+  {% if embedded %}
+  <script>
+    (function () {
+      if (window.parent === window) return;
+      let scheduled = false;
+      function sendHeight() {
+        if (scheduled) return;
+        scheduled = true;
+        requestAnimationFrame(function () {
+          scheduled = false;
+          const height = Math.ceil(document.querySelector('.subscription-signup').getBoundingClientRect().height);
+          window.parent.postMessage({type: 'finbyzreach:subscription-form-height', height: height}, '*');
+        });
+      }
+      window.addEventListener('load', sendHeight);
+      if (window.ResizeObserver) new ResizeObserver(sendHeight).observe(document.querySelector('.subscription-signup'));
+      sendHeight();
+    })();
+  </script>
+  {% endif %}
+</main>
+{% endblock %}
