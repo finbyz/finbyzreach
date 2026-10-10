@@ -722,6 +722,12 @@ function BlockContent({ block, settings, onUpdateContent, onPickImage, onRegiste
     )
   }
   if (block.type === 'preview_url') return <div className="preview-link" style={style}>{String(content.text || 'View this email in your browser')}</div>
+  if (block.type === 'compliance_links') return <div className="preview-link" style={{ ...style, color: block.style.color || block.style.font_color || settings.link_color, textDecoration: block.style.text_decoration || 'underline' }}>
+    <span>{String(content.unsubscribe_text || 'Unsubscribe')}</span><span> &nbsp;|&nbsp; </span><span>{String(content.preference_text || 'Email preference center')}</span>
+  </div>
+  if (block.type === 'unsubscribe_link' || block.type === 'preference_center_link') return <div className="preview-link" style={{ ...style, color: block.style.color || block.style.font_color || settings.link_color, textDecoration: block.style.text_decoration || 'underline' }}>
+    {String(content.text || (block.type === 'unsubscribe_link' ? 'Unsubscribe' : 'Email preference center'))}
+  </div>
   return <div className="code-preview"><span>&lt;/&gt;</span><div><strong>Custom HTML</strong><small>{String(content.html || '').slice(0, 80).replace(/<[^>]+>/g, ' ') || 'Empty HTML block'}</small></div></div>
 }
 

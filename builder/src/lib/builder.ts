@@ -31,6 +31,8 @@ export const BLOCKS: Array<{ type: BlockType; label: string; description: string
   { type: 'spacer', label: 'Spacer', description: 'Vertical breathing room', group: 'Structure' },
   { type: 'social', label: 'Social', description: 'Social profile links', group: 'Content' },
   { type: 'preview_url', label: 'View online', description: 'Browser preview link', group: 'Utility' },
+  { type: 'unsubscribe_link', label: 'Unsubscribe link', description: 'Recipient-specific unsubscribe link', group: 'Utility' },
+  { type: 'preference_center_link', label: 'Preference center link', description: 'Recipient-specific preference center link', group: 'Utility' },
   { type: 'code', label: 'HTML', description: 'Restricted email-safe HTML', group: 'Advanced' },
 ]
 
@@ -70,6 +72,9 @@ export function createBlock(type: BlockType): BuilderBlock {
       item_spacing: 8,
     },
     preview_url: { text: 'View this email in your browser' },
+    compliance_links: { unsubscribe_text: 'Unsubscribe', preference_text: 'Email preference center' },
+    unsubscribe_link: { text: 'Unsubscribe' },
+    preference_center_link: { text: 'Email preference center' },
     code: { html: '<p>Custom HTML</p>' },
   }
   return { id: uid('block'), type, content: clone(content[type]), style: {}, visibility: EMPTY_VISIBILITY() }

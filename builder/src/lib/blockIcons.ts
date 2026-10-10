@@ -10,5 +10,8 @@ export const blockIcons: Record<BlockType, LucideIcon> = {
   spacer: MoveVertical,
   social: Share2,
   preview_url: Link,
+  compliance_links: Link,
+  unsubscribe_link: Link,
+  preference_center_link: Link,
   code: FileCode2,
 }

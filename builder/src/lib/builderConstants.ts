@@ -31,5 +31,8 @@ export const BLOCK_LABELS: Record<string, string> = {
   spacer: 'Spacer',
   social: 'Social',
   preview_url: 'View online',
+  compliance_links: 'Email preferences',
+  unsubscribe_link: 'Unsubscribe link',
+  preference_center_link: 'Preference center link',
   code: 'HTML',
 }

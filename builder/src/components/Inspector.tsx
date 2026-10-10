@@ -620,6 +620,15 @@ function BlockContent({ block, props }: { block: BuilderBlock; props: InspectorP
   if (block.type === 'divider') return <Group title="Divider"><Field label="Line style"><SelectInput value={content.style || 'solid'} onChange={(value) => update('style', value)} options={[['solid', 'Solid'], ['dotted', 'Dotted'], ['dashed', 'Dashed']]} /></Field><Field label="Thickness"><NumberInput value={content.thickness || 1} min={1} max={20} suffix="px" onChange={(value) => update('thickness', value)} /></Field></Group>
   if (block.type === 'spacer') return <Group title="Spacer"><Field label="Height"><span className="range-row"><input type="range" min="1" max="300" value={Number(content.height || 24)} onChange={(event) => update('height', Number(event.target.value))} /><NumberInput value={content.height || 24} min={1} max={300} suffix="px" onChange={(value) => update('height', value)} /></span></Field></Group>
   if (block.type === 'preview_url') return <Group title="Browser view"><Field label="Link text"><TextInput value={content.text} onChange={(value) => update('text', value)} /></Field><p className="helper-text">The compiler hides this block when a preview URL is unavailable.</p></Group>
+  if (block.type === 'compliance_links') return <Group title="Email preference links">
+    <Field label="Unsubscribe Link Text"><TextInput value={content.unsubscribe_text} onChange={(value) => update('unsubscribe_text', value)} /></Field>
+    <Field label="Preference Center Link Text"><TextInput value={content.preference_text} onChange={(value) => update('preference_text', value)} /></Field>
+    <p className="helper-text">For independent placement and color, add the Unsubscribe link and Preference center link blocks separately. Recipient links appear when a campaign sends this template.</p>
+  </Group>
+  if (block.type === 'unsubscribe_link' || block.type === 'preference_center_link') return <Group title={block.type === 'unsubscribe_link' ? 'Unsubscribe link' : 'Preference center link'}>
+    <Field label="Link text"><TextInput value={content.text} onChange={(value) => update('text', value)} /></Field>
+    <p className="helper-text">Set this link's font color and alignment in Style. Its recipient-specific URL is added when a campaign sends the template.</p>
+  </Group>
   if (block.type === 'code') return <Group title="Restricted HTML"><Field label="Email-safe HTML"><textarea className="code-input" rows={12} value={String(content.html || '')} onChange={(event) => update('html', event.target.value)} /></Field><p className="helper-text">Scripts, forms, iframes, external CSS, and unsafe URLs are removed server-side.</p></Group>
   const items = Array.isArray(content.items) ? content.items as Array<{ platform: string; href: string; label?: string }> : []
   const display = String(content.display || 'icon')
@@ -699,6 +708,18 @@ function StyleInspector({ selection, style = {}, blockType, props }: { selection
     <Field label="Font size"><LengthInput value={style.font_size || props.document.schema.settings.font_size || '16px'} onChange={(value) => set('font_size', value)} max={144} /></Field>
     <Field label="Weight"><SelectInput value={style.font_weight || 'normal'} onChange={(value) => set('font_weight', value)} options={[["normal", "Regular"], ["500", "Medium"], ["600", "Semibold"], ["bold", "Bold"]]} /></Field>
   </div>
+
+  if (type === 'compliance_links' || type === 'unsubscribe_link' || type === 'preference_center_link') return <>
+    <Group title="Link appearance">
+      <div className="appearance-color-grid is-single">
+        <AppearanceColorField label="Font color" value={style.color || style.font_color || props.document.schema.settings.link_color} onChange={(value) => set('color', value)} />
+      </div>
+      <Toggle label="Underline link" checked={(style.text_decoration || 'underline') === 'underline'} onChange={(value) => set('text_decoration', value ? 'underline' : 'none')} />
+      <AlignmentControl value={style.align || 'left'} onChange={(value) => set('align', value)} />
+      {typographyFields}
+    </Group>
+    {spacingGroup}
+  </>
 
   if (type === 'divider') return <>
     <Group title="Line appearance">

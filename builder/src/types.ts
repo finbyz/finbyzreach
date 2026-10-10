@@ -46,7 +46,7 @@ export type Visibility = {
   conditions: VisibilityCondition[]
 }
 
-export type BlockType = 'text' | 'image' | 'button' | 'divider' | 'spacer' | 'social' | 'preview_url' | 'code'
+export type BlockType = 'text' | 'image' | 'button' | 'divider' | 'spacer' | 'social' | 'preview_url' | 'compliance_links' | 'unsubscribe_link' | 'preference_center_link' | 'code'
 
 export type BuilderBlock = {
   id: string
