@@ -1,5 +1,8 @@
 frappe.ui.form.on("Lead", {
     refresh(frm) {
+        if (frm.fields_dict.custom_subscriptions) frm.set_df_property("custom_subscriptions", "hidden", 1);
+        if (frm.fields_dict.custom_unsubscribe_topics) frm.set_df_property("custom_unsubscribe_topics", "hidden", 1);
+        window.finbyzreachPreferences?.render(frm);
         frm.add_custom_button("Research", function () {
             frappe.call({
                 method: "finbyzreach.api.lead.research_lead",

@@ -151,7 +151,7 @@ def _audience_context(
 	)
 
 
-def _resolved_studio_audience(context, subscription_topic=None):
+def _resolved_studio_audience(context, subscription_topic=None, content_topic=None):
 	if not context.include_leads and not frappe.parse_json(context.include_filters_json or "[]"):
 		return []
 	transient_campaign = frappe._dict(
@@ -161,6 +161,7 @@ def _resolved_studio_audience(context, subscription_topic=None):
 		custom_exclude_filters_json=context.exclude_filters_json,
 		custom_exclude_email_groups_json=frappe.as_json(context.email_groups),
 		custom_subscription_topic=subscription_topic,
+		custom_content_topic=content_topic,
 	)
 	return email_marketing.resolve_campaign_audience(transient_campaign)
 
@@ -446,6 +447,7 @@ def _frozen_preview_response(
 		"excluded_page": exc_page,
 		"excluded_total_pages": excluded_total_pages,
 		"subscription_topic": campaign.custom_subscription_topic or "",
+		"content_topic": campaign.get("custom_content_topic") or "",
 		"topic_unsubscribed_count": topic_count,
 		"topic_unsubscribed_samples": _frozen_recipient_preview_rows(
 			topic_names[:MAX_TOPIC_OPTOUT_SAMPLES], MAX_TOPIC_OPTOUT_SAMPLES
@@ -547,6 +549,7 @@ def preview_audience(
 	exclude_filters=None,
 	exclude_email_groups=None,
 	subscription_topic=None,
+	content_topic=None,
 	segment_name=None,
 	eligible_page=1,
 	eligible_page_length=8,
@@ -566,7 +569,7 @@ def preview_audience(
 		filters, exclude_filters, exclude_email_groups, segment_name=segment_name
 	)
 	return _preview_response(
-		_resolved_studio_audience(context, subscription_topic),
+		_resolved_studio_audience(context, subscription_topic, content_topic),
 		subscription_topic,
 		eligible_page,
 		eligible_page_length,
@@ -694,6 +697,7 @@ def _campaign_values(payload, context, require_ready=True, preview=None):
 		"custom_email_template": ready_value("email_template", _("Email Template")),
 		"custom_subject_override": str(payload.get("subject_override") or "").strip()[:140],
 		"custom_subscription_topic": ready_value("subscription_topic", _("Subscription Topic")),
+		"custom_content_topic": payload.get("content_topic"),
 		"custom_email_account": ready_value("email_account", _("Email Account")),
 		"custom_sender_name": str(payload.get("sender_name") or "").strip()[:140],
 		"custom_reply_to": str(payload.get("reply_to") or "").strip(),
@@ -750,7 +754,7 @@ def create_campaign(payload=None, launch="schedule"):
 		segment_name=payload.get("segment_name"),
 	)
 	preview = _preview_response(
-		_resolved_studio_audience(context, payload.get("subscription_topic")),
+		_resolved_studio_audience(context, payload.get("subscription_topic"), payload.get("content_topic")),
 		payload.get("subscription_topic"),
 	)
 	if require_ready and not preview["eligible_count"]:
@@ -818,7 +822,14 @@ def send_test(payload=None, recipient=None, sample_lead=None):
 		if campaign and campaign.custom_broadcast_status != "Draft"
 		else payload.get("subscription_topic")
 	)
+	test_content_topic = (
+		campaign.get("custom_content_topic")
+		if campaign and campaign.custom_broadcast_status != "Draft"
+		else payload.get("content_topic")
+	)
 	exclusion_reason = email_marketing.test_recipient_exclusion(recipient, test_topic)
+	if not exclusion_reason and test_content_topic:
+		exclusion_reason = email_marketing.test_recipient_exclusion(recipient, test_content_topic)
 	if exclusion_reason:
 		frappe.throw(
 			_("Test email blocked by recipient suppression: {0}").format(exclusion_reason)

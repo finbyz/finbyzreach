@@ -26,7 +26,7 @@ LAYOUTS = {
 	"3/4:1/4": [75, 25],
 }
 
-BLOCK_TYPES = {"text", "image", "button", "divider", "spacer", "social", "preview_url", "code"}
+BLOCK_TYPES = {"text", "image", "button", "divider", "spacer", "social", "preview_url", "compliance_links", "unsubscribe_link", "preference_center_link", "code"}
 COMPONENT_TYPES = {"Block", "Section"}
 COMPONENT_CATEGORIES = {"Header", "Content", "CTA", "Footer", "Social", "Other"}
 DEVICE_VALUES = {"both", "desktop", "mobile"}

@@ -316,6 +316,32 @@ def _compile_block(block, settings, normalized=False):
 	elif type_ == "preview_url":
 		label = compile_attribute(content.get("text"))
 		inner = f'{{% if email_preview_url is defined and email_preview_url %}}<div style="{style}"><a href="{{{{ email_preview_url | email_builder_safe_url | e }}}}" style="color:{settings["link_color"]};">{label}</a></div>{{% endif %}}'
+	elif type_ == "compliance_links":
+		unsubscribe_text = compile_attribute(content.get("unsubscribe_text") or "Unsubscribe")
+		preference_text = compile_attribute(content.get("preference_text") or "Email preference center")
+		block_style = block.get("style") or {}
+		link_color = block_style.get("color") or block_style.get("font_color") or settings["link_color"]
+		link_style = f'color:{link_color};text-decoration:{block_style.get("text_decoration") or "underline"};'
+		inner = (
+			'{% if unsubscribe_url is defined and unsubscribe_url and email_preference_center_url is defined and email_preference_center_url %}'
+			f'<div class="email-preferences" style="{style}">'
+			f'<a href="{{{{ unsubscribe_url | email_builder_safe_url | e }}}}" style="{link_style}">{unsubscribe_text}</a>'
+			' &nbsp;|&nbsp; '
+			f'<a href="{{{{ email_preference_center_url | email_builder_safe_url | e }}}}" style="{link_style}">{preference_text}</a>'
+			'</div>{% endif %}'
+		)
+	elif type_ in {"unsubscribe_link", "preference_center_link"}:
+		url_name = "unsubscribe_url" if type_ == "unsubscribe_link" else "email_preference_center_url"
+		fallback = "Unsubscribe" if type_ == "unsubscribe_link" else "Email preference center"
+		label = compile_attribute(content.get("text") or fallback)
+		block_style = block.get("style") or {}
+		link_color = block_style.get("color") or block_style.get("font_color") or settings["link_color"]
+		link_style = f'color:{link_color};text-decoration:{block_style.get("text_decoration") or "underline"};'
+		inner = (
+			f'{{% if {url_name} is defined and {url_name} %}}'
+			f'<div style="{style}"><a href="{{{{ {url_name} | email_builder_safe_url | e }}}}" style="{link_style}">{label}</a></div>'
+			'{% endif %}'
+		)
 	elif type_ == "code":
 		code_html = content.get("html", "") if normalized else sanitize_code_html(content.get("html", ""))
 		sanitized = _absolute_embedded_urls(code_html)
@@ -340,6 +366,20 @@ def _plain_block(block):
 	if block["type"] == "preview_url":
 		label = compile_tokens(content.get("text") or "View this email in your browser", "email_builder_text")
 		return f'{{% if email_preview_url is defined and email_preview_url %}}{label}: {{{{ email_preview_url | email_builder_safe_url }}}}{{% endif %}}'
+	if block["type"] == "compliance_links":
+		unsubscribe_text = compile_tokens(content.get("unsubscribe_text") or "Unsubscribe", "email_builder_text")
+		preference_text = compile_tokens(content.get("preference_text") or "Email preference center", "email_builder_text")
+		return (
+			'{% if unsubscribe_url is defined and unsubscribe_url and email_preference_center_url is defined and email_preference_center_url %}'
+			f'{unsubscribe_text}: {{{{ unsubscribe_url | email_builder_safe_url }}}}\n'
+			f'{preference_text}: {{{{ email_preference_center_url | email_builder_safe_url }}}}'
+			'{% endif %}'
+		)
+	if block["type"] in {"unsubscribe_link", "preference_center_link"}:
+		url_name = "unsubscribe_url" if block["type"] == "unsubscribe_link" else "email_preference_center_url"
+		fallback = "Unsubscribe" if block["type"] == "unsubscribe_link" else "Email preference center"
+		label = compile_tokens(content.get("text") or fallback, "email_builder_text")
+		return f'{{% if {url_name} is defined and {url_name} %}}{label}: {{{{ {url_name} | email_builder_safe_url }}}}{{% endif %}}'
 	return ""
 
 

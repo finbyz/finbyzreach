@@ -194,14 +194,15 @@ class EmailCampaignStudio {
 			{ fieldtype: "Column Break" },
 			{
 				fieldname: "subscription_topic",
-				label: __("Subscription Topic"),
+				label: __("Mailing Type"),
 				fieldtype: "Link",
 				options: "Subscription Topic",
 				reqd: 1,
-				description: __("Leads unsubscribed from this topic are automatically excluded."),
-				get_query: () => ({ filters: { disabled: 0 } }),
+				description: __("Only confirmed subscribers to this email type can receive the campaign."),
+				get_query: () => ({ filters: { disabled: 0, category: "Mailing Type" } }),
 				change: topicChange,
 			},
+			{ fieldname: "content_topic", label: __("Content Topic"), fieldtype: "Link", options: "Subscription Topic", description: __("Optional topic. Recipients must also subscribe to this topic."), get_query: () => ({ filters: { disabled: 0, category: "Topic" } }), change: topicChange },
 			{ fieldtype: "Section Break", label: __("Email content") },
 			{
 				fieldname: "email_template",
@@ -721,6 +722,7 @@ class EmailCampaignStudio {
 			await this.runBootstrapStep(__("Loading campaign content"), () => this.setBootstrapFormValues(this.contentForm, {
 				campaign_title: "",
 				subscription_topic: "",
+				content_topic: "",
 				email_template: "",
 				subject_override: "",
 			}));
@@ -779,6 +781,7 @@ class EmailCampaignStudio {
 			await this.runBootstrapStep(__("Loading campaign content"), () => this.setBootstrapFormValues(this.contentForm, {
 				campaign_title: campaign.campaign_title || "",
 				subscription_topic: campaign.subscription_topic || "",
+				content_topic: campaign.content_topic || "",
 				email_template: campaign.email_template || "",
 				subject_override: campaign.subject_override || "",
 			}));
@@ -1035,6 +1038,7 @@ class EmailCampaignStudio {
 			exclude_filters: JSON.stringify(blacklist.exclude_filters),
 			exclude_email_groups: JSON.stringify(blacklist.exclude_email_groups),
 			subscription_topic: this.contentForm.get_value("subscription_topic"),
+			content_topic: this.contentForm.get_value("content_topic"),
 			eligible_page: Math.max(1, Number(pageState.page || pageState.eligible_page || 1) || 1),
 			eligible_page_length: Math.max(1, Number(pageState.pageLength || pageState.eligible_page_length || 8) || 8),
 			excluded_page: Math.max(1, Number(pageState.excluded_page || pageState.excludedPage || 1) || 1),

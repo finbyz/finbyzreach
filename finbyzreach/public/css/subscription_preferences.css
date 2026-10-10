@@ -1,0 +1,90 @@
+.fr-subscriptions {
+  width: 100%;
+  margin-bottom: 24px;
+  border: 1px solid var(--border-color, #dfe3e8);
+  border-radius: 10px;
+  background: var(--card-bg, #fff);
+  overflow: hidden;
+}
+
+.fr-subscriptions * { box-sizing: border-box; }
+.fr-subscriptions-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  padding: 14px 18px 8px;
+  border: 0;
+  background: transparent;
+  color: var(--text-color, #1f2937);
+  text-align: left;
+  cursor: pointer;
+}
+.fr-subscriptions-head:hover { background: var(--subtle-fg, #f8fafc); }
+.fr-subscriptions-head strong { display: block; font-size: 15px; }
+.fr-subscriptions-head small { display: block; margin-top: 3px; color: var(--text-muted, #6b7280); }
+.fr-subscriptions-chevron { font-size: 20px; line-height: 1; transition: transform .2s ease; }
+.fr-subscriptions.is-open .fr-subscriptions-chevron { transform: rotate(180deg); }
+.fr-subscriptions-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; padding: 6px 18px 16px; }
+.fr-subscriptions-summary-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color, #dfe3e8);
+  border-radius: 8px;
+  background: var(--subtle-fg, #f8fafc);
+  font-size: 13px;
+}
+.fr-subscriptions-summary-label { min-width: 0; overflow-wrap: anywhere; color: var(--text-color, #1f2937); font-weight: 600; }
+.fr-subscriptions-manage { grid-column: 1 / -1; justify-self: start; margin: 4px 0 0; padding: 0; border: 0; background: transparent; color: var(--primary, #2563eb); font-size: 13px; cursor: pointer; }
+.fr-subscriptions-manage:hover { text-decoration: underline; }
+.fr-subscriptions-manage:focus-visible, .fr-subscriptions-head:focus-visible { outline: 2px solid var(--primary, #2563eb); outline-offset: 2px; }
+.fr-subscriptions-body { padding: 18px; border-top: 1px solid var(--border-color, #dfe3e8); }
+.fr-subscriptions-email { margin-bottom: 16px; color: var(--text-muted, #6b7280); font-size: 12px; }
+.fr-subscriptions-email select { max-width: 320px; }
+.fr-subscriptions-group + .fr-subscriptions-group { margin-top: 22px; }
+.fr-subscriptions-group h5 {
+  margin: 0 0 8px;
+  color: var(--text-muted, #6b7280);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.fr-subscriptions-list { display: grid; gap: 6px; }
+.fr-subscriptions-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(90px, 120px) minmax(90px, auto);
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 11px 13px;
+  border: 1px solid var(--border-color, #dfe3e8);
+  border-radius: 7px;
+}
+.fr-subscriptions-copy { min-width: 0; }
+.fr-subscriptions-copy strong { display: block; overflow-wrap: anywhere; font-size: 13px; line-height: 1.4; }
+.fr-subscriptions-copy small { display: block; margin-top: 2px; color: var(--text-muted, #6b7280); line-height: 1.4; }
+.fr-subscriptions-row .btn { white-space: nowrap; }
+.fr-subscriptions-status { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; color: var(--text-muted, #6b7280); font-size: 12px; }
+.fr-subscriptions-row .fr-subscriptions-status { justify-self: start; }
+.fr-subscriptions-status::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #cbd5e1; }
+.fr-subscriptions-status--subscribed::before { background: #22c55e; }
+.fr-subscriptions-status--unsubscribed::before { background: #ef4444; }
+.fr-subscriptions-status--pending::before { background: #f59e0b; }
+
+@media (max-width: 640px) {
+  .fr-subscriptions-head { padding: 14px; }
+  .fr-subscriptions-summary { padding: 0 14px 14px; }
+  .fr-subscriptions-body { padding: 14px; }
+  .fr-subscriptions-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .fr-subscriptions-copy { grid-column: 1 / -1; }
+  .fr-subscriptions-status { grid-column: 1; }
+  .fr-subscriptions-row .btn { grid-column: 2; }
+  .fr-subscriptions-summary { grid-template-columns: 1fr; }
+  .fr-subscriptions-summary-item { flex-direction: row; justify-content: space-between; align-items: center; }
+}

@@ -1,5 +1,6 @@
 frappe.ui.form.on("Contact", {
     refresh(frm) {
+        window.finbyzreachPreferences?.render(frm);
         // Only show Research button if person_research is empty
         if (!frm.doc.person_research) {
             frm.add_custom_button("Research", function () {

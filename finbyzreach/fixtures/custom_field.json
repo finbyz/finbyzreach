@@ -647,5 +647,10 @@
   "translatable": 0,
   "unique": 0,
   "width": null
- }
+ },
+ {"doctype":"Custom Field","dt":"Campaign","name":"Campaign-custom_content_topic","fieldname":"custom_content_topic","fieldtype":"Link","label":"Content Topic","options":"Subscription Topic","module":"Finbyzreach","insert_after":"custom_subscription_topic"},
+ {"doctype":"Custom Field","dt":"Campaign","name":"Campaign-custom_unsubscribe_label","fieldname":"custom_unsubscribe_label","fieldtype":"Data","label":"Unsubscribe Link Text","module":"Finbyzreach","insert_after":"custom_content_topic"},
+ {"doctype":"Custom Field","dt":"Campaign","name":"Campaign-custom_preference_label","fieldname":"custom_preference_label","fieldtype":"Data","label":"Preference Center Link Text","module":"Finbyzreach","insert_after":"custom_unsubscribe_label"},
+ {"doctype":"Custom Field","dt":"Lead","name":"Lead-custom_email_preferences_html","fieldname":"custom_email_preferences_html","fieldtype":"HTML","label":"Communication Subscriptions","module":"Finbyzreach","insert_after":"custom_unsubscribe_topics"},
+ {"doctype":"Custom Field","dt":"Contact","name":"Contact-custom_email_preferences_html","fieldname":"custom_email_preferences_html","fieldtype":"HTML","label":"Communication Subscriptions","module":"Finbyzreach","insert_after":"unsubscribed"}
 ]

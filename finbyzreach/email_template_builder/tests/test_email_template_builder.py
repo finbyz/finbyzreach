@@ -26,6 +26,9 @@ def _schema(layout, block_type):
 		"spacer": {"height": 20},
 		"social": {"items": [{"platform": "LinkedIn", "href": "https://linkedin.com"}]},
 		"preview_url": {"text": "View online"},
+		"compliance_links": {"unsubscribe_text": "Unsubscribe", "preference_text": "Email preference center"},
+		"unsubscribe_link": {"text": "Unsubscribe"},
+		"preference_center_link": {"text": "Email preference center"},
 		"code": {"html": '<p style="color:#2563eb">Code</p>'},
 	}[block_type]
 	return {
@@ -1369,3 +1372,37 @@ class TestEmailTemplateBuilder(IntegrationTestCase):
 		self.assertIn("https://example.com/preview?id=1", with_context)
 		self.assertNotIn("javascript:alert", unsafe_context)
 		self.assertIn('href="#"', unsafe_context)
+
+	def test_compliance_links_use_recipient_urls_and_escape_editable_text(self):
+		schema = _schema("1", "compliance_links")
+		block = schema["sections"][0]["columns"][0]["blocks"][0]
+		block["content"]["unsubscribe_text"] = 'Stop <mail>'
+		block["style"] = {"color": "#db2777"}
+		compiled = compile_schema(schema)
+		self.assertNotIn("Stop", frappe.render_template(compiled["html"], {}))
+		rendered = frappe.render_template(compiled["html"], {
+			"unsubscribe_url": "https://example.com/unsubscribe?one=1&two=2",
+			"email_preference_center_url": "https://example.com/manage_subscriptions?one=1&two=2",
+		})
+		self.assertIn("Stop &lt;mail&gt;", rendered)
+		self.assertIn("https://example.com/unsubscribe?one=1&amp;two=2", rendered)
+		self.assertIn("https://example.com/manage_subscriptions?one=1&amp;two=2", rendered)
+		self.assertIn("color:#db2777;text-decoration:underline", rendered)
+
+	def test_separate_compliance_links_keep_independent_color_and_url(self):
+		context = {
+			"unsubscribe_url": "https://example.com/unsubscribe?token=1",
+			"email_preference_center_url": "https://example.com/manage_subscriptions?token=2",
+		}
+		for block_type, color, decoration, expected, excluded in (
+			("unsubscribe_link", "#db2777", "none", "/unsubscribe?token=1", "/manage_subscriptions?token=2"),
+			("preference_center_link", "#2563eb", "underline", "/manage_subscriptions?token=2", "/unsubscribe?token=1"),
+		):
+			schema = _schema("1", block_type)
+			schema["sections"][0]["columns"][0]["blocks"][0]["style"] = {"color": color, "text_decoration": decoration}
+			compiled = compile_schema(schema)
+			self.assertNotIn(expected, frappe.render_template(compiled["html"], {}))
+			rendered = frappe.render_template(compiled["html"], context)
+			self.assertIn(expected, rendered)
+			self.assertNotIn(excluded, rendered)
+			self.assertIn(f"color:{color};text-decoration:{decoration}", rendered)

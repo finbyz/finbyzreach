@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import json
 import re
+from html import escape
 from collections import Counter
 from datetime import UTC, datetime, timedelta
 from email.utils import formataddr
@@ -34,6 +35,7 @@ from finbyzreach.email_template_builder.services import (
 	get_campaign_snapshot,
 	render_campaign_snapshot,
 )
+from finbyzreach.subscription_preferences import is_subscribed, recipient_urls
 
 
 CLICK_METHOD = "finbyzreach.email_marketing.track_marketing_click"
@@ -115,8 +117,6 @@ def _ensure_raw_html_delivery_markers(html):
 	"""Add Frappe's per-recipient delivery markers to complete visual HTML."""
 	html = str(html or "")
 	parts = []
-	if "<!--unsubscribe link here-->" not in html:
-		parts.append("<!--unsubscribe link here-->")
 	if "<!--email_open_check-->" not in html:
 		parts.append('<div class="email-pixel"><!--email_open_check--></div>')
 	if not parts:
@@ -124,6 +124,13 @@ def _ensure_raw_html_delivery_markers(html):
 	footer = '<div class="email-footer-container text-muted">' + "".join(parts) + "</div>"
 	if re.search(r"</body\s*>", html, flags=re.IGNORECASE):
 		return re.sub(r"</body\s*>", footer + "</body>", html, count=1, flags=re.IGNORECASE)
+	return html + footer
+
+
+def _insert_email_footer(html, footer):
+	"""Keep compliance links inside a complete visual HTML document."""
+	if re.search(r"</body\s*>", html, flags=re.IGNORECASE):
+		return re.sub(r"</body\s*>", lambda match: footer + match.group(0), html, count=1, flags=re.IGNORECASE)
 	return html + footer
 
 
@@ -285,11 +292,18 @@ def validate_campaign(doc, require_ready=False, skip_queued_check=False):
 	if doc.is_new() and requested_status != "Draft":
 		frappe.throw(_("New email broadcasts must start as Draft"))
 	if require_ready and not doc.custom_subscription_topic:
-		frappe.throw(_("Subscription Topic is required for an Email Broadcast"))
+		frappe.throw(_("Mailing Type is required for an Email Broadcast"))
 	if doc.custom_subscription_topic and frappe.db.get_value(
 		"Subscription Topic", doc.custom_subscription_topic, "disabled"
 	):
 		frappe.throw(_("Subscription Topic {0} is disabled").format(doc.custom_subscription_topic))
+	if require_ready:
+		if frappe.db.get_value("Subscription Topic", doc.custom_subscription_topic, "category") != "Mailing Type":
+			frappe.throw(_("Select an active mailing type"))
+		if doc.get("custom_content_topic") and frappe.db.get_value("Subscription Topic", doc.custom_content_topic, "category") != "Topic":
+			frappe.throw(_("Select an active content topic"))
+		if doc.get("custom_content_topic") and frappe.db.get_value("Subscription Topic", doc.custom_content_topic, "disabled"):
+			frappe.throw(_("The selected content topic is disabled"))
 	if require_ready and not doc.custom_email_template:
 		frappe.throw(_("Email Template is required for an Email Broadcast"))
 	if require_ready and not doc.custom_email_account:
@@ -618,11 +632,10 @@ def test_recipient_exclusion(email, subscription_topic=None):
 	normalized_email = _normalized_email(email)
 	if not normalized_email:
 		return _("Missing or invalid email")
-	# Bypassed: campaign emails now skip the global Email Unsubscribe list
-	# via get_unsubscribed_user_emails() patch in hooks.py.  Topic-wise filtering is the
-	# sole authority for campaign suppression.
-	# if normalized_email in _globally_unsubscribed_emails([normalized_email]):
-	# 	return _("Globally unsubscribed")
+	if subscription_topic and not is_subscribed(normalized_email, subscription_topic):
+		return _("No confirmed subscription to {0}").format(subscription_topic)
+	if normalized_email in _globally_unsubscribed_emails([normalized_email]):
+		return _("Globally unsubscribed")
 
 	leads = frappe.get_all(
 		"Lead",
@@ -639,17 +652,8 @@ def test_recipient_exclusion(email, subscription_topic=None):
 		return _("Do Not Contact")
 	if lead_names and _linked_unsubscribed_leads(lead_names):
 		return _("Linked Contact unsubscribed")
-	# Bypassed: see get_unsubscribed_user_emails() patch in hooks.py.
-	# if lead_names and any(
-	# 	lead_name == reference and normalized_email == unsubscribed_email
-	# 	for reference, unsubscribed_email in _reference_unsubscribed_pairs(lead_names)
-	# 	for lead_name in lead_names
-	# ):
-	# 	return _("Unsubscribed from Lead emails")
-	if subscription_topic and lead_names:
-		if _topic_unsubscribed_leads(lead_names, subscription_topic):
-			return _("Unsubscribed from topic {0}").format(subscription_topic)
-
+	if any(unsubscribed_email == normalized_email for _, unsubscribed_email in _reference_unsubscribed_pairs(lead_names)):
+		return _("Unsubscribed from Lead emails")
 	contact_names = frappe.get_all(
 		"Contact Email",
 		filters={"email_id": normalized_email},
@@ -700,21 +704,26 @@ def resolve_campaign_audience(campaign):
 		name: _normalized_email(rows_by_name.get(name).email_id if rows_by_name.get(name) else "")
 		for name in include_leads
 	}
-	# Bypassed: see get_unsubscribed_user_emails() patch in hooks.py.
-	# global_unsubscribed = _globally_unsubscribed_emails(
-	# 	{email for email in normalized_by_lead.values() if email}
-	# )
-	global_unsubscribed = set()
-	# Bypassed: see get_unsubscribed_user_emails() patch in hooks.py.
-	# reference_unsubscribed = _reference_unsubscribed_pairs(include_leads)
-	reference_unsubscribed = set()
-	topic_unsubscribed = _topic_unsubscribed_leads(
-		include_leads, campaign.get("custom_subscription_topic")
+	mailing_type = campaign.get("custom_subscription_topic")
+	content_topic = campaign.get("custom_content_topic")
+	preference_rows = []
+	if mailing_type:
+		for emails in _chunks(list(set(normalized_by_lead.values()) - {""})):
+			preference_rows.extend(frappe.get_all(
+				"Email Subscription Preference",
+				filters={"email": ["in", emails]},
+				fields=["email", "subscription_topic", "status"],
+				limit_page_length=0,
+			))
+	confirmed = {(row.email, row.subscription_topic) for row in preference_rows if row.status == "Subscribed"}
+	global_unsubscribed = _globally_unsubscribed_emails(
+		{email for email in normalized_by_lead.values() if email}
 	)
+	reference_unsubscribed = _reference_unsubscribed_pairs(include_leads)
+	topic_unsubscribed = set()
 	topic_unsubscribed_emails = {
-		normalized_by_lead.get(lead_name)
-		for lead_name in topic_unsubscribed
-		if normalized_by_lead.get(lead_name)
+		row.email for row in preference_rows
+		if row.subscription_topic == mailing_type and row.status == "Unsubscribed"
 	}
 	seen_emails = set()
 	result = []
@@ -743,10 +752,10 @@ def resolve_campaign_audience(campaign):
 			reason = "Globally unsubscribed"
 		elif (lead_name, normalized) in reference_unsubscribed:
 			reason = "Unsubscribed from Lead emails"
-		elif lead_name in topic_unsubscribed or normalized in topic_unsubscribed_emails:
-			reason = _("Unsubscribed from topic {0}").format(
-				campaign.get("custom_subscription_topic")
-			)
+		elif mailing_type and (normalized, mailing_type) not in confirmed:
+			reason = _("No confirmed subscription to {0}").format(mailing_type)
+		elif content_topic and (normalized, content_topic) not in confirmed:
+			reason = _("No confirmed subscription to {0}").format(content_topic)
 		elif normalized in seen_emails:
 			reason = "Duplicate email"
 		else:
@@ -1202,7 +1211,7 @@ def decorate_campaign_links(html, campaign, recipient_name, track_clicks=None):
 	)
 	for index, link in enumerate(soup.find_all("a"), start=1):
 		href = str(link.get("href") or "").strip()
-		if CLICK_METHOD in href or UNSUBSCRIBE_METHOD in href or "view_email" in href:
+		if CLICK_METHOD in href or UNSUBSCRIBE_METHOD in href or "view_email" in href or urlparse(href).path == "/manage_subscriptions":
 			continue
 		final_url = _append_utm(
 			href,
@@ -1293,28 +1302,14 @@ def _current_recipient_exclusion(recipient, campaign):
 	if recipient.recipient in _linked_unsubscribed_leads([recipient.recipient]):
 		return _("Linked Contact unsubscribed")
 	normalized_email = _normalized_email(recipient.custom_recipient_email)
-	# Bypassed: see get_unsubscribed_user_emails() patch in hooks.py.
-	# if normalized_email in _globally_unsubscribed_emails([normalized_email]):
-	# 	return _("Globally unsubscribed")
-	# Bypassed: see get_unsubscribed_user_emails() patch in hooks.py.
-	# if (recipient.recipient, normalized_email) in _reference_unsubscribed_pairs(
-	# 	[recipient.recipient]
-	# ):
-	# 	return _("Unsubscribed from Lead emails")
-	topic_leads = [recipient.recipient]
-	if recipient.custom_recipient_email:
-		topic_leads.extend(
-			frappe.get_all(
-				"Lead",
-				filters={"email_id": recipient.custom_recipient_email},
-				pluck="name",
-				limit_page_length=0,
-			)
-		)
-	if _topic_unsubscribed_leads(
-		list(dict.fromkeys(topic_leads)), campaign.custom_subscription_topic
-	):
-		return _("Unsubscribed from topic {0}").format(campaign.custom_subscription_topic)
+	if normalized_email in _globally_unsubscribed_emails([normalized_email]):
+		return _("Globally unsubscribed")
+	if (recipient.recipient, normalized_email) in _reference_unsubscribed_pairs([recipient.recipient]):
+		return _("Unsubscribed from Lead emails")
+	if not is_subscribed(normalized_email, campaign.custom_subscription_topic):
+		return _("No confirmed subscription to {0}").format(campaign.custom_subscription_topic)
+	if campaign.get("custom_content_topic") and not is_subscribed(normalized_email, campaign.custom_content_topic):
+		return _("No confirmed subscription to {0}").format(campaign.custom_content_topic)
 	return None
 
 
@@ -1336,13 +1331,29 @@ def _dispatch_recipient(recipient, campaign):
 	preview_url = get_url(
 		f"/view_email?{get_signed_params({'campaign_recipient': recipient.name})}"
 	)
+	compliance_urls = recipient_urls(recipient)
 	rendered = render_campaign_snapshot(
 		campaign.custom_snapshot_subject,
 		campaign.custom_snapshot_html,
 		lead,
-		extra_context={"email_preview_url": preview_url},
+		extra_context={"email_preview_url": preview_url, **compliance_urls},
 	)
+	present_links = {str(link.get("href") or "") for link in BeautifulSoup(rendered.html, "html.parser").find_all("a")}
 	html = decorate_campaign_links(rendered.html, campaign, recipient.name)
+	missing_links = []
+	if compliance_urls["unsubscribe_url"] not in present_links:
+		missing_links.append(
+			f'<a href="{escape(compliance_urls["unsubscribe_url"], quote=True)}">'
+			f'{escape(campaign.get("custom_unsubscribe_label") or _("Unsubscribe"))}</a>'
+		)
+	if compliance_urls["email_preference_center_url"] not in present_links:
+		missing_links.append(
+			f'<a href="{escape(compliance_urls["email_preference_center_url"], quote=True)}">'
+			f'{escape(campaign.get("custom_preference_label") or _("Email preference center"))}</a>'
+		)
+	if missing_links:
+		footer = f'<div class="email-preferences" style="padding:20px;text-align:center;font-size:12px">{" &nbsp;|&nbsp; ".join(missing_links)}</div>'
+		html = _insert_email_footer(html, footer)
 	delivery_html = (																																	
 		_ensure_raw_html_delivery_markers(html)
 		if campaign.custom_template_mode == "Visual"
@@ -1385,7 +1396,7 @@ def _dispatch_recipient(recipient, campaign):
 		reference_name=lead.name,
 		communication=communication.name,
 		send_after=recipient.custom_scheduled_at,
-		unsubscribe_message=_("Unsubscribe"),
+		add_unsubscribe_link=0,
 		unsubscribe_method=f"/api/method/{UNSUBSCRIBE_METHOD}",
 		unsubscribe_params={"campaign_recipient": recipient.name},
 		raw_html=campaign.custom_template_mode == "Visual",
@@ -1970,114 +1981,47 @@ def track_marketing_click(campaign_recipient=None, url=None):
 
 @frappe.whitelist(allow_guest=True, methods=["GET"])
 def unsubscribe_marketing(**kwargs):
-	query_string = getattr(frappe.request, "query_string", b"").decode("utf-8")
-	url = f"/manage_subscriptions?{query_string}"
-	frappe.local.response["type"] = "redirect"
-	frappe.local.response["location"] = url
+	from finbyzreach.subscription_preferences import signed_recipient, unsubscribe
+
+	if not frappe.form_dict.get("campaign_recipient"):
+		frappe.throw(_("Invalid unsubscribe link"), frappe.PermissionError)
+	raw = frappe.safe_decode(getattr(frappe.request, "query_string", b""))
+	recipient, email = signed_recipient(frappe.form_dict.campaign_recipient, raw)
+	topic = frappe.db.get_value("Campaign", recipient.campaign_name, "custom_subscription_topic")
+	if not topic:
+		frappe.throw(_("This campaign has no subscription type"))
+	unsubscribe(email, topic)
+	_mark_campaign_recipient_unsubscribed(recipient)
+	frappe.respond_as_web_page(_("Unsubscribed"), _("You have been unsubscribed from {0}.").format(topic), indicator_color="green")
+
+
+def _mark_campaign_recipient_unsubscribed(recipient):
+	if cint(recipient.custom_unsubscribed):
+		return
+	updates = _queued_delivery_status_updates(recipient)
+	updates.update({"custom_unsubscribed": 1, "custom_unsubscribed_on": now_datetime()})
+	frappe.db.set_value("Email Campaign", recipient.name, updates, update_modified=False)
+	if recipient.custom_communication:
+		frappe.db.set_value("Communication", recipient.custom_communication, "delivery_status", "Recipient Unsubscribed", update_modified=False)
+	_log_event("Unsubscribed", recipient, communication=recipient.custom_communication)
+	refresh_campaign_metrics(recipient.campaign_name)
 
 @frappe.whitelist(allow_guest=True, methods=["POST"])
-@rate_limit(limit=10, seconds=60*10)
-def update_subscription_preferences(campaign_recipient, email, unsubscribed_topics, signed_query_string=None, **kwargs):
-	if frappe.in_test:
-		pass
-	elif not signed_query_string:
-		frappe.throw(_("Invalid or expired link"), frappe.PermissionError)
-	else:
-		from frappe.utils.verified_command import _sign_message
-		from urllib.parse import parse_qs
+@rate_limit(limit=10, seconds=600)
+def update_subscription_preferences(campaign_recipient, email, selected_topics, visible_topics, signed_query_string=None, **kwargs):
+	from finbyzreach.subscription_preferences import save_selection, signed_recipient
 
-		signature_string = "&_signature="
-		if signature_string not in signed_query_string:
-			frappe.throw(_("Invalid or expired link"), frappe.PermissionError)
-			
-		params, given_signature = signed_query_string.split(signature_string)
-		computed_signature = _sign_message(params)
-		
-		if not hmac.compare_digest(given_signature, computed_signature):
-			frappe.throw(_("Invalid link signature"), frappe.PermissionError)
-			
-		parsed_params = parse_qs(params)
-		if parsed_params.get("campaign_recipient", [""])[0] != campaign_recipient:
-			frappe.throw(_("Invalid or expired link"), frappe.PermissionError)
-
-	if not campaign_recipient or not frappe.db.exists("Email Campaign", campaign_recipient):
-		frappe.throw(_("This campaign recipient could not be found."), frappe.DoesNotExistError)
-
-	recipient = frappe.get_doc("Email Campaign", campaign_recipient, for_update=True)
-	if email and not hmac.compare_digest(_normalized_email(email), recipient.custom_normalized_email or ""):
+	recipient, verified_email = signed_recipient(campaign_recipient, signed_query_string)
+	if email and not hmac.compare_digest(_normalized_email(email), verified_email):
 		frappe.throw(_("Invalid email for this recipient"), frappe.PermissionError)
-
-	if isinstance(unsubscribed_topics, str):
-		unsubscribed_topics = frappe.parse_json(unsubscribed_topics)
-	if not isinstance(unsubscribed_topics, list):
-		unsubscribed_topics = []
-
-	lead_name = recipient.recipient
-	
-	# new_unsubscribed_topics is exactly what the user selected in the UI
-	new_unsubscribed_topics = unsubscribed_topics
-	
-	# Fetch currently unsubscribed topics directly from the DB
-	current_unsubscribed_rows = frappe.db.get_all(
-		"Unsubscribe Topic Multi Select", 
-		filters={"parent": lead_name, "parentfield": "custom_unsubscribe_topics"},
-		fields=["name", "subscription_topic"]
-	)
-	current_unsubscribed_topics = {row.subscription_topic for row in current_unsubscribed_rows}
-	
-	# Find topics to remove from unsubscribed list and topics to add
-	topics_to_remove = current_unsubscribed_topics - set(new_unsubscribed_topics)
-	topics_to_add = set(new_unsubscribed_topics) - current_unsubscribed_topics
-	
-	if topics_to_remove:
-		frappe.db.delete("Unsubscribe Topic Multi Select", {
-			"parent": lead_name,
-			"parentfield": "custom_unsubscribe_topics",
-			"subscription_topic": ("in", list(topics_to_remove))
-		})
-		
-	for topic in topics_to_add:
-		frappe.get_doc({
-			"doctype": "Unsubscribe Topic Multi Select",
-			"parent": lead_name,
-			"parenttype": "Lead",
-			"parentfield": "custom_unsubscribe_topics",
-			"subscription_topic": topic
-		}).db_insert()
-	
-	now = now_datetime()
-	recipient_updates = _queued_delivery_status_updates(recipient)
-	
-	was_unsubscribed = cint(recipient.custom_unsubscribed)
-	is_unsubscribed = (recipient.campaign_name and frappe.db.get_value("Campaign", recipient.campaign_name, "custom_subscription_topic") in unsubscribed_topics)
-	
-	if is_unsubscribed and not was_unsubscribed:
-		recipient_updates.update({
-			"custom_unsubscribed": 1,
-			"custom_unsubscribed_on": recipient.custom_unsubscribed_on or now,
-		})
-	elif not is_unsubscribed and was_unsubscribed:
-		recipient_updates.update({
-			"custom_unsubscribed": 0,
-		})
-		
-	if recipient_updates:
-		frappe.db.set_value("Email Campaign", recipient.name, recipient_updates, update_modified=False)
-		
-	if is_unsubscribed and recipient.custom_communication:
-		frappe.db.set_value(
-			"Communication",
-			recipient.custom_communication,
-			"delivery_status",
-			"Recipient Unsubscribed",
-			update_modified=False,
-		)
-		
-	if is_unsubscribed and not was_unsubscribed:
-		_log_event("Unsubscribed", recipient, communication=recipient.custom_communication)
-		
-	refresh_campaign_metrics(recipient.campaign_name)
-	
+	selected = frappe.parse_json(selected_topics) if isinstance(selected_topics, str) else selected_topics
+	visible = frappe.parse_json(visible_topics) if isinstance(visible_topics, str) else visible_topics
+	if not isinstance(selected, list) or not isinstance(visible, list):
+		frappe.throw(_("Invalid subscription selection"), frappe.ValidationError)
+	save_selection(verified_email, selected, visible)
+	current_type = frappe.db.get_value("Campaign", recipient.campaign_name, "custom_subscription_topic")
+	if current_type and current_type not in selected:
+		_mark_campaign_recipient_unsubscribed(recipient)
 	return "success"
 
 
@@ -2086,10 +2030,10 @@ _original_get_unsubscribed_user_emails = _QueueBuilder.get_unsubscribed_user_ema
 
 
 def get_unsubscribed_user_emails(self):
-	"""Campaign broadcasts use per-topic unsubscribe (Lead.custom_unsubscribe_topics)
-	as the sole suppression authority; skip Frappe's global/reference Email
-	Unsubscribe list only for emails dispatched through unsubscribe_marketing,
-	matching the exclusion logic in _current_recipient_exclusion.
+	"""Campaign eligibility is checked by email and purpose before queueing.
+
+	The queue's legacy reference-level list is bypassed for these campaign rows;
+	global opt-outs are checked in preview and again at dispatch time.
 	"""
 	if self._unsubscribe_method == f"/api/method/{UNSUBSCRIBE_METHOD}":
 		return []

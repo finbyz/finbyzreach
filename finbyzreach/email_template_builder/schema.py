@@ -313,6 +313,12 @@ def _validate_block(block):
 		out["item_spacing"] = _bounded_int(content.get("item_spacing"), 8, 0, 40)
 	elif type_ == "preview_url":
 		out["text"] = validate_semantic_tokens(str(content.get("text") or "View this email in your browser")[:200])
+	elif type_ == "compliance_links":
+		out["unsubscribe_text"] = validate_semantic_tokens(str(content.get("unsubscribe_text") or "Unsubscribe").strip()[:200])
+		out["preference_text"] = validate_semantic_tokens(str(content.get("preference_text") or "Email preference center").strip()[:200])
+	elif type_ in {"unsubscribe_link", "preference_center_link"}:
+		fallback = "Unsubscribe" if type_ == "unsubscribe_link" else "Email preference center"
+		out["text"] = validate_semantic_tokens(str(content.get("text") or fallback).strip()[:200])
 	elif type_ == "code":
 		code = str(content.get("html") or "")
 		if len(code.encode()) > MAX_CODE_BYTES:
