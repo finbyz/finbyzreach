@@ -431,6 +431,7 @@ class TestEmailCampaignStudio(UnitTestCase):
 			custom_email_template="Welcome",
 			custom_subject_override="Subject",
 			custom_subscription_topic="Product Updates",
+			custom_content_topic="News",
 			custom_email_account="Marketing",
 			custom_sender_name="Megasol",
 			custom_reply_to="reply@example.com",
@@ -467,6 +468,7 @@ class TestEmailCampaignStudio(UnitTestCase):
 
 		convert.assert_called_once_with("2026-07-21 10:30:00")
 		self.assertEqual(result["name"], "Existing Studio Campaign")
+		self.assertEqual(result["content_topic"], "News")
 		self.assertEqual(result["filters"], [["Lead", "email_id", "is", "set"]])
 		self.assertEqual(result["exclude_email_groups"], ["Suppression"])
 		self.assertEqual(result["start_date"], "2026-07-21")

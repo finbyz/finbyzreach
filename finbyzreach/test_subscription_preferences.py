@@ -1,6 +1,9 @@
 import unittest
+from datetime import datetime, timedelta
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
+
+import frappe
 
 from finbyzreach import subscription_preferences as preferences
 from finbyzreach import email_marketing
@@ -62,6 +65,76 @@ class TestSubscriptionPreferences(unittest.TestCase):
 	@patch.object(preferences, "statuses", return_value={"News": "Pending"})
 	def test_pending_doi_is_not_a_sendable_subscription(self, statuses):
 		self.assertFalse(preferences.is_subscribed("person@example.com", "News"))
+
+	@patch.object(preferences, "request_subscription")
+	@patch.object(preferences, "unsubscribe")
+	@patch.object(preferences, "statuses", return_value={"News": "Pending"})
+	@patch.object(preferences.frappe, "get_all", return_value=["News"])
+	def test_deselecting_pending_subscription_revokes_token(self, get_all, statuses, unsubscribe, request):
+		result = preferences.save_selection("person@example.com", [], ["News"])
+		unsubscribe.assert_called_once_with("person@example.com", "News", "Preference center")
+		request.assert_not_called()
+		self.assertEqual(result, {"News": "Unsubscribed"})
+
+	@patch.object(preferences, "_ensure_public_subscriber_lead")
+	@patch.object(preferences, "_save")
+	@patch.object(preferences, "now_datetime", return_value=datetime(2026, 10, 12, 12, 0))
+	@patch.object(preferences.frappe, "get_doc")
+	def test_public_confirmation_creates_a_lead_after_consent(self, get_doc, now, save, ensure_lead):
+		import hashlib
+		token = "valid-token"
+		get_doc.return_value = SimpleNamespace(
+			status="Pending", confirmation_hash=hashlib.sha256(token.encode()).hexdigest(),
+			confirmation_expires_on=now.return_value + timedelta(days=1),
+			email="person@example.com", subscription_topic="News", consent_source="Public registration",
+		)
+		self.assertEqual(preferences.confirm("preference", token), "person@example.com")
+		save.assert_called_once_with("person@example.com", "News", "Subscribed", "Double opt-in confirmation")
+		ensure_lead.assert_called_once_with("person@example.com")
+
+	@patch.object(preferences.frappe, "get_doc")
+	@patch.object(preferences.frappe, "db", new=MagicMock())
+	def test_public_subscriber_lead_is_created_only_when_missing(self, get_doc):
+		db = preferences.frappe.db
+		db.exists.return_value = None
+		lead = MagicMock()
+		get_doc.return_value = lead
+		preferences._ensure_public_subscriber_lead("person@example.com")
+		get_doc.assert_called_once_with({"doctype": "Lead", "email_id": "person@example.com", "status": "Lead"})
+		lead.insert.assert_called_once_with(ignore_permissions=True)
+		db.exists.return_value = "CRM-LEAD-1"
+		preferences._ensure_public_subscriber_lead("person@example.com")
+		self.assertEqual(get_doc.call_count, 1)
+
+	@patch.object(email_marketing.frappe, "db", new=MagicMock())
+	def test_disabled_content_topic_blocks_scheduled_delivery(self):
+		db = email_marketing.frappe.db
+		db.get_value.side_effect = [0, 1]
+		recipient = SimpleNamespace(custom_unsubscribed=0)
+		campaign = frappe._dict(custom_subscription_topic="Marketing E-Mails", custom_content_topic="News")
+		self.assertEqual(
+			email_marketing._current_recipient_exclusion(recipient, campaign),
+			"Content topic unavailable or disabled",
+		)
+		db.get_value.assert_any_call("Subscription Topic", "News", "disabled")
+
+	@patch.object(email_marketing, "_mark_campaign_recipient_unsubscribed")
+	@patch.object(preferences, "signed_recipient", return_value=(SimpleNamespace(campaign_name="Campaign-1"), "person@example.com"))
+	@patch.object(preferences, "unsubscribe")
+	@patch.object(email_marketing.frappe, "respond_as_web_page")
+	@patch.object(email_marketing.frappe, "db", new=MagicMock())
+	@patch.object(email_marketing.frappe, "request", new=SimpleNamespace(query_string=b"campaign_recipient=EC-1&_signature=valid"), create=True)
+	@patch.object(email_marketing.frappe, "form_dict", new=SimpleNamespace(campaign_recipient="EC-1", get=lambda key: "EC-1"))
+	def test_get_unsubscribe_commits_preference_and_campaign_update(
+		self, respond, unsubscribe, signed_recipient, mark
+	):
+		db = email_marketing.frappe.db
+		db.get_value.return_value = "Marketing E-Mails"
+		email_marketing.unsubscribe_marketing()
+		unsubscribe.assert_called_once_with("person@example.com", "Marketing E-Mails")
+		mark.assert_called_once_with(signed_recipient.return_value[0])
+		db.commit.assert_called_once_with()
+		respond.assert_called_once()
 
 	@patch.object(legacy, "request_subscription")
 	@patch.object(legacy, "test_recipient_exclusion", return_value=None)
