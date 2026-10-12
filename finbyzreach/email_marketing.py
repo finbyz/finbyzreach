@@ -1285,6 +1285,10 @@ def _current_recipient_exclusion(recipient, campaign):
 		"Subscription Topic", campaign.custom_subscription_topic, "disabled"
 	):
 		return _("Subscription Topic unavailable or disabled")
+	if campaign.get("custom_content_topic") and frappe.db.get_value(
+		"Subscription Topic", campaign.custom_content_topic, "disabled"
+	) != 0:
+		return _("Content topic unavailable or disabled")
 	lead = frappe.db.get_value(
 		"Lead",
 		recipient.recipient,
@@ -1992,6 +1996,8 @@ def unsubscribe_marketing(**kwargs):
 		frappe.throw(_("This campaign has no subscription type"))
 	unsubscribe(email, topic)
 	_mark_campaign_recipient_unsubscribed(recipient)
+	# GET requests are rolled back by Frappe's transaction finalizer unless committed.
+	frappe.db.commit()
 	frappe.respond_as_web_page(_("Unsubscribed"), _("You have been unsubscribed from {0}.").format(topic), indicator_color="green")
 
 

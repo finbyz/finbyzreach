@@ -129,6 +129,13 @@ def request_public_subscriptions(email, selected_topics):
 	return "Pending"
 
 
+def _ensure_public_subscriber_lead(email):
+	"""Make a confirmed public subscriber available to Lead-based campaigns."""
+	if frappe.db.exists("Lead", {"email_id": email}):
+		return
+	frappe.get_doc({"doctype": "Lead", "email_id": email, "status": "Lead"}).insert(ignore_permissions=True)
+
+
 def confirm(preference, token):
 	doc = frappe.get_doc(PREFERENCE_DOCTYPE, preference, for_update=True)
 	if doc.status != "Pending" or not doc.confirmation_hash or not doc.confirmation_expires_on:
@@ -138,6 +145,8 @@ def confirm(preference, token):
 	):
 		frappe.throw(_("This confirmation link is invalid or expired"), frappe.PermissionError)
 	_save(doc.email, doc.subscription_topic, "Subscribed", "Double opt-in confirmation")
+	if doc.consent_source == "Public registration":
+		_ensure_public_subscriber_lead(doc.email)
 	return doc.email
 
 
@@ -208,7 +217,7 @@ def save_selection(email, selected, visible, source="Preference center"):
 			if before.get(topic) != "Subscribed":
 				result[topic] = request_subscription(email, topic, source)
 		else:
-			if before.get(topic) == "Subscribed":
+			if before.get(topic) in ("Subscribed", "Pending"):
 				unsubscribe(email, topic, source)
 				result[topic] = "Unsubscribed"
 	return result

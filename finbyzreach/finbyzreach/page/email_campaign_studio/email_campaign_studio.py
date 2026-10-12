@@ -476,6 +476,7 @@ def _campaign_for_studio(campaign_name):
 		"email_template": campaign.custom_email_template,
 		"subject_override": campaign.custom_subject_override,
 		"subscription_topic": campaign.custom_subscription_topic,
+		"content_topic": campaign.get("custom_content_topic") or "",
 		"email_account": campaign.custom_email_account,
 		"sender_name": campaign.custom_sender_name,
 		"reply_to": campaign.custom_reply_to,
