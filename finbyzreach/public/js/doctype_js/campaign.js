@@ -3,7 +3,7 @@ frappe.ui.form.on("Campaign", {
 		frm.set_query("custom_email_account", () => ({ filters: { enable_outgoing: 1 } }));
 		frm.set_query("custom_subscription_topic", () => ({ filters: { disabled: 0 } }));
 		frm.set_query("custom_email_template", () => ({
-			filters: [["Email Template", "custom_reference_doctype", "in", ["", "Lead"]]],
+			filters: [["Email Template", "custom_reference_doctype", "in", ["", frm.doc.custom_personalization_doctype || frm.doc.custom_audience_doctype || "Lead"]]],
 		}));
 	},
 
@@ -40,7 +40,7 @@ frappe.ui.form.on("Campaign", {
 			frm.remove_custom_button(__("View Leads"));
 			if (Number(frm.doc.custom_candidate_count || 0) > 0) {
 				frm.add_custom_button(
-					__("View Leads"),
+					frm.doc.custom_audience_doctype === "Customer" ? __("View Customers") : __("View Leads"),
 					() => view_campaign_leads(frm),
 					__("Email Broadcast")
 				);
@@ -140,7 +140,7 @@ function route_to_email_campaign_studio(campaignName) {
 function view_campaign_leads(frm) {
 	frappe.route_options = {
 		campaign_name: frm.doc.name,
-		email_campaign_for: "Lead",
+		email_campaign_for: frm.doc.custom_audience_doctype || "Lead",
 	};
 	frappe.set_route("List", "Email Campaign");
 }
@@ -208,8 +208,8 @@ function show_test_dialog(frm) {
 			{
 				fieldname: "sample_lead",
 				fieldtype: "Link",
-				options: "Lead",
-				label: __("Personalize Using Lead"),
+				options: frm.doc.custom_audience_doctype || "Lead",
+				label: __("Sample {0}", [frm.doc.custom_audience_doctype || "Lead"]),
 				reqd: 1,
 			},
 		],
