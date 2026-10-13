@@ -17,7 +17,11 @@ from frappe import _
 from frappe.utils import cint, flt, now_datetime
 
 CANDIDATE = "Campaign Candidate"
-SOLAR_DETAILS = ("Solarenergie", "Photovoltaik", "Flachdach", "Dachbegrünungen")
+
+# Baublatt's own detail codes for the things Megasol sells into. Matching on
+# codes rather than German labels survives a wording change at their end, and
+# the labels are not always populated in the payload.
+SOLAR_DETAIL_CODES = ("1004", "506", "504", "101", "102", "154")
 
 
 def _lines(value):
@@ -32,38 +36,37 @@ def qualifying_projects(campaign):
 	conditions = ["1=1"]
 	values = {}
 
+	# solar_score is computed on import from the detail and role codes, so the
+	# filter is one indexed column rather than a subquery over child rows.
 	if campaign.require_solar_signal:
-		conditions.append(
-			"""exists (select 1 from `tabInfomanager Project Detail` d
-			           where d.parent = p.name and d.detailtype_name in %(solar)s)"""
-		)
-		values["solar"] = SOLAR_DETAILS
+		conditions.append("p.solar_score > 0")
 
-	for field, column in (("plan_stages", "planstage_name"),
+	for field, column in (("plan_stages", "planning_stage_label"),
 	                      ("cantons", "province_name"),
-	                      ("project_types", "projecttype_name")):
+	                      ("project_types", "project_type_label")):
 		wanted = _lines(campaign.get(field))
 		if wanted:
 			conditions.append(f"p.{column} in %({field})s")
 			values[field] = wanted
 
 	if flt(campaign.min_project_value):
-		conditions.append("p.value >= %(min_value)s")
+		conditions.append("p.project_value >= %(min_value)s")
 		values["min_value"] = flt(campaign.min_project_value)
 	if flt(campaign.max_project_value):
-		conditions.append("p.value <= %(max_value)s")
+		conditions.append("p.project_value <= %(max_value)s")
 		values["max_value"] = flt(campaign.max_project_value)
 
 	return frappe.db.sql(
-		f"""select p.name, p.title, p.town, p.planstage_name, p.projecttype_name,
-		           p.province_name, p.value,
-		           exists (select 1 from `tabInfomanager Project Detail` d
-		                   where d.parent = p.name
-		                     and d.detailtype_name in {('%(solar_flag)s')}) as has_solar
+		f"""select p.name, p.title, p.town,
+		           p.planning_stage_label as planstage_name,
+		           p.project_type_label as projecttype_name,
+		           p.province_name, p.project_value as value,
+		           p.solar_score, p.solar_signals,
+		           if(p.solar_score > 0, 1, 0) as has_solar
 		    from `tabInfomanager Project` p
 		    where {' and '.join(conditions)}
-		    order by has_solar desc, p.value desc""",
-		{**values, "solar_flag": SOLAR_DETAILS},
+		    order by p.solar_score desc, p.project_value desc""",
+		values,
 		as_dict=True,
 	)
 
@@ -445,11 +448,13 @@ def relevance_input(campaign, candidate):
 	details = frappe.get_all(
 		"Infomanager Project Detail",
 		filters={"parent": candidate.project},
-		fields=["parentdetailtype_name", "detailtype_name"],
+		fields=["parent_label", "detail_label", "value"],
 		limit=40,
 	)
 	description = "; ".join(
-		f"{d.parentdetailtype_name}: {d.detailtype_name}" for d in details if d.detailtype_name
+		": ".join(part for part in (d.parent_label, d.detail_label, d.value) if part)
+		for d in details
+		if d.detail_label
 	)
 
 	return {

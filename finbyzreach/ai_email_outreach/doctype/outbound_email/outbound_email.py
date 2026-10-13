@@ -231,40 +231,52 @@ class OutboundEmail(Document):
         if not lead_name or not frappe.db.has_table("Infomanager Company"):
             return {}
 
-        company = frappe.db.get_value("Infomanager Company", {"lead": lead_name},
-                                      ["name", "salutation_lettertext"], as_dict=True)
+        company = frappe.db.get_value(
+            "Infomanager Company", {"lead": lead_name},
+            ["name", "salutation_code", "language_code"], as_dict=True,
+        )
         if not company:
             return {}
 
-        # Lead with the project most worth writing about: a solar signal first,
-        # then a granted permit, then the largest build value.
+        # Lead with the project most worth writing about: the solar score first,
+        # then a granted permit, then the largest build value. The score is
+        # computed on import from Baublatt's own detail and role codes.
         row = frappe.db.sql("""
-            select p.name, p.title, p.street, p.postcode, p.town, p.planstage_name,
-                   p.projecttype_name, p.rooftype_name, p.value, pp.roletype_name,
-                   exists(select 1 from `tabInfomanager Project Detail` d
-                          where d.parent = p.name
-                            and d.detailtype_name in ('Solarenergie', 'Flachdach', 'Dachbegrünungen')) as solar
+            select p.name, p.title, p.street, p.postcode, p.town,
+                   p.planning_stage_label, p.planning_stage_code,
+                   p.project_type_label, p.project_value, p.solar_score,
+                   pp.role_label,
+                   (select group_concat(d.detail_label separator ', ')
+                      from `tabInfomanager Project Detail` d
+                     where d.parent = p.name and d.detail_code in ('101', '102', '154')
+                   ) as roof_types
             from `tabInfomanager Project Participant` pp
             join `tabInfomanager Project` p on p.name = pp.parent
             where pp.company = %s
-            order by solar desc, (p.planstage_name = 'Baubewilligung erteilt') desc, p.value desc
+            order by p.solar_score desc,
+                     (p.planning_stage_code = 'CH_PERMIT_GRANTED') desc,
+                     p.project_value desc
             limit 1
         """, company.name, as_dict=True)
 
-        context = {"salutation_lettertext": company.salutation_lettertext or ""}
+        # Xplorer sends no letter text, and no salutation at all on companies,
+        # so the opening is composed from the salutation code and language.
+        from megasol_customisation.megasol_crm.infomanager.salutations import company_opening
+
+        context = {"salutation_lettertext": company_opening(company)}
         if row:
             p = row[0]
             context.update({
-                "role": p.roletype_name or "",
+                "role": p.role_label or "",
                 "project_id": p.name,
                 "project_title": p.title or "",
                 "street": p.street or "",
                 "postcode": p.postcode or "",
                 "town": p.town or "",
-                "planstage_name": p.planstage_name or "",
-                "projecttype_name": p.projecttype_name or "",
-                "rooftype_name": p.rooftype_name or "",
-                "project_value": p.value or 0,
+                "planstage_name": p.planning_stage_label or "",
+                "projecttype_name": p.project_type_label or "",
+                "rooftype_name": p.roof_types or "",
+                "project_value": p.project_value or 0,
             })
         return context
 
