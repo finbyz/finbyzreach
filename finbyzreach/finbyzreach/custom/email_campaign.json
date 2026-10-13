@@ -1187,6 +1187,19 @@
    "translatable": 0,
    "unique": 0,
    "width": null
+  },
+  {
+   "dt": "Email Campaign",
+   "fieldname": "custom_contact",
+   "fieldtype": "Link",
+   "label": "Recipient Contact",
+   "name": "Email Campaign-custom_contact",
+   "options": "Contact",
+   "default": null,
+   "insert_after": "recipient",
+   "read_only": 1,
+   "hidden": 0,
+   "in_list_view": 0
   }
  ],
  "custom_perms": [],
@@ -1468,7 +1481,30 @@
    "property_type": "Check",
    "row_name": null,
    "value": "0"
-  }
+  },
+{
+    "_assign": null,
+    "_comments": null,
+    "_liked_by": null,
+    "_user_tags": null,
+    "creation": "2026-07-21 08:51:29.000000",
+    "default_value": null,
+    "doc_type": "Email Campaign",
+    "docstatus": 0,
+    "doctype_or_field": "DocField",
+    "field_name": "email_campaign_for",
+    "idx": 0,
+    "is_system_generated": 1,
+    "modified": "2026-08-07 11:37:47.000000",
+    "modified_by": "Administrator",
+    "module": "Finbyzreach",
+    "name": "Email Campaign-email_campaign_for-options",
+    "owner": "Administrator",
+    "property": "options",
+    "property_type": "Text",
+    "row_name": null,
+    "value": "\nLead\nContact\nEmail Group\nCustomer"
+   }
  ],
  "sync_on_migrate": 1
 }

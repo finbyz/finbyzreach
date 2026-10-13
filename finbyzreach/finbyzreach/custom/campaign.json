@@ -3959,6 +3959,45 @@
    "translatable": 0,
    "unique": 0,
    "width": null
+  },
+  {
+   "dt": "Campaign",
+   "fieldname": "custom_audience_doctype",
+   "fieldtype": "Select",
+   "label": "Audience Type",
+   "name": "Campaign-custom_audience_doctype",
+   "options": "Lead\nCustomer",
+   "default": "Lead",
+   "insert_after": "custom_audience_section",
+   "read_only": 1,
+   "hidden": 0,
+   "in_list_view": 0
+  },
+  {
+   "dt": "Campaign",
+   "fieldname": "custom_contact_mode",
+   "fieldtype": "Select",
+   "label": "Customer Recipients",
+   "name": "Campaign-custom_contact_mode",
+   "options": "Primary Contact\nAll Linked Contacts",
+   "default": "Primary Contact",
+   "insert_after": "custom_audience_section",
+   "read_only": 1,
+   "hidden": 0,
+   "in_list_view": 0
+  },
+  {
+   "dt": "Campaign",
+   "fieldname": "custom_personalization_doctype",
+   "fieldtype": "Select",
+   "label": "Personalize Using",
+   "name": "Campaign-custom_personalization_doctype",
+   "options": "Lead\nCustomer\nContact",
+   "default": "Lead",
+   "insert_after": "custom_audience_section",
+   "read_only": 1,
+   "hidden": 0,
+   "in_list_view": 0
   }
  ],
  "custom_perms": [],
@@ -4193,7 +4232,7 @@
    "property": "field_order",
    "property_type": "Data",
    "row_name": null,
-   "value": "[\"campaign\", \"campaign_name\", \"naming_series\", \"campaign_schedules_section\", \"campaign_schedules\", \"description_section\", \"description\", \"custom_broadcast_tab\", \"custom_broadcast_status\", \"custom_column_break_0a0ka\", \"custom_queued\", \"custom_content_section\", \"custom_email_template\", \"custom_subject_override\", \"custom_subscription_topic\", \"custom_sender_column\", \"custom_email_account\", \"custom_sender_name\", \"custom_reply_to\", \"custom_audience_section\", \"custom_lead_filters_json\", \"custom_exclude_filters_json\", \"custom_exclude_email_groups_json\", \"custom_eligible_count\", \"custom_excluded_count\", \"custom_column_break_h0b6y\", \"custom_candidate_count\", \"custom_schedule_section\", \"custom_start_on\", \"custom_schedule_timezone\", \"custom_batch_size\", \"custom_repeat_every\", \"custom_repeat_unit\", \"custom_window_start\", \"custom_window_end\", \"custom_schedule_column\", \"custom_send_monday\", \"custom_send_tuesday\", \"custom_send_wednesday\", \"custom_send_thursday\", \"custom_send_friday\", \"custom_send_saturday\", \"custom_send_sunday\", \"custom_restrict_sending_window\", \"custom_tracking_section\", \"custom_enable_open_tracking\", \"custom_enable_click_tracking\", \"custom_utm_source\", \"custom_utm_medium\", \"custom_utm_campaign\", \"custom_queued_count\", \"custom_sent_count\", \"custom_failed_count\", \"custom_tracking_column\", \"custom_clicked_count\", \"custom_opened_count\", \"custom_replied_count\", \"custom_unsubscribed_count\", \"custom_batch_count\", \"custom_first_scheduled_at\", \"custom_last_scheduled_at\", \"custom_template_mode\", \"custom_template_reference_doctype\", \"custom_snapshot_subject\", \"custom_snapshot_preheader\", \"custom_snapshot_html\", \"custom_snapshot_hash\"]"
+   "value": "[\"campaign\", \"campaign_name\", \"naming_series\", \"campaign_schedules_section\", \"campaign_schedules\", \"description_section\", \"description\", \"custom_broadcast_tab\", \"custom_broadcast_status\", \"custom_column_break_0a0ka\", \"custom_queued\", \"custom_content_section\", \"custom_email_template\", \"custom_subject_override\", \"custom_subscription_topic\", \"custom_sender_column\", \"custom_email_account\", \"custom_sender_name\", \"custom_reply_to\", \"custom_audience_section\", \"custom_audience_doctype\", \"custom_contact_mode\", \"custom_personalization_doctype\", \"custom_lead_filters_json\", \"custom_exclude_filters_json\", \"custom_exclude_email_groups_json\", \"custom_eligible_count\", \"custom_excluded_count\", \"custom_column_break_h0b6y\", \"custom_candidate_count\", \"custom_schedule_section\", \"custom_start_on\", \"custom_schedule_timezone\", \"custom_batch_size\", \"custom_repeat_every\", \"custom_repeat_unit\", \"custom_window_start\", \"custom_window_end\", \"custom_schedule_column\", \"custom_send_monday\", \"custom_send_tuesday\", \"custom_send_wednesday\", \"custom_send_thursday\", \"custom_send_friday\", \"custom_send_saturday\", \"custom_send_sunday\", \"custom_restrict_sending_window\", \"custom_tracking_section\", \"custom_enable_open_tracking\", \"custom_enable_click_tracking\", \"custom_utm_source\", \"custom_utm_medium\", \"custom_utm_campaign\", \"custom_queued_count\", \"custom_sent_count\", \"custom_failed_count\", \"custom_tracking_column\", \"custom_clicked_count\", \"custom_opened_count\", \"custom_replied_count\", \"custom_unsubscribed_count\", \"custom_batch_count\", \"custom_first_scheduled_at\", \"custom_last_scheduled_at\", \"custom_template_mode\", \"custom_template_reference_doctype\", \"custom_snapshot_subject\", \"custom_snapshot_preheader\", \"custom_snapshot_html\", \"custom_snapshot_hash\"]"
   },
   {
    "_assign": null,
