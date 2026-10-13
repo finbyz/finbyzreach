@@ -55,6 +55,7 @@ def get_context(context):
 	html = ""
 	mode = "Visual"
 	doc_context = None
+	extra_context = {}
 
 	sender_name = ""
 	sender_email = ""
@@ -89,9 +90,13 @@ def get_context(context):
 		if campaign.get("custom_email_account"):
 			sender_email = frappe.db.get_value("Email Account", campaign.custom_email_account, "email_id") or ""
 
-		if frappe.db.exists("Lead", recipient.recipient):
-			doc_context = frappe.get_doc("Lead", recipient.recipient)
-			recipient_email = doc_context.get("email_id") or ""
+		audience_doctype = recipient.email_campaign_for or "Lead"
+		if frappe.db.exists(audience_doctype, recipient.recipient):
+			party = frappe.get_doc(audience_doctype, recipient.recipient)
+			contact = frappe.get_doc("Contact", recipient.custom_contact) if audience_doctype == "Customer" and recipient.get("custom_contact") and frappe.db.exists("Contact", recipient.custom_contact) else None
+			doc_context = contact if campaign.get("custom_personalization_doctype") == "Contact" else party
+			extra_context = {"customer": party if audience_doctype == "Customer" else None, "contact": contact}
+			recipient_email = recipient.custom_recipient_email or ""
 
 	elif campaign_id:
 		# Campaign Test / Preview
@@ -124,9 +129,26 @@ def get_context(context):
 			preheader = snapshot.get("preheader") or ""
 
 		lead_name = frappe.form_dict.get("lead")
+		ref_doctype = frappe.form_dict.get("reference_doctype")
+		ref_name = frappe.form_dict.get("reference_name")
 		if lead_name and frappe.db.exists("Lead", lead_name):
 			doc_context = frappe.get_doc("Lead", lead_name)
 			recipient_email = doc_context.get("email_id") or ""
+		elif ref_doctype in ("Customer", "Contact") and ref_name and frappe.db.exists(ref_doctype, ref_name):
+			doc_context = frappe.get_doc(ref_doctype, ref_name)
+			recipient_email = doc_context.get("email_id") or ""
+			if (campaign.get("custom_audience_doctype") or "Lead") == "Customer":
+				customer_name = frappe.form_dict.get("customer")
+				if customer_name and frappe.db.exists("Customer", customer_name):
+					customer = frappe.get_doc("Customer", customer_name)
+					from finbyzreach.customer_campaign import contact_for_customer
+					if ref_doctype == "Customer" and customer.name != ref_name:
+						context.error_message = _("Invalid Customer preview reference")
+						return context
+					if ref_doctype == "Contact" and not contact_for_customer(customer.name, ref_name):
+						context.error_message = _("Contact is not linked to Customer")
+						return context
+					extra_context = {"customer": customer, "contact": doc_context if ref_doctype == "Contact" else None}
 
 	elif template_id:
 		# Builder / Template Test
@@ -162,10 +184,10 @@ def get_context(context):
 
 	# render snapshot without email_preview_url to avoid circular self-reference
 	try:
-		rendered = render_campaign_snapshot(subject, html, doc_context)
+		rendered = render_campaign_snapshot(subject, html, doc_context, extra_context=extra_context)
 		if preheader:
 			try:
-				preheader = render_campaign_snapshot(preheader, preheader, doc_context).subject
+				preheader = render_campaign_snapshot(preheader, preheader, doc_context, extra_context=extra_context).subject
 			except Exception:
 				pass
 	except Exception:
