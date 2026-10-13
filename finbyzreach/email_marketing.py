@@ -173,9 +173,10 @@ class EmailCampaignBroadcastMixin:
 				),
 				frappe.PermissionError,
 			)
-		self.email_campaign_for = "Lead"
+		audience_doctype = frappe.db.get_value("Campaign", self.campaign_name, "custom_audience_doctype") or "Lead"
+		self.email_campaign_for = audience_doctype
 		if not self.campaign_name or not self.recipient:
-			frappe.throw(_("Campaign and Lead are required for a broadcast recipient"))
+			frappe.throw(_("Campaign and recipient are required for a broadcast recipient"))
 		delivery_status = self.custom_delivery_status or "Planned"
 		scheduled_at = self.custom_scheduled_at or now_datetime()
 		self.start_date = getdate(scheduled_at)
@@ -186,9 +187,9 @@ class EmailCampaignBroadcastMixin:
 			else "Scheduled"
 		)
 		if delivery_status not in ("Skipped", "Cancelled"):
-			email = self.custom_recipient_email or frappe.db.get_value("Lead", self.recipient, "email_id")
+			email = self.custom_recipient_email or (frappe.db.get_value("Lead", self.recipient, "email_id") if audience_doctype == "Lead" else "")
 			if not _normalized_email(email):
-				frappe.throw(_("Lead {0} has no valid email address").format(self.recipient))
+				frappe.throw(_("Recipient {0} has no valid email address").format(self.recipient))
 
 	def update_status(self):
 		if not self.campaign_name or not _is_email_broadcast(self.campaign_name):
@@ -287,6 +288,16 @@ def _reset_duplicated_broadcast_state(doc):
 def validate_campaign(doc, require_ready=False, skip_queued_check=False):
 	apply_campaign_defaults(doc)
 	_reset_duplicated_broadcast_state(doc)
+	audience_doctype = doc.get("custom_audience_doctype") or "Lead"
+	if audience_doctype not in ("Lead", "Customer"):
+		frappe.throw(_("Audience type must be Lead or Customer"))
+	if audience_doctype == "Customer":
+		if doc.get("custom_contact_mode") not in ("Primary Contact", "All Linked Contacts"):
+			frappe.throw(_("Choose which Customer Contacts should receive the campaign"))
+		if doc.get("custom_personalization_doctype") not in ("Customer", "Contact"):
+			frappe.throw(_("Customer campaigns must personalize with Customer or Contact"))
+	elif doc.get("custom_personalization_doctype") not in (None, "", "Lead"):
+		frappe.throw(_("Lead campaigns must use Lead personalization"))
 	_system_zone()
 	requested_status = doc.custom_broadcast_status or "Draft"
 	if doc.is_new() and requested_status != "Draft":
@@ -359,26 +370,29 @@ def validate_campaign(doc, require_ready=False, skip_queued_check=False):
 		reference_doctype = frappe.db.get_value(
 			"Email Template", doc.custom_email_template, "custom_reference_doctype"
 		)
-		if reference_doctype and reference_doctype != "Lead":
+		personalization_doctype = doc.get("custom_personalization_doctype") or (doc.get("custom_audience_doctype") or "Lead")
+		if reference_doctype and reference_doctype != personalization_doctype:
 			frappe.throw(
-				_("The selected template is configured for {0}, not Lead").format(reference_doctype)
+				_("The selected template is configured for {0}, not {1}").format(reference_doctype, personalization_doctype)
 			)
 		doc.custom_template_reference_doctype = reference_doctype
 
 
-def validate_lead_filters(filters_json, require_filters=False):
+def validate_lead_filters(filters_json, require_filters=False, audience_doctype="Lead"):
+	if audience_doctype not in ("Lead", "Customer"):
+		frappe.throw(_("Unsupported campaign audience"))
 	try:
 		filters = frappe.parse_json(filters_json or "[]")
 	except (TypeError, ValueError):
-		frappe.throw(_("Lead Filters must contain valid JSON"))
+		frappe.throw(_("Audience filters must contain valid JSON"))
 	if not isinstance(filters, list):
-		frappe.throw(_("Lead Filters must be a list"))
+		frappe.throw(_("Audience filters must be a list"))
 	if len(filters) > MAX_AUDIENCE_FILTERS:
 		frappe.throw(_("Use no more than {0} audience filters").format(MAX_AUDIENCE_FILTERS))
 	if require_filters and not filters:
-		frappe.throw(_("A dynamic segment needs at least one Lead filter"))
+		frappe.throw(_("A dynamic segment needs at least one {0} filter").format(audience_doctype))
 
-	meta = frappe.get_meta("Lead")
+	meta = frappe.get_meta(audience_doctype)
 	standard_fields = {
 		"name",
 		"owner",
@@ -389,7 +403,7 @@ def validate_lead_filters(filters_json, require_filters=False):
 		"idx",
 	}
 	allowed_fields_by_doctype = {
-		"Lead": standard_fields
+		audience_doctype: standard_fields
 		| {field.fieldname for field in meta.fields if field.fieldname}
 	}
 	for field in meta.fields:
@@ -411,7 +425,7 @@ def validate_lead_filters(filters_json, require_filters=False):
 			frappe.throw(_("Filter DocType, field and operator must be text values"))
 		allowed_fields = allowed_fields_by_doctype.get(doctype)
 		if allowed_fields is None:
-			frappe.throw(_("Audience filters may target only Lead or its child-table fields"))
+			frappe.throw(_("Audience filters may target only {0} or its child-table fields").format(audience_doctype))
 		if fieldname not in allowed_fields:
 			frappe.throw(
 				_("Field {0}.{1} is not available for audience filtering").format(
@@ -424,17 +438,19 @@ def validate_lead_filters(filters_json, require_filters=False):
 	return json.dumps(normalized, separators=(",", ":"), ensure_ascii=False)
 
 
-def validate_lead_filter_groups(filters_json, require_filters=False):
-	"""Validate OR groups of regular Lead filters.
+def validate_lead_filter_groups(filters_json, require_filters=False, audience_doctype="Lead"):
+	"""Validate OR groups of audience filters.
 
 	A legacy flat filter list remains valid and is treated as one AND group.
 	"""
+	if audience_doctype not in ("Lead", "Customer"):
+		frappe.throw(_("Unsupported campaign audience"))
 	try:
 		groups = frappe.parse_json(filters_json or "[]")
 	except (TypeError, ValueError):
-		frappe.throw(_("Lead Filter Groups must contain valid JSON"))
+		frappe.throw(_("Audience filter groups must contain valid JSON"))
 	if not isinstance(groups, list):
-		frappe.throw(_("Lead Filter Groups must be a list"))
+		frappe.throw(_("Audience filter groups must be a list"))
 	if groups and isinstance(groups[0], (list, tuple)) and len(groups[0]) >= 4 and isinstance(groups[0][0], str):
 		groups = [groups]
 	if len(groups) > MAX_AUDIENCE_FILTER_GROUPS:
@@ -447,13 +463,13 @@ def validate_lead_filter_groups(filters_json, require_filters=False):
 			frappe.throw(_("Every audience filter group must be a list"))
 		if not group:
 			continue
-		filters = frappe.parse_json(validate_lead_filters(json.dumps(group)))
+		filters = frappe.parse_json(validate_lead_filters(json.dumps(group), audience_doctype=audience_doctype))
 		filter_count += len(filters)
 		if filter_count > MAX_AUDIENCE_FILTERS:
 			frappe.throw(_("Use no more than {0} audience filters").format(MAX_AUDIENCE_FILTERS))
 		normalized.append(filters)
 	if require_filters and not normalized:
-		frappe.throw(_("A dynamic segment needs at least one Lead filter group"))
+		frappe.throw(_("A dynamic segment needs at least one {0} filter group").format(audience_doctype))
 	return json.dumps(normalized, separators=(",", ":"), ensure_ascii=False)
 
 
@@ -493,13 +509,13 @@ def validate_excluded_email_groups(groups_json):
 	return normalized
 
 
-def _lead_names_from_filters(filters_json, require_filters=False):
-	normalized = validate_lead_filters(filters_json, require_filters=require_filters)
+def _lead_names_from_filters(filters_json, require_filters=False, audience_doctype="Lead"):
+	normalized = validate_lead_filters(filters_json, require_filters=require_filters, audience_doctype=audience_doctype)
 	filters = frappe.parse_json(normalized)
 	if not filters:
 		return []
 	names = frappe.get_list(
-		"Lead",
+		audience_doctype,
 		filters=filters,
 		pluck="name",
 		distinct=True,
@@ -509,18 +525,18 @@ def _lead_names_from_filters(filters_json, require_filters=False):
 	return names
 
 
-def _lead_names_from_filter_groups(filters_json, require_filters=False):
-	groups = frappe.parse_json(validate_lead_filter_groups(filters_json, require_filters=require_filters))
+def _lead_names_from_filter_groups(filters_json, require_filters=False, audience_doctype="Lead"):
+	groups = frappe.parse_json(validate_lead_filter_groups(filters_json, require_filters=require_filters, audience_doctype=audience_doctype))
 	names = set()
 	for group in groups:
 		if len(group) == 1 and group[0][1] == "name" and group[0][2] == "in" and isinstance(group[0][3], list) and len(group[0][3]) > 0 and group[0][3][0] == "#STATIC_SEGMENT#":
 			segment_name = group[0][3][1] if len(group[0][3]) > 1 else ""
 			if segment_name:
 				segment = frappe.get_doc("Reach Segment", segment_name)
-				if segment.segment_type == "Static":
+				if segment.segment_type == "Static" and (segment.get("audience_doctype") or "Lead") == audience_doctype:
 					names.update(frappe.parse_json(segment.static_leads_json or "[]"))
 		else:
-			names.update(_lead_names_from_filters(json.dumps(group)))
+			names.update(_lead_names_from_filters(json.dumps(group), audience_doctype=audience_doctype))
 	return sorted(names)
 
 
@@ -589,13 +605,13 @@ def _globally_unsubscribed_emails(emails):
 	return result
 
 
-def _reference_unsubscribed_pairs(lead_names):
+def _reference_unsubscribed_pairs(lead_names, audience_doctype="Lead"):
 	result = set()
 	for names in _chunks(lead_names):
 		for row in frappe.get_all(
 			"Email Unsubscribe",
 			filters={
-				"reference_doctype": "Lead",
+				"reference_doctype": audience_doctype,
 				"reference_name": ["in", names],
 			},
 			fields=["reference_name", "email"],
@@ -627,7 +643,7 @@ def _topic_unsubscribed_leads(lead_names, subscription_topic):
 	return result
 
 
-def test_recipient_exclusion(email, subscription_topic=None):
+def test_recipient_exclusion(email, subscription_topic=None, audience_doctype="Lead"):
 	"""Return a suppression reason when a campaign test address is opted out."""
 	normalized_email = _normalized_email(email)
 	if not normalized_email:
@@ -637,6 +653,11 @@ def test_recipient_exclusion(email, subscription_topic=None):
 	if normalized_email in _globally_unsubscribed_emails([normalized_email]):
 		return _("Globally unsubscribed")
 
+	if audience_doctype == "Customer":
+		contact_names = frappe.get_all("Contact Email", filters={"email_id": normalized_email}, pluck="parent", limit_page_length=0)
+		if contact_names and frappe.db.exists("Contact", {"name": ["in", list(set(contact_names))], "unsubscribed": 1}):
+			return _("Contact unsubscribed")
+		return None
 	leads = frappe.get_all(
 		"Lead",
 		filters={"email_id": normalized_email},
@@ -670,6 +691,9 @@ def test_recipient_exclusion(email, subscription_topic=None):
 def resolve_campaign_audience(campaign):
 	if isinstance(campaign, str):
 		campaign = frappe.get_doc("Campaign", campaign)
+	if campaign.get("custom_audience_doctype") == "Customer":
+		from finbyzreach.customer_campaign import resolve_customer_audience
+		return resolve_customer_audience(campaign)
 	include_leads = set(campaign.get("studio_include_leads") or [])
 	if not include_leads:
 		include_leads.update(
@@ -917,14 +941,16 @@ def _snapshot_values(snapshot):
 
 def _recipient_values(campaign, row, batch_number=0, scheduled_at=None):
 	delivery_status = "Planned" if row.eligible else "Skipped"
+	audience_doctype = campaign.get("custom_audience_doctype") or "Lead"
 	return {
 		"doctype": "Email Campaign",
 		"campaign_name": campaign.name,
 		"status": "Scheduled" if row.eligible else "Completed",
 		"start_date": getdate(scheduled_at or campaign.custom_start_on),
 		"end_date": getdate(scheduled_at or campaign.custom_start_on),
-		"email_campaign_for": "Lead",
+		"email_campaign_for": audience_doctype,
 		"recipient": row.lead,
+		"custom_contact": row.get("contact"),
 		"custom_delivery_status": delivery_status,
 		"custom_scheduled_at": scheduled_at,
 		"custom_batch_number": batch_number,
@@ -1008,8 +1034,9 @@ def validate_schedule_preflight(campaign, eligible_count=None):
 			_("This campaign already has delivery history and cannot be scheduled again. Retry failed recipients or create a new campaign.")
 		)
 	validate_campaign(campaign, require_ready=True, skip_queued_check=True)
-	validate_lead_filter_groups(campaign.custom_lead_filters_json, require_filters=True)
-	validate_lead_filter_groups(campaign.custom_exclude_filters_json)
+	audience_doctype = campaign.get("custom_audience_doctype") or "Lead"
+	validate_lead_filter_groups(campaign.custom_lead_filters_json, require_filters=True, audience_doctype=audience_doctype)
+	validate_lead_filter_groups(campaign.custom_exclude_filters_json, audience_doctype=audience_doctype)
 	validate_excluded_email_groups(campaign.custom_exclude_email_groups_json)
 	calculate_batch_slots(campaign, 1)
 	if eligible_count is not None and cint(eligible_count) <= 0:
@@ -1018,8 +1045,9 @@ def validate_schedule_preflight(campaign, eligible_count=None):
 		campaign.custom_email_template,
 		campaign.custom_subject_override,
 	)
-	if snapshot.reference_doctype and snapshot.reference_doctype != "Lead":
-		frappe.throw(_("Campaign templates must use Lead personalization"))
+	personalization_doctype = campaign.get("custom_personalization_doctype") or audience_doctype
+	if snapshot.reference_doctype and snapshot.reference_doctype != personalization_doctype:
+		frappe.throw(_("Campaign templates must use {0} personalization").format(personalization_doctype))
 	return snapshot
 
 
@@ -1266,7 +1294,7 @@ def _log_event(
 			"event_time": now_datetime(),
 			"marketing_email_campaign": recipient.campaign_name,
 			"marketing_campaign_recipient": recipient.name,
-			"lead": recipient.recipient,
+			"lead": recipient.recipient if recipient.email_campaign_for == "Lead" else None,
 			"communication": communication,
 			"url": url,
 			"metadata_json": json.dumps(
@@ -1289,6 +1317,9 @@ def _current_recipient_exclusion(recipient, campaign):
 		"Subscription Topic", campaign.custom_content_topic, "disabled"
 	) != 0:
 		return _("Content topic unavailable or disabled")
+	if recipient.email_campaign_for == "Customer":
+		from finbyzreach.customer_campaign import current_customer_exclusion
+		return current_customer_exclusion(recipient, campaign)
 	lead = frappe.db.get_value(
 		"Lead",
 		recipient.recipient,
@@ -1331,7 +1362,11 @@ def _dispatch_recipient(recipient, campaign):
 			},
 		)
 		return
-	lead = frappe.get_doc("Lead", recipient.recipient)
+	audience_doctype = recipient.email_campaign_for or "Lead"
+	party = frappe.get_doc(audience_doctype, recipient.recipient)
+	contact = frappe.get_doc("Contact", recipient.custom_contact) if audience_doctype == "Customer" else None
+	personalization_doctype = campaign.get("custom_personalization_doctype") or audience_doctype
+	template_doc = contact if personalization_doctype == "Contact" else party
 	preview_url = get_url(
 		f"/view_email?{get_signed_params({'campaign_recipient': recipient.name})}"
 	)
@@ -1339,8 +1374,8 @@ def _dispatch_recipient(recipient, campaign):
 	rendered = render_campaign_snapshot(
 		campaign.custom_snapshot_subject,
 		campaign.custom_snapshot_html,
-		lead,
-		extra_context={"email_preview_url": preview_url, **compliance_urls},
+		template_doc,
+		extra_context={"email_preview_url": preview_url, "customer": party if audience_doctype == "Customer" else None, "contact": contact, **compliance_urls},
 	)
 	present_links = {str(link.get("href") or "") for link in BeautifulSoup(rendered.html, "html.parser").find_all("a")}
 	html = decorate_campaign_links(rendered.html, campaign, recipient.name)
@@ -1370,8 +1405,8 @@ def _dispatch_recipient(recipient, campaign):
 		communication = frappe.get_doc("Communication", recipient.custom_communication)
 	else:
 		comm = make(
-			doctype="Lead",
-			name=lead.name,
+			doctype=audience_doctype,
+			name=party.name,
 			subject=rendered.subject,
 			content=html,
 			sender=_sender(campaign),
@@ -1389,6 +1424,8 @@ def _dispatch_recipient(recipient, campaign):
 			"timeline_links",
 			{"link_doctype": "Campaign", "link_name": campaign.name},
 		)
+		if contact:
+			communication.append("timeline_links", {"link_doctype": "Contact", "link_name": contact.name})
 		communication.save(ignore_permissions=True)
 	queue = frappe.sendmail(
 		recipients=[recipient.custom_recipient_email],
@@ -1396,8 +1433,8 @@ def _dispatch_recipient(recipient, campaign):
 		reply_to=campaign.custom_reply_to or None,
 		subject=rendered.subject,
 		content=delivery_html,
-		reference_doctype="Lead",
-		reference_name=lead.name,
+		reference_doctype=audience_doctype,
+		reference_name=party.name,
 		communication=communication.name,
 		send_after=recipient.custom_scheduled_at,
 		add_unsubscribe_link=0,
@@ -1859,6 +1896,24 @@ def refresh_campaign_metrics(campaign_name):
 
 @frappe.whitelist(methods=["POST"])
 def send_campaign_test(campaign_name, recipient, sample_lead):
+	if frappe.db.get_value("Campaign", campaign_name, "custom_audience_doctype") == "Customer":
+		from finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio import send_test
+		campaign = frappe.get_doc("Campaign", campaign_name)
+		campaign.check_permission("email")
+		return send_test({
+			"source_campaign": campaign.name,
+			"audience_doctype": "Customer",
+			"contact_mode": campaign.custom_contact_mode,
+			"personalization_doctype": campaign.custom_personalization_doctype,
+			"email_template": campaign.custom_email_template,
+			"email_account": campaign.custom_email_account,
+			"campaign_title": campaign.campaign_name,
+			"subscription_topic": campaign.custom_subscription_topic,
+			"content_topic": campaign.get("custom_content_topic"),
+			"subject_override": campaign.custom_subject_override,
+			"sender_name": campaign.custom_sender_name,
+			"reply_to": campaign.custom_reply_to,
+		}, recipient, sample_lead)
 	recipient = str(recipient or "").strip()
 	validate_email_address(recipient, throw=True)
 	if any(character in recipient for character in (",", ";", "\n", "\r")):
