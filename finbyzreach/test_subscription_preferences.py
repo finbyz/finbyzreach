@@ -76,6 +76,35 @@ class TestSubscriptionPreferences(unittest.TestCase):
 		request.assert_not_called()
 		self.assertEqual(result, {"News": "Unsubscribed"})
 
+	@patch.object(preferences, "now_datetime", return_value=datetime(2026, 10, 13, 12, 0))
+	@patch.object(preferences, "_topic")
+	@patch.object(preferences, "statuses", return_value={"News": "Pending"})
+	@patch.object(preferences.frappe, "get_all", return_value=["News"])
+	@patch.object(preferences.frappe, "db", new=SimpleNamespace(exists=lambda *args: True))
+	def test_deselection_invalidates_original_confirmation_token(self, get_all, statuses, topic, now):
+		import hashlib
+
+		token = "old-confirmation-token"
+		preference = SimpleNamespace(
+			status="Pending", confirmation_hash=hashlib.sha256(token.encode()).hexdigest(),
+			confirmation_expires_on=now.return_value + timedelta(days=1),
+			email="person@example.com", subscription_topic="News", consent_source="Preference center",
+			is_new=lambda: False, save=MagicMock(),
+		)
+		event = MagicMock()
+		with (
+			patch.object(preferences, "preference_name", return_value="pref-1"),
+			patch.object(preferences.frappe, "get_doc", side_effect=lambda *args, **kwargs: preference if args[0] == preferences.PREFERENCE_DOCTYPE else event),
+			patch.object(preferences.frappe, "throw", side_effect=PermissionError("revoked")),
+		):
+			preferences.save_selection("person@example.com", [], ["News"])
+			self.assertEqual(preference.status, "Unsubscribed")
+			self.assertIsNone(preference.confirmation_hash)
+			self.assertIsNone(preference.confirmation_expires_on)
+			with self.assertRaises(PermissionError):
+				preferences.confirm("pref-1", token)
+		preference.save.assert_called_once_with(ignore_permissions=True)
+
 	@patch.object(preferences, "_ensure_public_subscriber_lead")
 	@patch.object(preferences, "_save")
 	@patch.object(preferences, "now_datetime", return_value=datetime(2026, 10, 12, 12, 0))
