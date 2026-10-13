@@ -48,12 +48,12 @@ class TestEmailCampaignStudio(UnitTestCase):
 		)
 
 	@patch(
-		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio.nowdate",
-		return_value="2026-07-22",
-	)
-	@patch(
 		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio.now_datetime",
 		return_value=datetime(2026, 7, 22, 10, 0, 0),
+	)
+	@patch(
+		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio._system_to_studio_datetime",
+		return_value=datetime(2026, 7, 22, 10, 5, 0),
 	)
 	@patch(
 		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio._campaign_for_studio",
@@ -67,7 +67,7 @@ class TestEmailCampaignStudio(UnitTestCase):
 		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio._check_permission"
 	)
 	def test_bootstrap_has_no_application_delivery_limits(
-		self, _permission, _get_list, _campaign, _now, _today
+		self, _permission, _get_list, _campaign, _std, _now
 	):
 		result = get_bootstrap()
 
@@ -157,10 +157,13 @@ class TestEmailCampaignStudio(UnitTestCase):
 		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio._frozen_recipient_preview_rows"
 	)
 	@patch(
-		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio.frappe.get_all"
+		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio._query_count"
+	)
+	@patch(
+		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio._frozen_audience_query"
 	)
 	def test_frozen_preview_reads_scheduled_recipients_not_live_filters(
-		self, get_all, preview_rows
+		self, frozen_audience_query, query_count, preview_rows
 	):
 		campaign = frappe._dict(
 			name="Frozen Campaign",
@@ -170,15 +173,38 @@ class TestEmailCampaignStudio(UnitTestCase):
 			custom_excluded_count=2,
 			custom_subscription_topic="Product Updates",
 		)
-		get_all.side_effect = [
-			[
-				frappe._dict(recipient="LEAD-3", custom_recipient_email="three@example.com"),
-				frappe._dict(recipient="LEAD-4", custom_recipient_email="four@example.com"),
-			],
-			[frappe._dict(custom_excluded_reason="Lead unsubscribed", count=2)],
-			[],
+
+		recipient = MagicMock()
+		recipient.custom_batch_number = 1
+		base_query = MagicMock()
+		eligible_query = MagicMock()
+		excluded_query = MagicMock()
+		reason_query = MagicMock()
+		topic_query = MagicMock()
+
+		frozen_audience_query.return_value = (base_query, recipient, "")
+		# base_query.where() is called for eligible (batch > 0), excluded (batch == 0),
+		# then topic opt-outs (custom_excluded_reason == topic reason).
+		base_query.where.side_effect = [eligible_query, excluded_query, topic_query]
+		excluded_query.where.return_value = reason_query
+		query_count.side_effect = [10, 2, 1]
+
+		for query in (eligible_query, excluded_query, reason_query, topic_query):
+			query.select.return_value = query
+			query.orderby.return_value = query
+			query.offset.return_value = query
+			query.limit.return_value = query
+			query.groupby.return_value = query
+
+		eligible_query.run.return_value = [
+			frappe._dict(recipient="LEAD-3", custom_contact=None, custom_recipient_email="three@example.com"),
+			frappe._dict(recipient="LEAD-4", custom_contact=None, custom_recipient_email="four@example.com"),
 		]
-		preview_rows.side_effect = lambda rows, _limit: [row.recipient for row in rows]
+		excluded_query.run.return_value = []
+		reason_query.run.return_value = [frappe._dict(custom_excluded_reason="Lead unsubscribed", count=2)]
+		topic_query.run.return_value = []
+
+		preview_rows.side_effect = lambda rows, _limit, _audience=None: [row.recipient for row in rows]
 
 		result = _frozen_preview_response(campaign, eligible_page=2, eligible_page_length=2)
 
@@ -186,11 +212,9 @@ class TestEmailCampaignStudio(UnitTestCase):
 		self.assertEqual(result["eligible_count"], 10)
 		self.assertEqual(result["excluded_reasons"], {"Lead unsubscribed": 2})
 		self.assertEqual(result["frozen"], 1)
-		self.assertEqual(get_all.call_args_list[0].kwargs["start"], 2)
-		self.assertEqual(
-			get_all.call_args_list[0].kwargs["filters"]["custom_batch_number"],
-			[">", 0],
-		)
+		self.assertEqual(len(base_query.where.call_args_list), 3)
+		self.assertEqual(query_count.call_args_list[0].args[0], eligible_query)
+		self.assertEqual(query_count.call_args_list[1].args[0], excluded_query)
 
 	@patch(
 		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio.email_marketing.test_recipient_exclusion",
@@ -226,7 +250,45 @@ class TestEmailCampaignStudio(UnitTestCase):
 			)
 
 		recipient_exclusion.assert_called_once_with(
-			"optout@example.com", "Frozen Topic"
+			"optout@example.com", "Frozen Topic", "Lead"
+		)
+
+	@patch(
+		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio.email_marketing.test_recipient_exclusion",
+		return_value="Contact unsubscribed",
+	)
+	@patch(
+		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio.frappe.get_doc"
+	)
+	@patch(
+		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio._check_permission"
+	)
+	def test_frozen_customer_test_uses_saved_audience_before_suppression(
+		self, permission, get_doc, recipient_exclusion
+	):
+		campaign = frappe._dict(
+			name="Frozen Customer Campaign",
+			custom_broadcast_status="Scheduled",
+			custom_audience_doctype="Customer",
+			custom_subscription_topic="Updates",
+		)
+		campaign.check_permission = MagicMock()
+		get_doc.return_value = campaign
+
+		with self.assertRaises(frappe.ValidationError):
+			send_test(
+				payload=frappe.as_json({
+					"source_campaign": campaign.name,
+					"audience_doctype": "Lead",
+					"subscription_topic": "Manipulated Topic",
+				}),
+				recipient="optout@example.com",
+				sample_lead="CUST-1",
+			)
+
+		permission.assert_called_once_with("email", "Customer")
+		recipient_exclusion.assert_called_once_with(
+			"optout@example.com", "Updates", "Customer"
 		)
 
 	@patch(
@@ -247,10 +309,17 @@ class TestEmailCampaignStudio(UnitTestCase):
 			)
 
 	@patch(
+		"finbyzreach.email_marketing.frappe.get_meta"
+	)
+	@patch(
 		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio.frappe.get_list"
 	)
-	def test_audience_query_is_distinct_for_child_table_joins(self, get_list):
+	def test_audience_query_is_distinct_for_child_table_joins(self, get_list, get_meta):
 		get_list.return_value = ["LEAD-1"]
+		meta = MagicMock()
+		meta.istable = False
+		meta.fields = [MagicMock(fieldname="email_id", fieldtype="Data")]
+		get_meta.return_value = meta
 
 		self.assertEqual(
 			_lead_names('[ ["Lead", "email_id", "is", "set"] ]'),
@@ -542,7 +611,7 @@ class TestEmailCampaignStudio(UnitTestCase):
 		self.assertTrue(result["created"])
 		self.assertEqual(result["route"], ["Form", "Campaign", "Studio Launch"])
 		self.assertEqual(get_doc.call_count, 1)
-		schedule_campaign.assert_called_once_with(campaign.name)
+		schedule_campaign.assert_called_once_with(campaign_name=campaign.name)
 
 	@patch(
 		"finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio._ensure_utm_campaign"

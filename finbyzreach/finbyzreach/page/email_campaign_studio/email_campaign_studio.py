@@ -37,9 +37,13 @@ MAX_AUDIENCE_HEALTH_PAGE_LENGTH = 1000
 EDITABLE_BROADCAST_STATUSES = {"", "Draft"}
 
 
-def _check_permission(ptype="create"):
+def _check_permission(ptype="create", audience_doctype="Lead"):
 	frappe.has_permission("Campaign", ptype=ptype, throw=True)
-	frappe.has_permission("Lead", ptype="read", throw=True)
+	if audience_doctype not in ("Lead", "Customer"):
+		frappe.throw(_("Unsupported campaign audience"))
+	frappe.has_permission(audience_doctype, ptype="read", throw=True)
+	if audience_doctype == "Customer":
+		frappe.has_permission("Contact", ptype="read", throw=True)
 
 
 def _time_string(value):
@@ -107,13 +111,13 @@ def _parse_json_list(value, label):
 	return result
 
 
-def _lead_names(filters_json):
-	return email_marketing._lead_names_from_filter_groups(filters_json)
+def _lead_names(filters_json, audience_doctype="Lead"):
+	return email_marketing._lead_names_from_filter_groups(filters_json, audience_doctype=audience_doctype)
 
 
 def _audience_context(
 	filters, exclude_filters=None, exclude_email_groups=None, require_filters=True,
-	segment_name=None,
+	segment_name=None, audience_doctype="Lead", contact_mode="Primary Contact",
 ):
 	def filter_payload(value):
 		return value if isinstance(value, str) else json.dumps(value or [])
@@ -123,18 +127,20 @@ def _audience_context(
 	if segment_name:
 		segment = frappe.get_doc("Reach Segment", segment_name)
 		segment.check_permission("read")
+		if (segment.get("audience_doctype") or "Lead") != audience_doctype:
+			frappe.throw(_("Selected segment targets a different audience type"))
 		if segment.segment_type == "Static":
 			static_leads = frappe.parse_json(segment.static_leads_json or "[]")
 		else:
 			filters = get_segment_filters(segment_name)["filters"]
 	include_filters_json = email_marketing.validate_lead_filter_groups(
-		filter_payload(filters), require_filters=require_filters
+		filter_payload(filters), require_filters=require_filters, audience_doctype=audience_doctype
 	)
 	if exclude_filters:
 		exclude_filters_json = email_marketing.validate_lead_filter_groups(
-			filter_payload(exclude_filters)
+			filter_payload(exclude_filters), audience_doctype=audience_doctype
 		)
-		exclude_leads = email_marketing._lead_names_from_filter_groups(exclude_filters_json)
+		exclude_leads = _lead_names(exclude_filters_json, audience_doctype)
 	else:
 		exclude_filters_json = "[]"
 		exclude_leads = []
@@ -145,8 +151,10 @@ def _audience_context(
 		include_filters_json=include_filters_json,
 		exclude_filters_json=exclude_filters_json,
 		email_groups=email_groups,
-		include_leads=static_leads if static_leads is not None else _lead_names(include_filters_json),
-		exclude_leads=_lead_names(exclude_filters_json),
+		include_leads=static_leads if static_leads is not None else _lead_names(include_filters_json, audience_doctype),
+		exclude_leads=_lead_names(exclude_filters_json, audience_doctype),
+		audience_doctype=audience_doctype,
+		contact_mode=contact_mode,
 		segment_name=segment_name,
 	)
 
@@ -162,6 +170,8 @@ def _resolved_studio_audience(context, subscription_topic=None, content_topic=No
 		custom_exclude_email_groups_json=frappe.as_json(context.email_groups),
 		custom_subscription_topic=subscription_topic,
 		custom_content_topic=content_topic,
+		custom_audience_doctype=context.audience_doctype,
+		custom_contact_mode=context.get("contact_mode") or "Primary Contact",
 	)
 	return email_marketing.resolve_campaign_audience(transient_campaign)
 
@@ -179,10 +189,30 @@ def _lead_preview_rows(lead_names, limit):
 	)
 
 
-def _frozen_recipient_preview_rows(recipients, limit):
+def _customer_preview_rows(rows, limit):
+	result = []
+	for row in list(rows or [])[:limit]:
+		customer = frappe.db.get_value("Customer", row.lead, "customer_name") or row.lead
+		contact = frappe.db.get_value("Contact", row.get("contact"), "full_name") if row.get("contact") else ""
+		result.append(frappe._dict(
+			name=row.lead, lead_name=f"{customer} / {contact}" if contact else customer,
+			company_name=customer, email_id=row.get("email") or row.get("custom_recipient_email") or "",
+			contact=row.get("contact"), reason=row.get("reason") or row.get("custom_excluded_reason") or "",
+		))
+	return result
+
+
+def _frozen_recipient_preview_rows(recipients, limit, audience_doctype="Lead"):
 	recipients = list(recipients or [])[:limit]
 	if not recipients:
 		return []
+	if audience_doctype == "Customer":
+		return _customer_preview_rows([
+			frappe._dict(lead=row.recipient, contact=row.get("custom_contact"),
+				custom_recipient_email=row.custom_recipient_email,
+				custom_excluded_reason=row.get("custom_excluded_reason"))
+			for row in recipients
+		], limit)
 	lead_names = [row.recipient for row in recipients]
 	leads = frappe.get_list(
 		"Lead",
@@ -208,11 +238,17 @@ def _clean_audience_search(search_text):
 	return str(search_text or "").strip()[:140]
 
 
-def _filter_resolved_by_search(resolved, search_text):
+def _filter_resolved_by_search(resolved, search_text, audience_doctype="Lead"):
 	search_text = _clean_audience_search(search_text)
 	resolved = list(resolved or [])
 	if not search_text or not resolved:
 		return resolved, search_text
+	if audience_doctype == "Customer":
+		needle = search_text.casefold()
+		rows = _customer_preview_rows(resolved, len(resolved))
+		return [row for row, sample in zip(resolved, rows) if needle in " ".join(
+			str(sample.get(field) or "") for field in ("name", "lead_name", "email_id", "contact")
+		).casefold()], search_text
 
 	lead_names = list(dict.fromkeys(row.lead for row in resolved if row.get("lead")))
 	if not lead_names:
@@ -236,25 +272,30 @@ def _filter_resolved_by_search(resolved, search_text):
 	return [row for row in resolved if row.lead in matching_names], search_text
 
 
-def _frozen_audience_query(campaign_name, search_text):
+def _frozen_audience_query(campaign_name, search_text, audience_doctype="Lead"):
 	recipient = frappe.qb.DocType("Email Campaign")
-	lead = frappe.qb.DocType("Lead")
+	lead = frappe.qb.DocType(audience_doctype)
 	query = (
 		frappe.qb.from_(recipient)
 		.left_join(lead)
 		.on(lead.name == recipient.recipient)
 		.where(recipient.campaign_name == campaign_name)
 	)
+	contact = None
+	if audience_doctype == "Customer":
+		contact = frappe.qb.DocType("Contact")
+		query = query.left_join(contact).on(contact.name == recipient.custom_contact)
 	search_text = _clean_audience_search(search_text)
 	if search_text:
 		pattern = f"%{search_text}%"
-		query = query.where(
+		condition = (
 			(recipient.recipient.like(pattern))
 			| (recipient.custom_recipient_email.like(pattern))
-			| (lead.lead_name.like(pattern))
-			| (lead.company_name.like(pattern))
-			| (lead.email_id.like(pattern))
+			| (getattr(lead, "customer_name" if audience_doctype == "Customer" else "lead_name").like(pattern))
 		)
+		if contact is not None:
+			condition = condition | contact.full_name.like(pattern)
+		query = query.where(condition)
 	return query, recipient, search_text
 
 
@@ -270,11 +311,14 @@ def _preview_response(
 	eligible_page_length=8,
 	excluded_page=1,
 	search_text=None,
+	audience_doctype="Lead",
 ):
-	resolved, search_text = _filter_resolved_by_search(resolved, search_text)
+	resolved, search_text = _filter_resolved_by_search(resolved, search_text, audience_doctype)
 	reasons = Counter(row.reason for row in resolved if row.reason)
-	eligible_names = [row.lead for row in resolved if row.eligible]
-	excluded_names = [row.lead for row in resolved if not row.eligible]
+	eligible_rows = [row for row in resolved if row.eligible]
+	excluded_rows = [row for row in resolved if not row.eligible]
+	eligible_names = [row.lead for row in eligible_rows]
+	excluded_names = [row.lead for row in excluded_rows]
 	page_length = min(
 		max(cint(eligible_page_length) or 8, 1), MAX_AUDIENCE_HEALTH_PAGE_LENGTH
 	)
@@ -286,7 +330,8 @@ def _preview_response(
 	if total_pages:
 		page = min(page, total_pages)
 	offset = (page - 1) * page_length
-	samples = _lead_preview_rows(eligible_names[offset : offset + page_length], page_length)
+	samples = (_customer_preview_rows(eligible_rows[offset : offset + page_length], page_length)
+		if audience_doctype == "Customer" else _lead_preview_rows(eligible_names[offset : offset + page_length], page_length))
 
 	excluded_total_pages = (
 		(len(excluded_names) + page_length - 1) // page_length if excluded_names else 0
@@ -295,12 +340,12 @@ def _preview_response(
 	if excluded_total_pages:
 		exc_page = min(exc_page, excluded_total_pages)
 	exc_offset = (exc_page - 1) * page_length
-	excluded_samples = _lead_preview_rows(
-		excluded_names[exc_offset : exc_offset + page_length], page_length
-	)
-	resolved_by_lead = {row.lead: row for row in resolved}
-	for sample in excluded_samples:
-		sample.reason = resolved_by_lead[sample.name].reason
+	excluded_samples = (_customer_preview_rows(excluded_rows[exc_offset : exc_offset + page_length], page_length)
+		if audience_doctype == "Customer" else _lead_preview_rows(excluded_names[exc_offset : exc_offset + page_length], page_length))
+	if audience_doctype == "Lead":
+		resolved_by_lead = {row.lead: row for row in resolved}
+		for sample in excluded_samples:
+			sample.reason = resolved_by_lead[sample.name].reason
 
 	topic_reason = (
 		_("Unsubscribed from topic {0}").format(subscription_topic)
@@ -313,9 +358,9 @@ def _preview_response(
 		if topic_reason
 		and (row.get("topic_unsubscribed") or row.reason == topic_reason)
 	]
-	topic_unsubscribed_samples = _lead_preview_rows(
-		topic_unsubscribed_names, MAX_TOPIC_OPTOUT_SAMPLES
-	)
+	topic_unsubscribed_samples = (_customer_preview_rows(
+		[row for row in resolved if row.get("topic_unsubscribed")][:MAX_TOPIC_OPTOUT_SAMPLES], MAX_TOPIC_OPTOUT_SAMPLES)
+		if audience_doctype == "Customer" else _lead_preview_rows(topic_unsubscribed_names, MAX_TOPIC_OPTOUT_SAMPLES))
 	return {
 		"candidate_count": len(resolved),
 		"eligible_count": len(eligible_names),
@@ -345,11 +390,12 @@ def _frozen_preview_response(
 	excluded_page=1,
 	search_text=None,
 ):
-	"""Return the scheduled recipient snapshot without recalculating live Lead filters."""
+	"""Return the scheduled recipient snapshot without recalculating live filters."""
+	audience_doctype = campaign.get("custom_audience_doctype") or "Lead"
 	page_length = min(
 		max(cint(eligible_page_length) or 8, 1), MAX_AUDIENCE_HEALTH_PAGE_LENGTH
 	)
-	base_query, recipient, search_text = _frozen_audience_query(campaign.name, search_text)
+	base_query, recipient, search_text = _frozen_audience_query(campaign.name, search_text, audience_doctype)
 
 	eligible_query = base_query.where(recipient.custom_batch_number > 0)
 	actual_eligible_count = _query_count(eligible_query, recipient)
@@ -364,7 +410,7 @@ def _frozen_preview_response(
 	offset = (page - 1) * page_length
 	recipients = (
 		eligible_query
-		.select(recipient.recipient, recipient.custom_recipient_email)
+		.select(recipient.recipient, recipient.custom_contact, recipient.custom_recipient_email)
 		.orderby(recipient.custom_batch_number)
 		.orderby(recipient.name)
 		.offset(offset)
@@ -386,6 +432,7 @@ def _frozen_preview_response(
 		excluded_query
 		.select(
 			recipient.recipient,
+			recipient.custom_contact,
 			recipient.custom_recipient_email,
 			recipient.custom_excluded_reason,
 		)
@@ -422,6 +469,7 @@ def _frozen_preview_response(
 			topic_query
 			.select(
 				recipient.recipient,
+				recipient.custom_contact,
 				recipient.custom_recipient_email,
 				recipient.custom_excluded_reason,
 			)
@@ -439,18 +487,18 @@ def _frozen_preview_response(
 		"eligible_count": eligible_count,
 		"excluded_count": excluded_count,
 		"excluded_reasons": reasons,
-		"eligible_samples": _frozen_recipient_preview_rows(recipients, page_length),
+		"eligible_samples": _frozen_recipient_preview_rows(recipients, page_length, audience_doctype),
 		"eligible_page": page,
 		"eligible_page_length": page_length,
 		"eligible_total_pages": total_pages,
-		"excluded_samples": _frozen_recipient_preview_rows(excluded_recipients, page_length),
+		"excluded_samples": _frozen_recipient_preview_rows(excluded_recipients, page_length, audience_doctype),
 		"excluded_page": exc_page,
 		"excluded_total_pages": excluded_total_pages,
 		"subscription_topic": campaign.custom_subscription_topic or "",
 		"content_topic": campaign.get("custom_content_topic") or "",
 		"topic_unsubscribed_count": topic_count,
 		"topic_unsubscribed_samples": _frozen_recipient_preview_rows(
-			topic_names[:MAX_TOPIC_OPTOUT_SAMPLES], MAX_TOPIC_OPTOUT_SAMPLES
+			topic_names[:MAX_TOPIC_OPTOUT_SAMPLES], MAX_TOPIC_OPTOUT_SAMPLES, audience_doctype
 		),
 		"topic_unsubscribed_more": max(
 			0,
@@ -474,6 +522,9 @@ def _campaign_for_studio(campaign_name):
 		"broadcast_status": "Queued for scheduling" if campaign.custom_queued else (campaign.custom_broadcast_status or "Draft"),
 		"editable": (campaign.custom_broadcast_status or "Draft") == "Draft" and not campaign.custom_queued,
 		"email_template": campaign.custom_email_template,
+		"audience_doctype": campaign.get("custom_audience_doctype") or "Lead",
+		"contact_mode": campaign.get("custom_contact_mode") or "Primary Contact",
+		"personalization_doctype": campaign.get("custom_personalization_doctype") or "Lead",
 		"subject_override": campaign.custom_subject_override,
 		"subscription_topic": campaign.custom_subscription_topic,
 		"content_topic": campaign.get("custom_content_topic") or "",
@@ -505,10 +556,36 @@ def _campaign_for_studio(campaign_name):
 	}
 
 
+def _sample_document(payload, sample_name):
+	"""Use one Customer and a linked Contact to mirror delivery personalization."""
+	audience_doctype = payload.get("audience_doctype") or "Lead"
+	_check_permission("read", audience_doctype)
+	party = frappe.get_doc(audience_doctype, sample_name)
+	party.check_permission("read")
+	if audience_doctype == "Lead":
+		return party, {"customer": None, "contact": None}
+	from finbyzreach.customer_campaign import customer_contacts
+	contacts = customer_contacts(party, payload.get("contact_mode") or "Primary Contact")
+	if not contacts:
+		frappe.throw(_("Choose a Customer with a linked Contact for preview"))
+	contact = frappe.get_doc("Contact", contacts[0])
+	contact.check_permission("read")
+	selected = contact if payload.get("personalization_doctype") == "Contact" else party
+	return selected, {"customer": party, "contact": contact}
+
+
 @frappe.whitelist(methods=["GET"])
 def get_bootstrap(campaign_name=None):
 	campaign_name = str(campaign_name or "").strip()
-	_check_permission("read" if campaign_name else "create")
+	if campaign_name:
+		audience_doctype = frappe.db.get_value("Campaign", campaign_name, "custom_audience_doctype") or "Lead"
+		_check_permission("read", audience_doctype)
+	else:
+		frappe.has_permission("Campaign", ptype="create", throw=True)
+		if not (frappe.has_permission("Lead", ptype="read") or (
+			frappe.has_permission("Customer", ptype="read") and frappe.has_permission("Contact", ptype="read")
+		)):
+			frappe.throw(_("Read access to Lead or Customer and Contact is required"), frappe.PermissionError)
 	accounts = frappe.get_list(
 		"Email Account",
 		filters={"enable_outgoing": 1},
@@ -557,8 +634,12 @@ def preview_audience(
 	excluded_page=1,
 	campaign_name=None,
 	search_text=None,
+	audience_doctype="Lead",
+	contact_mode="Primary Contact",
 ):
-	_check_permission("read")
+	if campaign_name:
+		audience_doctype = frappe.db.get_value("Campaign", campaign_name, "custom_audience_doctype") or "Lead"
+	_check_permission("read", audience_doctype)
 	if campaign_name:
 		campaign = frappe.get_doc("Campaign", campaign_name)
 		campaign.check_permission("read")
@@ -567,7 +648,8 @@ def preview_audience(
 				campaign, eligible_page, eligible_page_length, excluded_page, search_text
 			)
 	context = _audience_context(
-		filters, exclude_filters, exclude_email_groups, segment_name=segment_name
+		filters, exclude_filters, exclude_email_groups, segment_name=segment_name,
+		audience_doctype=audience_doctype, contact_mode=contact_mode,
 	)
 	return _preview_response(
 		_resolved_studio_audience(context, subscription_topic, content_topic),
@@ -575,22 +657,25 @@ def preview_audience(
 		eligible_page,
 		eligible_page_length,
 		excluded_page,
-		search_text
+		search_text,
+		audience_doctype,
 	)
 
 
 @frappe.whitelist(methods=["POST"])
 def preview_email(payload=None, sample_lead=None):
 	"""Render a safe, non-sending preview using current draft or frozen campaign content."""
-	_check_permission("read")
 	payload = _parse_payload(payload)
-	lead = frappe.get_doc("Lead", sample_lead)
-	lead.check_permission("read")
 	source_campaign = str(payload.get("source_campaign") or "").strip()
 	campaign = None
 	if source_campaign:
 		campaign = frappe.get_doc("Campaign", source_campaign)
 		campaign.check_permission("read")
+		if campaign.custom_broadcast_status != "Draft":
+			payload.audience_doctype = campaign.get("custom_audience_doctype") or "Lead"
+			payload.contact_mode = campaign.get("custom_contact_mode") or "Primary Contact"
+			payload.personalization_doctype = campaign.get("custom_personalization_doctype") or payload.audience_doctype
+	lead, sample_context = _sample_document(payload, sample_lead)
 	frozen = bool(campaign and campaign.custom_broadcast_status != "Draft")
 	if frozen and not (
 		campaign.custom_snapshot_subject and campaign.custom_snapshot_html
@@ -612,6 +697,9 @@ def preview_email(payload=None, sample_lead=None):
 			_required(payload, "email_template", _("Email Template")),
 			payload.get("subject_override"),
 		)
+		expected_doctype = payload.get("personalization_doctype") if payload.get("audience_doctype") == "Customer" else "Lead"
+		if snapshot.reference_doctype and snapshot.reference_doctype != expected_doctype:
+			frappe.throw(_("The selected template must use {0} personalization").format(expected_doctype))
 		campaign_title = str(payload.get("campaign_title") or _("Email Preview")).strip()
 		utm_source = str(payload.get("utm_source") or "newsletter").strip()
 		utm_medium = str(payload.get("utm_medium") or "email").strip()
@@ -621,7 +709,7 @@ def preview_email(payload=None, sample_lead=None):
 		snapshot.subject,
 		snapshot.html,
 		lead,
-		extra_context={"email_preview_url": "#"},
+		extra_context={"email_preview_url": "#", **sample_context},
 	)
 	preheader = ""
 	if snapshot.get("preheader"):
@@ -643,7 +731,7 @@ def preview_email(payload=None, sample_lead=None):
 		"html": html,
 		"mode": snapshot.mode,
 		"sample_lead": lead.name,
-		"sample_lead_label": lead.lead_name or lead.name,
+		"sample_lead_label": lead.get("lead_name") or lead.get("customer_name") or lead.get("full_name") or lead.name,
 		"frozen": cint(frozen),
 	}
 
@@ -694,6 +782,9 @@ def _campaign_values(payload, context, require_ready=True, preview=None):
 	values = {
 		"doctype": "Campaign",
 		"campaign_name": str(_required(payload, "campaign_title", _("Campaign Title"))).strip()[:140],
+		"custom_audience_doctype": context.audience_doctype,
+		"custom_contact_mode": context.contact_mode if context.audience_doctype == "Customer" else "Primary Contact",
+		"custom_personalization_doctype": (payload.get("personalization_doctype") or "Customer") if context.audience_doctype == "Customer" else "Lead",
 		"custom_broadcast_status": "Draft",
 		"custom_email_template": ready_value("email_template", _("Email Template")),
 		"custom_subject_override": str(payload.get("subject_override") or "").strip()[:140],
@@ -745,7 +836,8 @@ def create_campaign(payload=None, launch="schedule"):
 		frappe.throw(_("Launch action must be schedule or draft"))
 	payload = _parse_payload(payload)
 	source_campaign = str(payload.get("source_campaign") or "").strip()
-	_check_permission("write" if source_campaign else "create")
+	audience_doctype = payload.get("audience_doctype") or "Lead"
+	_check_permission("write" if source_campaign else "create", audience_doctype)
 	require_ready = launch == "schedule"
 	context = _audience_context(
 		payload.get("filters"),
@@ -753,10 +845,13 @@ def create_campaign(payload=None, launch="schedule"):
 		payload.get("exclude_email_groups"),
 		require_filters=require_ready,
 		segment_name=payload.get("segment_name"),
+		audience_doctype=audience_doctype,
+		contact_mode=payload.get("contact_mode") or "Primary Contact",
 	)
 	preview = _preview_response(
 		_resolved_studio_audience(context, payload.get("subscription_topic"), payload.get("content_topic")),
 		payload.get("subscription_topic"),
+		audience_doctype=audience_doctype,
 	)
 	if require_ready and not preview["eligible_count"]:
 		frappe.throw(_("No eligible recipients remain after filters and blacklists"))
@@ -807,13 +902,19 @@ def create_campaign(payload=None, launch="schedule"):
 
 @frappe.whitelist(methods=["POST"])
 def send_test(payload=None, recipient=None, sample_lead=None):
-	_check_permission("email")
 	payload = _parse_payload(payload)
 	source_campaign = str(payload.get("source_campaign") or "").strip()
 	campaign = None
 	if source_campaign:
 		campaign = frappe.get_doc("Campaign", source_campaign)
 		campaign.check_permission("email")
+	frozen = bool(campaign and campaign.custom_broadcast_status != "Draft")
+	if frozen:
+		payload.audience_doctype = campaign.get("custom_audience_doctype") or "Lead"
+		payload.contact_mode = campaign.get("custom_contact_mode") or "Primary Contact"
+		payload.personalization_doctype = campaign.get("custom_personalization_doctype") or payload.audience_doctype
+	audience_doctype = payload.get("audience_doctype") or "Lead"
+	_check_permission("email", audience_doctype)
 	recipient = str(recipient or "").strip()
 	validate_email_address(recipient, throw=True)
 	if any(character in recipient for character in (",", ";", "\n", "\r")):
@@ -828,16 +929,15 @@ def send_test(payload=None, recipient=None, sample_lead=None):
 		if campaign and campaign.custom_broadcast_status != "Draft"
 		else payload.get("content_topic")
 	)
-	exclusion_reason = email_marketing.test_recipient_exclusion(recipient, test_topic)
+	exclusion_reason = email_marketing.test_recipient_exclusion(recipient, test_topic, audience_doctype)
 	if not exclusion_reason and test_content_topic:
-		exclusion_reason = email_marketing.test_recipient_exclusion(recipient, test_content_topic)
+		exclusion_reason = email_marketing.test_recipient_exclusion(recipient, test_content_topic, audience_doctype)
 	if exclusion_reason:
 		frappe.throw(
 			_("Test email blocked by recipient suppression: {0}").format(exclusion_reason)
 		)
 	_check_test_email_rate_limit()
 
-	frozen = bool(campaign and campaign.custom_broadcast_status != "Draft")
 	if frozen and not (
 		campaign.custom_snapshot_subject and campaign.custom_snapshot_html
 	):
@@ -851,14 +951,20 @@ def send_test(payload=None, recipient=None, sample_lead=None):
 	account.check_permission("read")
 	if not cint(account.enable_outgoing):
 		frappe.throw(_("Email Account {0} is not enabled for outgoing mail").format(account_name))
-	lead = frappe.get_doc("Lead", sample_lead)
-	lead.check_permission("read")
+	lead, sample_context = _sample_document(payload, sample_lead)
 	if frozen:
 		snapshot = frappe._dict(
 			mode=campaign.custom_template_mode or "Standard",
 			subject=campaign.custom_snapshot_subject,
 			html=campaign.custom_snapshot_html,
 		)
+	else:
+		snapshot = get_campaign_snapshot(
+			_required(payload, "email_template", _("Email Template")), payload.get("subject_override")
+		)
+		expected_doctype = payload.get("personalization_doctype") if payload.get("audience_doctype") == "Customer" else "Lead"
+		if snapshot.reference_doctype and snapshot.reference_doctype != expected_doctype:
+			frappe.throw(_("The selected template must use {0} personalization").format(expected_doctype))
 	test_params = {"is_test": "1"}
 	if campaign:
 		test_params["campaign"] = campaign.name
@@ -867,14 +973,20 @@ def send_test(payload=None, recipient=None, sample_lead=None):
 		if payload.get("subject_override"):
 			test_params["subject_override"] = payload.get("subject_override")
 	if lead and hasattr(lead, "name"):
-		test_params["lead"] = lead.name
+		if lead.doctype == "Lead":
+			test_params["lead"] = lead.name
+		else:
+			test_params["reference_doctype"] = lead.doctype
+			test_params["reference_name"] = lead.name
+			if sample_context.get("customer"):
+				test_params["customer"] = sample_context["customer"].name
 	preview_url = get_url(f"/view_email?{get_signed_params(test_params)}")
 
 	rendered = render_campaign_snapshot(
 		snapshot.subject,
 		snapshot.html,
 		lead,
-		extra_context={"email_preview_url": preview_url},
+		extra_context={"email_preview_url": preview_url, **sample_context},
 	)
 	tracking_context = frappe._dict(
 		custom_enable_click_tracking=0,
@@ -909,7 +1021,7 @@ def send_test(payload=None, recipient=None, sample_lead=None):
 		reply_to=reply_to or None,
 		subject=f"[TEST] {rendered.subject}",
 		content=html,
-		reference_doctype="Lead",
+		reference_doctype=lead.doctype,
 		reference_name=lead.name,
 		raw_html=snapshot.mode == "Visual",
 		add_css=snapshot.mode != "Visual",

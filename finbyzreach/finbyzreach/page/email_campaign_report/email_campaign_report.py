@@ -47,7 +47,6 @@ COHORT_NOTE = (
 def _campaign_names(scope, value):
     frappe.has_permission("Campaign", "read", throw=True)
     frappe.has_permission("Email Campaign", "read", throw=True)
-    frappe.has_permission("Lead", "read", throw=True)
     if scope not in ("campaign", "template") or not value:
         frappe.throw(_("Select a campaign or email template"))
     value = str(value)
@@ -393,7 +392,8 @@ def get_details(scope="campaign", value=None, metric="opened", page=1):
     total = cint(frappe.db.sql(f"select count(*) {base}", [*names, *condition_args])[0][0])
     rows = frappe.db.sql(
         f"""
-        select ec.name, ec.campaign_name, ec.recipient lead,
+        select ec.name, ec.campaign_name, ec.recipient lead, ec.email_campaign_for audience_doctype,
+               ec.custom_contact contact,
                ec.custom_recipient_email email, ec.custom_error_message error,
                {timestamp} action_time
         {base}
@@ -403,16 +403,23 @@ def get_details(scope="campaign", value=None, metric="opened", page=1):
         [*timestamp_args, *names, *condition_args, PAGE_SIZE, (page - 1) * PAGE_SIZE],
         as_dict=True,
     )
-    lead_names = list({row.lead for row in rows if row.lead})
-    lead_labels = {}
-    if lead_names:
-        lead_labels = {
-            row.name: row.lead_name or row.name
-            for row in frappe.get_list(
-                "Lead", filters={"name": ["in", lead_names]},
-                fields=["name", "lead_name"], limit_page_length=PAGE_SIZE,
-            )
-        }
+    lead_names = list({row.lead for row in rows if row.lead and row.audience_doctype == "Lead"})
+    customer_names = list({row.lead for row in rows if row.lead and row.audience_doctype == "Customer"})
+    lead_labels = {row.name: row.lead_name or row.name for row in frappe.get_list(
+        "Lead", filters={"name": ["in", lead_names]}, fields=["name", "lead_name"], limit_page_length=0,
+    )} if lead_names and frappe.has_permission("Lead", "read") else {}
+    customer_labels = {row.name: row.customer_name or row.name for row in frappe.get_list(
+        "Customer", filters={"name": ["in", customer_names]}, fields=["name", "customer_name"], limit_page_length=0,
+    )} if customer_names and frappe.has_permission("Customer", "read") else {}
+    contact_names = list({row.contact for row in rows if row.contact})
+    contact_labels = {row.name: row.full_name or row.name for row in frappe.get_list(
+        "Contact", filters={"name": ["in", contact_names]}, fields=["name", "full_name"], limit_page_length=0,
+    )} if contact_names and frappe.has_permission("Contact", "read") else {}
     for row in rows:
-        row["full_name"] = lead_labels.get(row.lead, row.lead or row.email)
+        if row.audience_doctype == "Customer":
+            row["full_name"] = customer_labels.get(row.lead, row.lead or row.email)
+            if row.contact:
+                row["full_name"] += " / " + contact_labels.get(row.contact, row.contact)
+        else:
+            row["full_name"] = lead_labels.get(row.lead, row.lead or row.email)
     return {"rows": rows, "total": total, "page": page, "page_size": PAGE_SIZE}
