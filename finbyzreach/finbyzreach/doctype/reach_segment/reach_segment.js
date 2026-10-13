@@ -9,10 +9,20 @@ class ReachSegmentBuilder {
 		this.setup();
 	}
 
+	audienceDoctype() {
+		return this.frm.doc.audience_doctype || "Lead";
+	}
+
+	audiencePlural() {
+		return this.audienceDoctype() === "Customer" ? __("Customers") : __("Leads");
+	}
+
 	setup() {
 		// Always clean up existing UI states so it renders cleanly
 		this.frm.remove_custom_button(__("Refresh Leads from Filters"));
 		this.frm.remove_custom_button(__("Preview Leads"));
+		this.frm.remove_custom_button(__("Refresh Customers from Filters"));
+		this.frm.remove_custom_button(__("Preview Customers"));
 		if (this.frm.get_field("static_leads_json")) {
 			this.frm.get_field("static_leads_json").$wrapper.empty();
 		}
@@ -35,7 +45,7 @@ class ReachSegmentBuilder {
 				<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
 					<h4 style="margin: 0; color: #15803d; font-size: 13px; font-weight: 700;">
 						<span style="display: inline-block; width: 24px; height: 24px; background: #dcfce7; text-align: center; border-radius: 6px; margin-right: 8px; line-height: 24px;">+</span>
-						${__("Include Leads")}
+						${__("Include {0}", [this.audiencePlural()])}
 					</h4>
 					${can_write ? `<button class="btn btn-default btn-sm" id="rs-add-include-group">${__("Add OR Group")}</button>` : ""}
 				</div>
@@ -46,7 +56,7 @@ class ReachSegmentBuilder {
 				<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
 					<h4 style="margin: 0; color: #c2410c; font-size: 13px; font-weight: 700;">
 						<span style="display: inline-block; width: 24px; height: 24px; background: #ffedd5; text-align: center; border-radius: 6px; margin-right: 8px; line-height: 24px;">−</span>
-						${__("Exclude Leads")}
+						${__("Exclude {0}", [this.audiencePlural()])}
 					</h4>
 					${can_write ? `<button class="btn btn-default btn-sm" id="rs-add-exclude-group">${__("Add OR Group")}</button>` : ""}
 				</div>
@@ -72,27 +82,28 @@ class ReachSegmentBuilder {
 
 	makeStaticUI() {
 		const can_write = this.frm.perm[0].write;
+		const audience = this.audiencePlural();
 		if (can_write) {
-			this.frm.add_custom_button(__("Refresh Leads from Filters"), () => {
+			this.frm.add_custom_button(__("Refresh {0} from Filters", [audience]), () => {
 				if (this.frm.is_dirty()) {
-					frappe.msgprint(__("Please save the document before refreshing leads."));
+					frappe.msgprint(__("Please save the document before refreshing {0}.", [audience]));
 					return;
 				}
-				frappe.confirm(__("Are you sure you want to refresh the static segment? Any manually removed leads will be reset based on the current filters."), () => {
+				frappe.confirm(__("Are you sure you want to refresh the static segment? Any manually removed members will be reset based on the current filters."), () => {
 					frappe.call({
 						method: "finbyzreach.segments.refresh_static_segment_leads",
 						args: { segment_name: this.frm.doc.name },
 						freeze: true,
-						freeze_message: __("Refreshing Leads…")
+						freeze_message: __("Refreshing {0}…", [audience])
 					}).then((response) => {
-						frappe.show_alert({message: __("Leads Refreshed"), indicator: "green"});
+						frappe.show_alert({message: __("{0} Refreshed", [audience]), indicator: "green"});
 						this.frm.reload_doc();
 					});
 				});
 			});
 		}
 
-		this.frm.add_custom_button(__("Preview Leads"), () => {
+		this.frm.add_custom_button(__("Preview {0}", [audience]), () => {
 			const staticLeads = frappe.utils.parse_json(this.frm.doc.static_leads_json || "[]");
 			this.showPreviewDialog(staticLeads, true, can_write);
 		});
@@ -186,10 +197,11 @@ class ReachSegmentBuilder {
 
 		let html = "";
 		pageIds.forEach(leadId => {
+			const safeId = frappe.utils.escape_html(leadId);
 			html += `
-				<div class="rs-static-member" data-lead="${leadId}" style="display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; margin-bottom: 5px; background: #fff; border: 1px solid var(--border-color); border-radius: 4px;">
-					<span style="font-weight: 500; font-size: 12px;">${leadId}</span>
-					${can_write ? `<button class="btn btn-xs btn-danger rs-remove-member" style="padding: 2px 6px;" title="Remove Lead">×</button>` : ""}
+				<div class="rs-static-member" data-lead="${safeId}" style="display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; margin-bottom: 5px; background: #fff; border: 1px solid var(--border-color); border-radius: 4px;">
+					<span style="font-weight: 500; font-size: 12px;">${safeId}</span>
+					${can_write ? `<button class="btn btn-xs btn-danger rs-remove-member" style="padding: 2px 6px;" title="${__("Remove member")}">×</button>` : ""}
 				</div>
 			`;
 		});
@@ -203,16 +215,17 @@ class ReachSegmentBuilder {
 	}
 
 	makeActiveUI() {
-		this.frm.add_custom_button(__("Preview Leads"), () => {
+		const audience = this.audiencePlural();
+		this.frm.add_custom_button(__("Preview {0}", [audience]), () => {
 			if (this.frm.is_dirty()) {
-				frappe.msgprint(__("Please save the document before previewing leads."));
+				frappe.msgprint(__("Please save the document before previewing {0}.", [audience]));
 				return;
 			}
 			frappe.call({
 				method: "finbyzreach.segments.preview_segment_audience",
 				args: { segment_name: this.frm.doc.name },
 				freeze: true,
-				freeze_message: __("Fetching Leads…")
+				freeze_message: __("Fetching {0}…", [audience])
 			}).then((response) => {
 				const leads = response.message || [];
 				this.showPreviewDialog(leads, false, false);
@@ -232,12 +245,12 @@ class ReachSegmentBuilder {
 		this.isPreviewStatic = isStatic;
 		this.previewCanWrite = canWrite;
 		
-		const can_read_lead = frappe.model.can_read("Lead");
+		const can_read_audience = frappe.model.can_read(this.audienceDoctype());
 		
 		let leadsHTML = `
 			<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
 				<strong>${__("Total Count:")} <span id="rs-preview-count">${this.previewLeads.length}</span></strong>
-				${can_read_lead ? `<input type="text" id="rs-preview-search" class="form-control input-sm" placeholder="${__("Search by Name or Email...")}" style="width: 250px;">` : ""}
+				${can_read_audience ? `<input type="text" id="rs-preview-search" class="form-control input-sm" placeholder="${__("Search by Name or Email...")}" style="width: 250px;">` : ""}
 			</div>
 			<div id="rs-preview-members-list" style="height: 400px; max-height: 400px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 4px; padding: 10px; background: var(--control-bg, #f4f5f6);">
 			</div>
@@ -249,7 +262,7 @@ class ReachSegmentBuilder {
 		`;
 
 		this.previewDialog = new frappe.ui.Dialog({
-			title: __("Segment Leads Preview"),
+			title: __("Segment {0} Preview", [this.audiencePlural()]),
 			fields: [
 				{
 					fieldname: "html",
@@ -267,7 +280,7 @@ class ReachSegmentBuilder {
 		this.$previewNext = this.previewDialog.$wrapper.find("#rs-preview-next");
 		this.$previewPageInfo = this.previewDialog.$wrapper.find("#rs-preview-page-info");
 
-		if (can_read_lead) {
+		if (can_read_audience) {
 			let searchTimeout;
 			this.previewDialog.$wrapper.find("#rs-preview-search").off("input").on("input", (e) => {
 				clearTimeout(searchTimeout);
@@ -281,7 +294,7 @@ class ReachSegmentBuilder {
 		}
 
 		if (this.previewLeads.length === 0) {
-			this.$previewList.html(`<div class="text-muted" style="padding: 10px;">${__("No matching leads found.")}</div>`);
+			this.$previewList.html(`<div class="text-muted" style="padding: 10px;">${__("No matching {0} found.", [this.audiencePlural()])}</div>`);
 			this.$previewPageInfo.text("0");
 		} else {
 			this.loadPreviewPage();
@@ -359,20 +372,21 @@ class ReachSegmentBuilder {
 		this.$previewNext.prop("disabled", true);
 		this.$previewPageInfo.text(__("Loading..."));
 
-		if (!frappe.model.can_read("Lead")) {
+		if (!frappe.model.can_read(this.audienceDoctype())) {
 			const start = this.previewPage * this.previewPageSize;
 			const end = start + this.previewPageSize;
 			const pageIds = this.previewLeads.slice(start, end);
 			
 			let html = "";
 			pageIds.forEach(leadId => {
+				const safeId = frappe.utils.escape_html(leadId);
 				html += `
-					<div class="rs-preview-member" data-lead="${leadId}" style="display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; margin-bottom: 5px; background: #fff; border: 1px solid var(--border-color); border-radius: 4px;">
+					<div class="rs-preview-member" data-lead="${safeId}" style="display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; margin-bottom: 5px; background: #fff; border: 1px solid var(--border-color); border-radius: 4px;">
 						<div style="flex-grow: 1;">
-							<div style="font-weight: 500;">${leadId}</div>
-							<div style="font-size: 11px; color: var(--text-muted);">${__("No permission to view lead details")}</div>
+							<div style="font-weight: 500;">${safeId}</div>
+							<div style="font-size: 11px; color: var(--text-muted);">${__("No permission to view member details")}</div>
 						</div>
-						${(this.isPreviewStatic && this.previewCanWrite) ? `<button class="btn btn-xs btn-danger rs-remove-member" style="padding: 2px 6px;" title="Remove Lead">×</button>` : ""}
+						${(this.isPreviewStatic && this.previewCanWrite) ? `<button class="btn btn-xs btn-danger rs-remove-member" style="padding: 2px 6px;" title="${__("Remove member")}">×</button>` : ""}
 					</div>
 				`;
 			});
@@ -389,27 +403,29 @@ class ReachSegmentBuilder {
 		let filters = [];
 		let or_filters = [];
 		let limit_start = 0;
+		const doctype = this.audienceDoctype();
+		const labelField = doctype === "Customer" ? "customer_name" : "lead_name";
 		if (this.previewSearchTerm) {
-			filters.push(["Lead", "name", "in", this.previewLeads]);
-			or_filters.push(["Lead", "name", "like", `%${this.previewSearchTerm}%`]);
-			or_filters.push(["Lead", "lead_name", "like", `%${this.previewSearchTerm}%`]);
-			or_filters.push(["Lead", "email_id", "like", `%${this.previewSearchTerm}%`]);
+			filters.push([doctype, "name", "in", this.previewLeads]);
+			or_filters.push([doctype, "name", "like", `%${this.previewSearchTerm}%`]);
+			or_filters.push([doctype, labelField, "like", `%${this.previewSearchTerm}%`]);
+			or_filters.push([doctype, "email_id", "like", `%${this.previewSearchTerm}%`]);
 			limit_start = this.previewPage * this.previewPageSize;
 		} else {
 			const start = this.previewPage * this.previewPageSize;
 			const end = start + this.previewPageSize;
 			const pageIds = this.previewLeads.slice(start, end);
-			filters.push(["Lead", "name", "in", pageIds]);
+			filters.push([doctype, "name", "in", pageIds]);
 			limit_start = 0; // already sliced
 		}
 
 		frappe.call({
 			method: "frappe.client.get_list",
 			args: {
-				doctype: "Lead",
+				doctype: doctype,
 				filters: filters,
 				or_filters: or_filters,
-				fields: ["name", "lead_name", "email_id", "status"],
+				fields: doctype === "Customer" ? ["name", "customer_name", "email_id", "disabled"] : ["name", "lead_name", "email_id", "status"],
 				limit_start: limit_start,
 				limit_page_length: this.previewPageSize
 			}
@@ -418,16 +434,20 @@ class ReachSegmentBuilder {
 			let html = "";
 			
 			if (this.previewPage === 0 && details.length === 0) {
-				html = `<div class="text-muted" style="padding: 10px;">${__("No matching leads found.")}</div>`;
+				html = `<div class="text-muted" style="padding: 10px;">${__("No matching {0} found.", [this.audiencePlural()])}</div>`;
 			} else {
 				details.forEach(d => {
+					const safeId = frappe.utils.escape_html(d.name);
+					const safeLabel = frappe.utils.escape_html(d[labelField] || "");
+					const safeEmail = frappe.utils.escape_html(d.email_id || __("No Email"));
+					const state = doctype === "Customer" ? (d.disabled ? __("Disabled") : __("Active")) : d.status;
 					html += `
-						<div class="rs-preview-member" data-lead="${d.name}" style="display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; margin-bottom: 5px; background: #fff; border: 1px solid var(--border-color); border-radius: 4px;">
+						<div class="rs-preview-member" data-lead="${safeId}" style="display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; margin-bottom: 5px; background: #fff; border: 1px solid var(--border-color); border-radius: 4px;">
 							<div style="flex-grow: 1;">
-								<div style="font-weight: 500;"><a href="/app/lead/${d.name}" target="_blank">${d.name}</a> ${d.lead_name ? `- ${d.lead_name}` : ""}</div>
-								<div style="font-size: 11px; color: var(--text-muted);">${d.email_id || __("No Email")} • <span class="badge badge-default">${d.status}</span></div>
+								<div style="font-weight: 500;"><a href="/app/${doctype.toLowerCase()}/${encodeURIComponent(d.name)}" target="_blank">${safeId}</a> ${safeLabel ? `- ${safeLabel}` : ""}</div>
+								<div style="font-size: 11px; color: var(--text-muted);">${safeEmail} • <span class="badge badge-default">${frappe.utils.escape_html(state || "")}</span></div>
 							</div>
-							${(this.isPreviewStatic && this.previewCanWrite) ? `<button class="btn btn-xs btn-danger rs-remove-member" style="padding: 2px 6px;" title="Remove Lead">×</button>` : ""}
+							${(this.isPreviewStatic && this.previewCanWrite) ? `<button class="btn btn-xs btn-danger rs-remove-member" style="padding: 2px 6px;" title="${__("Remove member")}">×</button>` : ""}
 						</div>
 					`;
 				});
@@ -443,7 +463,7 @@ class ReachSegmentBuilder {
 	}
 
 	loadFilters() {
-		frappe.model.with_doctype("Lead", () => {
+		frappe.model.with_doctype(this.audienceDoctype(), () => {
 			const includeFilters = frappe.utils.parse_json(this.frm.doc.filter_groups_json || "[]");
 			const excludeFilters = frappe.utils.parse_json(this.frm.doc.exclude_filters_json || "[]");
 
@@ -485,7 +505,7 @@ class ReachSegmentBuilder {
 
 		const filterGroup = new frappe.ui.FilterGroup({
 			parent: $group.find(".rs-filter-body"),
-			doctype: "Lead",
+			doctype: this.audienceDoctype(),
 			on_change: () => this.frm.dirty()
 		});
 		
@@ -549,6 +569,14 @@ frappe.ui.form.on("Reach Segment", {
 	},
 	segment_type(frm) {
 		frm.trigger('refresh');
+	},
+	audience_doctype(frm) {
+		Promise.all([
+			frm.set_value("filter_groups_json", "[]"),
+			frm.set_value("exclude_filters_json", "[]"),
+			frm.set_value("static_leads_json", "[]"),
+			frm.set_value("member_count", 0),
+		]).then(() => frm.trigger("refresh"));
 	},
 	validate(frm) {
 		if (frm.builder) {

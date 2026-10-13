@@ -7,6 +7,7 @@
  "engine": "InnoDB",
  "field_order": [
   "segment_name",
+  "audience_doctype",
   "segment_type",
   "member_count",
   "filter_groups_json",
@@ -23,6 +24,15 @@
    "label": "Segment Name",
    "reqd": 1,
    "unique": 1
+  },
+  {
+   "fieldname": "audience_doctype",
+   "fieldtype": "Select",
+   "label": "Audience Type",
+   "options": "Lead\nCustomer",
+   "default": "Lead",
+   "reqd": 1,
+   "in_list_view": 1
   },
   {
    "default": "Active",
