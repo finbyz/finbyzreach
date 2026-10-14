@@ -3,6 +3,7 @@ from __future__ import annotations
 import hmac
 import hashlib
 import json
+from urllib.parse import parse_qsl
 
 import frappe
 from frappe import _
@@ -23,16 +24,25 @@ def _sign_message(message: str) -> str:
 	return hmac.new(secret.encode(), message.encode(), digestmod=hashlib.sha512).hexdigest()
 
 
-def _is_valid_signature() -> bool:
-	"""Return True when the request carries a valid HMAC _signature param."""
+def _verified_params():
+	"""Return only parameters covered by the URL signature."""
 	query_string = frappe.safe_decode(getattr(frappe.request, "query_string", b""))
 	separator = "&_signature="
-	if query_string and separator in query_string:
-		params, signature_part = query_string.split(separator, 1)
-		given_signature = signature_part.split("&", 1)[0]
-		computed = _sign_message(params)
-		return hmac.compare_digest(given_signature, computed)
-	return False
+	if not query_string or query_string.count(separator) != 1:
+		return None
+	params, given_signature = query_string.split(separator, 1)
+	if not params or "&" in given_signature or not hmac.compare_digest(given_signature, _sign_message(params)):
+		return None
+	try:
+		pairs = parse_qsl(params, keep_blank_values=True, strict_parsing=True)
+	except ValueError:
+		return None
+	verified = {}
+	for key, value in pairs:
+		if key in verified or key == "_signature":
+			return None
+		verified[key] = value
+	return verified
 
 
 def get_context(context):
@@ -47,7 +57,8 @@ def get_context(context):
 	context.no_cache = 1
 
 	# validate signature
-	if not _is_valid_signature():
+	params = _verified_params()
+	if params is None:
 		context.error_message = _("This link is invalid or has expired.")
 		return context
 
@@ -62,9 +73,9 @@ def get_context(context):
 	preheader = ""
 	recipient_email = ""
 
-	campaign_recipient_id = frappe.form_dict.get("campaign_recipient")
-	campaign_id = frappe.form_dict.get("campaign")
-	template_id = frappe.form_dict.get("template")
+	campaign_recipient_id = params.get("campaign_recipient")
+	campaign_id = params.get("campaign")
+	template_id = params.get("template")
 
 	if campaign_recipient_id:
 		# Production Campaign Recipient
@@ -93,7 +104,13 @@ def get_context(context):
 		audience_doctype = recipient.email_campaign_for or "Lead"
 		if frappe.db.exists(audience_doctype, recipient.recipient):
 			party = frappe.get_doc(audience_doctype, recipient.recipient)
-			contact = frappe.get_doc("Contact", recipient.custom_contact) if audience_doctype == "Customer" and recipient.get("custom_contact") and frappe.db.exists("Contact", recipient.custom_contact) else None
+			contact = None
+			if audience_doctype == "Customer" and recipient.get("custom_contact"):
+				from finbyzreach.customer_campaign import contact_for_customer
+				if not contact_for_customer(party.name, recipient.custom_contact) or not frappe.db.exists("Contact", recipient.custom_contact):
+					context.error_message = _("Contact is not linked to Customer")
+					return context
+				contact = frappe.get_doc("Contact", recipient.custom_contact)
 			doc_context = contact if campaign.get("custom_personalization_doctype") == "Contact" else party
 			extra_context = {"customer": party if audience_doctype == "Customer" else None, "contact": contact}
 			recipient_email = recipient.custom_recipient_email or ""
@@ -128,38 +145,46 @@ def get_context(context):
 			mode = snapshot.mode
 			preheader = snapshot.get("preheader") or ""
 
-		lead_name = frappe.form_dict.get("lead")
-		ref_doctype = frappe.form_dict.get("reference_doctype")
-		ref_name = frappe.form_dict.get("reference_name")
+		lead_name = params.get("lead")
+		ref_doctype = params.get("reference_doctype")
+		ref_name = params.get("reference_name")
 		if lead_name and frappe.db.exists("Lead", lead_name):
 			doc_context = frappe.get_doc("Lead", lead_name)
 			recipient_email = doc_context.get("email_id") or ""
 		elif ref_doctype in ("Customer", "Contact") and ref_name and frappe.db.exists(ref_doctype, ref_name):
-			doc_context = frappe.get_doc(ref_doctype, ref_name)
-			recipient_email = doc_context.get("email_id") or ""
 			if (campaign.get("custom_audience_doctype") or "Lead") == "Customer":
-				customer_name = frappe.form_dict.get("customer")
-				if customer_name and frappe.db.exists("Customer", customer_name):
-					customer = frappe.get_doc("Customer", customer_name)
-					from finbyzreach.customer_campaign import contact_for_customer
-					if ref_doctype == "Customer" and customer.name != ref_name:
-						context.error_message = _("Invalid Customer preview reference")
-						return context
-					if ref_doctype == "Contact" and not contact_for_customer(customer.name, ref_name):
-						context.error_message = _("Contact is not linked to Customer")
-						return context
-					extra_context = {"customer": customer, "contact": doc_context if ref_doctype == "Contact" else None}
+				customer_name = params.get("customer")
+				if not customer_name or not frappe.db.exists("Customer", customer_name):
+					context.error_message = _("Invalid Customer preview reference")
+					return context
+				from finbyzreach.customer_campaign import contact_for_customer, customer_contacts
+				customer = frappe.get_doc("Customer", customer_name)
+				contact_name = params.get("contact") or (ref_name if ref_doctype == "Contact" else None)
+				if ref_doctype == "Customer" and not contact_name:
+					contact_name = next(iter(customer_contacts(customer, campaign.get("custom_contact_mode") or "Primary Contact")), None)
+				if ((ref_doctype == "Customer" and customer_name != ref_name)
+					or (ref_doctype == "Contact" and ref_name != contact_name)
+					or not contact_for_customer(customer_name, contact_name)
+					or not frappe.db.exists("Contact", contact_name)):
+					context.error_message = _("Contact is not linked to Customer")
+					return context
+				contact = frappe.get_doc("Contact", contact_name)
+				doc_context = contact if ref_doctype == "Contact" else customer
+				extra_context = {"customer": customer, "contact": contact}
+			else:
+				doc_context = frappe.get_doc(ref_doctype, ref_name)
+			recipient_email = doc_context.get("email_id") or ""
 
 	elif template_id:
 		# Builder / Template Test
-		template_doctype = normalize_template_doctype(frappe.form_dict.get("template_doctype"))
+		template_doctype = normalize_template_doctype(params.get("template_doctype"))
 		if not frappe.db.exists(template_doctype, template_id):
 			context.error_message = _("The email template could not be found.")
 			return context
 
 		snapshot = get_campaign_snapshot(
 			template_id,
-			frappe.form_dict.get("subject_override"),
+			params.get("subject_override"),
 			check_permission=False,
 			template_doctype=template_doctype,
 		)
@@ -168,9 +193,9 @@ def get_context(context):
 		mode = snapshot.mode
 		preheader = snapshot.get("preheader") or ""
 
-		lead_name = frappe.form_dict.get("lead")
-		ref_doctype = frappe.form_dict.get("reference_doctype")
-		ref_name = frappe.form_dict.get("reference_name")
+		lead_name = params.get("lead")
+		ref_doctype = params.get("reference_doctype")
+		ref_name = params.get("reference_name")
 
 		if lead_name and frappe.db.exists("Lead", lead_name):
 			doc_context = frappe.get_doc("Lead", lead_name)
