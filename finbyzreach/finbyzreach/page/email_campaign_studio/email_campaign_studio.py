@@ -980,6 +980,8 @@ def send_test(payload=None, recipient=None, sample_lead=None):
 			test_params["reference_name"] = lead.name
 			if sample_context.get("customer"):
 				test_params["customer"] = sample_context["customer"].name
+			if sample_context.get("contact"):
+				test_params["contact"] = sample_context["contact"].name
 	preview_url = get_url(f"/view_email?{get_signed_params(test_params)}")
 
 	rendered = render_campaign_snapshot(
