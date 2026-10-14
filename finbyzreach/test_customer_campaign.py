@@ -11,7 +11,7 @@ from finbyzreach.customer_campaign import (
 	resolve_customer_audience,
 	current_customer_exclusion,
 )
-from finbyzreach.email_marketing import _recipient_values
+from finbyzreach.email_marketing import _recipient_values, test_recipient_exclusion
 
 
 def _make_get_value(records):
@@ -61,7 +61,22 @@ class TestCustomerCampaign(TestCase):
 		result = customer_contacts(customer, "All Linked Contacts")
 		self.assertEqual(result, ["CONT-A", "CONT-B"])
 
-	def _resolve_with(self, campaign, lead_names, contacts_list, db_records):
+	def _resolve_with(self, campaign, lead_names, contacts_list, db_records, preference_statuses=None, query_calls=None):
+		include = set(campaign.get("studio_include_leads") or lead_names)
+		def get_all(doctype, filters=None, **kwargs):
+			if query_calls is not None:
+				query_calls.append(doctype)
+			if doctype == "Customer":
+				return [db_records[name] for name in filters["name"][1] if name in db_records]
+			if doctype == "Dynamic Link":
+				return [frappe._dict(parent=contact, link_name=customer)
+					for customer in filters["link_name"][1] if customer in include for contact in contacts_list]
+			if doctype == "Contact":
+				return [db_records[name] for name in filters["name"][1] if name in db_records]
+			if doctype == "Email Subscription Preference":
+				return [frappe._dict(email=email, subscription_topic=topic, status=status)
+					for email in filters["email"][1] for topic, status in (preference_statuses or {}).items()]
+			return []
 		with patch(
 			"finbyzreach.email_marketing._globally_unsubscribed_emails", return_value=set()
 		), patch(
@@ -77,7 +92,7 @@ class TestCustomerCampaign(TestCase):
 		), patch.object(
 			frappe.db, "get_value", side_effect=_make_get_value(db_records)
 		), patch.object(
-			frappe, "get_all", return_value=contacts_list
+			frappe, "get_all", side_effect=get_all
 		), patch.object(
 			frappe.db, "exists", return_value=True
 		):
@@ -209,6 +224,47 @@ class TestCustomerCampaign(TestCase):
 		self.assertEqual({row.contact for row in result if row.eligible}, {"CONT-A", "CONT-B"})
 		self.assertEqual(len(result), 2)
 
+	def test_audience_bulk_fetches_customers_contacts_and_preferences(self):
+		names = [f"CUST-{index}" for index in range(30)]
+		contacts = [f"CONT-{index}" for index in range(30)]
+		campaign = frappe._dict(studio_include_leads=names, studio_exclude_leads=[],
+			custom_contact_mode="Primary Contact", custom_subscription_topic="Updates")
+		records = {
+			**{customer: frappe._dict(name=customer, customer_primary_contact=contact, disabled=0)
+				for customer, contact in zip(names, contacts)},
+			**{contact: frappe._dict(name=contact, email_id=f"person{index}@example.com", unsubscribed=0)
+				for index, contact in enumerate(contacts)},
+		}
+		calls = []
+		result = self._resolve_with(campaign, [], contacts, records, {"Updates": "Subscribed"}, calls)
+		self.assertEqual(len(result), 30)
+		self.assertEqual(sum(row.eligible for row in result), 30)
+		self.assertEqual({doctype: calls.count(doctype) for doctype in set(calls)}, {
+			"Customer": 1, "Dynamic Link": 1, "Contact": 1, "Email Subscription Preference": 1,
+		})
+
+	def test_customer_test_send_honors_contact_reference_optout(self):
+		def get_all(doctype, **kwargs):
+			return ["CONT-1"] if doctype in ("Contact Email", "Contact") else []
+		with patch("finbyzreach.email_marketing.is_subscribed", return_value=True), \
+			patch("finbyzreach.email_marketing._globally_unsubscribed_emails", return_value=set()), \
+			patch("finbyzreach.email_marketing._reference_unsubscribed_pairs", side_effect=lambda names, doctype: {("CONT-1", "person@example.com")} if doctype == "Contact" else set()), \
+			patch.object(frappe, "get_all", side_effect=get_all), \
+			patch.object(frappe.db, "exists", return_value=False):
+			self.assertEqual(test_recipient_exclusion("person@example.com", "Updates", "Customer"),
+				"Unsubscribed from Customer or Contact emails")
+
+	def test_customer_test_send_honors_customer_reference_optout(self):
+		def get_all(doctype, **kwargs):
+			return {"Contact Email": ["CONT-1"], "Contact": ["CONT-1"], "Dynamic Link": ["CUST-1"]}.get(doctype, [])
+		with patch("finbyzreach.email_marketing.is_subscribed", return_value=True), \
+			patch("finbyzreach.email_marketing._globally_unsubscribed_emails", return_value=set()), \
+			patch("finbyzreach.email_marketing._reference_unsubscribed_pairs", side_effect=lambda names, doctype: {("CUST-1", "person@example.com")} if doctype == "Customer" else set()), \
+			patch.object(frappe, "get_all", side_effect=get_all), \
+			patch.object(frappe.db, "exists", return_value=False):
+			self.assertEqual(test_recipient_exclusion("person@example.com", "Updates", "Customer"),
+				"Unsubscribed from Customer or Contact emails")
+
 	def test_topic_preference_excludes_customer_contact(self):
 		campaign = frappe._dict(
 			studio_include_leads=["CUST-1"], studio_exclude_leads=[],
@@ -219,8 +275,7 @@ class TestCustomerCampaign(TestCase):
 				customer_primary_contact="CONT-A", disabled=0),
 			"CONT-A": frappe._dict(name="CONT-A", full_name="First", email_id="a@example.com", unsubscribed=0),
 		}
-		with patch("finbyzreach.customer_campaign.statuses", return_value={"Updates": "Unsubscribed"}):
-			result = self._resolve_with(campaign, [], ["CONT-A"], records)
+		result = self._resolve_with(campaign, [], ["CONT-A"], records, {"Updates": "Unsubscribed"})
 		self.assertFalse(result[0].eligible)
 		self.assertTrue(result[0].topic_unsubscribed)
 
@@ -235,10 +290,8 @@ class TestCustomerCampaign(TestCase):
 			"CONT-A": frappe._dict(name="CONT-A", full_name="First",
 				email_id="a@example.com", unsubscribed=0),
 		}
-		with patch("finbyzreach.customer_campaign.statuses", return_value={"Updates": "Pending"}):
-			pending = self._resolve_with(campaign, [], ["CONT-A"], records)
-		with patch("finbyzreach.customer_campaign.statuses", return_value={"Updates": "Subscribed"}):
-			confirmed = self._resolve_with(campaign, [], ["CONT-A"], records)
+		pending = self._resolve_with(campaign, [], ["CONT-A"], records, {"Updates": "Pending"})
+		confirmed = self._resolve_with(campaign, [], ["CONT-A"], records, {"Updates": "Subscribed"})
 		self.assertFalse(pending[0].eligible)
 		self.assertEqual(pending[0].reason, "No confirmed subscription to Updates")
 		self.assertFalse(pending[0].topic_unsubscribed)
