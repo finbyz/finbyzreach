@@ -654,9 +654,21 @@ def test_recipient_exclusion(email, subscription_topic=None, audience_doctype="L
 		return _("Globally unsubscribed")
 
 	if audience_doctype == "Customer":
-		contact_names = frappe.get_all("Contact Email", filters={"email_id": normalized_email}, pluck="parent", limit_page_length=0)
-		if contact_names and frappe.db.exists("Contact", {"name": ["in", list(set(contact_names))], "unsubscribed": 1}):
+		contact_names = set(frappe.get_all("Contact Email", filters={"email_id": normalized_email}, pluck="parent", limit_page_length=0))
+		contact_names.update(frappe.get_all("Contact", filters={"email_id": normalized_email}, pluck="name", limit_page_length=0))
+		if contact_names and frappe.db.exists("Contact", {"name": ["in", list(contact_names)], "unsubscribed": 1}):
 			return _("Contact unsubscribed")
+		if contact_names:
+			contact_optouts = _reference_unsubscribed_pairs(contact_names, "Contact")
+			if any((name, normalized_email) in contact_optouts for name in contact_names):
+				return _("Unsubscribed from Customer or Contact emails")
+			customer_names = set(frappe.get_all("Dynamic Link", filters={
+				"parenttype": "Contact", "parent": ["in", list(contact_names)],
+				"link_doctype": "Customer",
+			}, pluck="link_name", limit_page_length=0))
+			customer_optouts = _reference_unsubscribed_pairs(customer_names, "Customer")
+			if any((name, normalized_email) in customer_optouts for name in customer_names):
+				return _("Unsubscribed from Customer or Contact emails")
 		return None
 	leads = frappe.get_all(
 		"Lead",

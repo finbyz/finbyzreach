@@ -6,7 +6,7 @@ import frappe
 from frappe import _
 from frappe.utils import cint
 
-from finbyzreach.subscription_preferences import is_subscribed, statuses
+from finbyzreach.subscription_preferences import is_subscribed
 
 
 def contact_for_customer(customer_name, contact_name):
@@ -45,28 +45,63 @@ def resolve_customer_audience(campaign):
 	exclude_emails = set()
 	for group in email_marketing.validate_excluded_email_groups(campaign.get("custom_exclude_email_groups_json")):
 		exclude_emails.update(email_marketing._email_group_addresses(group))
-	seen = set()
-	linked_contacts = set()
-	if include:
-		linked_contacts.update(frappe.get_all(
+	if not include:
+		return []
+	customers = {}
+	for names in email_marketing._chunks(include):
+		customers.update({row.name: row for row in frappe.get_all(
+			"Customer", filters={"name": ["in", names]},
+			fields=["name", "customer_name", "customer_primary_contact", "disabled"], limit_page_length=0,
+		)})
+	links_by_customer = {}
+	for names in email_marketing._chunks(include):
+		for row in frappe.get_all(
 			"Dynamic Link",
-			filters={"parenttype": "Contact", "link_doctype": "Customer", "link_name": ["in", list(include)]},
-			pluck="parent", limit_page_length=0,
-		))
-	contact_emails = (frappe.get_all(
-		"Contact", filters={"name": ["in", list(linked_contacts)]},
-		pluck="email_id", limit_page_length=0,
-	) if linked_contacts else [])
+			filters={"parenttype": "Contact", "link_doctype": "Customer", "link_name": ["in", names]},
+			fields=["parent", "link_name"], limit_page_length=0,
+		):
+			links_by_customer.setdefault(row.link_name, set()).add(row.parent)
+	mode = campaign.get("custom_contact_mode") or "Primary Contact"
+	contacts_by_customer = {}
+	for customer_name, customer in customers.items():
+		linked = links_by_customer.get(customer_name, set())
+		if mode == "Primary Contact":
+			primary = customer.customer_primary_contact
+			contacts_by_customer[customer_name] = [primary] if primary in linked else []
+		else:
+			contacts_by_customer[customer_name] = sorted(linked)
+	linked_contacts = {name for names in contacts_by_customer.values() for name in names}
+	contacts_by_name = {}
+	for names in email_marketing._chunks(linked_contacts):
+		contacts_by_name.update({row.name: row for row in frappe.get_all(
+			"Contact", filters={"name": ["in", names]},
+			fields=["name", "full_name", "email_id", "unsubscribed"], limit_page_length=0,
+		)})
+	normalized_by_contact = {
+		name: email_marketing._normalized_email(contact.email_id)
+		for name, contact in contacts_by_name.items()
+	}
+	contact_emails = {email for email in normalized_by_contact.values() if email}
+	preference_statuses_by_email = {}
+	topics = list({topic for topic in (
+		campaign.get("custom_subscription_topic"), campaign.get("custom_content_topic")
+	) if topic})
+	if topics:
+		for emails in email_marketing._chunks(contact_emails):
+			for row in frappe.get_all(
+				"Email Subscription Preference",
+				filters={"email": ["in", emails], "subscription_topic": ["in", topics]},
+				fields=["email", "subscription_topic", "status"], limit_page_length=0,
+			):
+				preference_statuses_by_email.setdefault(row.email, {})[row.subscription_topic] = row.status
+	seen = set()
 	global_unsubscribed = email_marketing._globally_unsubscribed_emails(contact_emails)
 	customer_unsubscribed = email_marketing._reference_unsubscribed_pairs(include, "Customer")
 	contact_unsubscribed = email_marketing._reference_unsubscribed_pairs(linked_contacts, "Contact")
 	result = []
 	for customer_name in sorted(include):
-		customer = frappe.db.get_value(
-			"Customer", customer_name,
-			["name", "customer_name", "customer_primary_contact", "disabled"], as_dict=True,
-		)
-		contacts = customer_contacts(customer, campaign.get("custom_contact_mode") or "Primary Contact") if customer else []
+		customer = customers.get(customer_name)
+		contacts = contacts_by_customer.get(customer_name, [])
 		if not contacts:
 			result.append(frappe._dict(
 				lead=customer_name, contact=None, email="", normalized_email="",
@@ -75,12 +110,10 @@ def resolve_customer_audience(campaign):
 			))
 			continue
 		for contact_name in dict.fromkeys(contacts):
-			contact = frappe.db.get_value("Contact", contact_name, ["name", "full_name", "email_id", "unsubscribed"], as_dict=True)
+			contact = contacts_by_name.get(contact_name)
 			email = contact.email_id if contact else ""
-			normalized = email_marketing._normalized_email(email)
-			preference_statuses = statuses(normalized) if normalized and (
-				campaign.get("custom_subscription_topic") or campaign.get("custom_content_topic")
-			) else {}
+			normalized = normalized_by_contact.get(contact_name) or ""
+			preference_statuses = preference_statuses_by_email.get(normalized, {})
 			reason = None
 			unconfirmed_topic = None
 			if customer_name in exclude:
