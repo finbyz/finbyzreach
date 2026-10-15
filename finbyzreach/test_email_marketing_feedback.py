@@ -7,6 +7,19 @@ from finbyzreach import email_marketing
 
 
 class TestEmailMarketingFeedback(TestCase):
+    @patch.object(email_marketing.frappe, "get_all", return_value=[])
+    @patch.object(email_marketing.frappe, "db", new=MagicMock())
+    def test_status_sync_projects_audience_type_for_open_events(self, get_all):
+        db = email_marketing.frappe.db
+        db.sql.return_value = []
+
+        email_marketing.sync_marketing_email_statuses()
+
+        self.assertIn("email_campaign_for", get_all.call_args_list[0].kwargs["fields"])
+        self.assertEqual(db.sql.call_count, 2)
+        for call in db.sql.call_args_list:
+            self.assertIn("ec.email_campaign_for", call.args[0])
+
     @patch.object(email_marketing, "refresh_campaign_metrics")
     @patch.object(email_marketing.frappe, "get_all")
     @patch.object(email_marketing.frappe, "db", new=MagicMock())

@@ -61,7 +61,7 @@ class TestCustomerCampaign(TestCase):
 		result = customer_contacts(customer, "All Linked Contacts")
 		self.assertEqual(result, ["CONT-A", "CONT-B"])
 
-	def _resolve_with(self, campaign, lead_names, contacts_list, db_records, preference_statuses=None, query_calls=None):
+	def _resolve_with(self, campaign, lead_names, contacts_list, db_records, preference_statuses=None, query_calls=None, visible_contacts=None):
 		include = set(campaign.get("studio_include_leads") or lead_names)
 		def get_all(doctype, filters=None, **kwargs):
 			if query_calls is not None:
@@ -72,7 +72,8 @@ class TestCustomerCampaign(TestCase):
 				return [frappe._dict(parent=contact, link_name=customer)
 					for customer in filters["link_name"][1] if customer in include for contact in contacts_list]
 			if doctype == "Contact":
-				return [db_records[name] for name in filters["name"][1] if name in db_records]
+				return [db_records[name] for name in filters["name"][1]
+					if name in db_records and (visible_contacts is None or name in visible_contacts)]
 			if doctype == "Email Subscription Preference":
 				return [frappe._dict(email=email, subscription_topic=topic, status=status)
 					for email in filters["email"][1] for topic, status in (preference_statuses or {}).items()]
@@ -94,9 +95,23 @@ class TestCustomerCampaign(TestCase):
 		), patch.object(
 			frappe, "get_all", side_effect=get_all
 		), patch.object(
+			frappe, "get_list", side_effect=get_all
+		), patch.object(
 			frappe.db, "exists", return_value=True
 		):
 			return resolve_customer_audience(campaign)
+
+	def test_restricted_contact_cannot_enter_audience(self):
+		campaign = frappe._dict(studio_include_leads=["CUST-1"], studio_exclude_leads=[],
+			custom_contact_mode="Primary Contact")
+		records = {
+			"CUST-1": frappe._dict(name="CUST-1", customer_name="Test Co",
+				customer_primary_contact="CONT-A", disabled=0),
+			"CONT-A": frappe._dict(name="CONT-A", full_name="Restricted",
+				email_id="restricted@example.com", unsubscribed=0),
+		}
+		rows = self._resolve_with(campaign, [], ["CONT-A"], records, visible_contacts=set())
+		self.assertEqual(rows, [])
 
 	def test_eligible_primary_contact(self):
 		campaign = frappe._dict(
@@ -306,6 +321,15 @@ class TestCustomerCampaign(TestCase):
 		self.assertEqual(values["recipient"], "CUST-1")
 		self.assertEqual(values["custom_contact"], "CONT-A")
 		self.assertEqual(values["custom_recipient_email"], "a@example.com")
+		self.assertEqual(values["custom_topic_unsubscribed"], 0)
+
+	def test_scheduled_optout_keeps_structured_status(self):
+		campaign = frappe._dict(name="CAM-1", custom_audience_doctype="Customer", custom_start_on="2026-10-13")
+		row = frappe._dict(lead="CUST-1", contact="CONT-A", eligible=False,
+			email="a@example.com", normalized_email="a@example.com",
+			reason="No confirmed subscription to Updates", topic_unsubscribed=True)
+		values = _recipient_values(campaign, row)
+		self.assertEqual(values["custom_topic_unsubscribed"], 1)
 
 	@patch("finbyzreach.email_marketing._globally_unsubscribed_emails", return_value=set())
 	@patch("finbyzreach.email_marketing._reference_unsubscribed_pairs", return_value=set())

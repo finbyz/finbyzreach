@@ -72,3 +72,22 @@ class TestViewEmail(TestCase):
 		context, render, _linkage, _customer, _contact = self._customer_preview(query, linked=False)
 		self.assertIn("not linked", context.error_message)
 		render.assert_not_called()
+
+	def test_unsaved_customer_template_restores_both_references(self):
+		query = (b"is_test=1&template=Template-1&reference_doctype=Contact&reference_name=CONT-1"
+			b"&customer=CUST-1&contact=CONT-1&_signature=valid")
+		customer = frappe._dict(name="CUST-1", email_id="")
+		contact = frappe._dict(name="CONT-1", email_id="person@example.com")
+		with patch.object(frappe, "request", new=SimpleNamespace(query_string=query)), \
+			patch.object(frappe.db, "exists", return_value=True), \
+			patch.object(frappe, "get_doc", side_effect=lambda doctype, name:
+				{"Customer": customer, "Contact": contact}[doctype]), \
+			patch.object(view_email, "get_campaign_snapshot", return_value=frappe._dict(
+				subject="Preview", html="<p>Hello</p>", mode="Visual", preheader="")), \
+			patch.object(view_email, "render_campaign_snapshot", return_value=frappe._dict(
+				subject="Preview", html="<p>Hello</p>")) as render, \
+			patch("finbyzreach.customer_campaign.contact_for_customer", return_value=True):
+			context = view_email.get_context(frappe._dict())
+		self.assertEqual(context.recipient_email, "person@example.com")
+		self.assertIs(render.call_args.kwargs["extra_context"]["customer"], customer)
+		self.assertIs(render.call_args.kwargs["extra_context"]["contact"], contact)
