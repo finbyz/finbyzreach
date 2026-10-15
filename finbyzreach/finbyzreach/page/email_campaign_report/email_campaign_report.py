@@ -100,9 +100,16 @@ def _summary(names):
 
 
 @frappe.whitelist(methods=["GET"])
-def get_campaign_summary(campaign_name):
-    """Return the report's lifetime totals for one permitted broadcast campaign."""
-    return _summary(_campaign_names("campaign", campaign_name))
+def get_campaign_summary(campaign_name, days=30):
+    """Return completed send cohorts for one permitted broadcast campaign."""
+    names = _campaign_names("campaign", campaign_name)
+    if str(days) not in ("7", "30", "60"):
+        frappe.throw(_("Choose 7, 30 or 60 days"))
+    first, last = _period_range(str(days))[:2]
+    summary = _empty_aggregate()
+    for row in _cohort_rows(names, first, last):
+        _add_counts(summary, row)
+    return {**summary, **_rates(summary)}
 
 
 def _period_range(period="previous_month", from_date=None, to_date=None):
@@ -115,7 +122,7 @@ def _period_range(period="previous_month", from_date=None, to_date=None):
         last = first_of_month - timedelta(days=1)
         first = last.replace(day=1)
         label = _("Previous calendar month: {0} to {1}").format(first.isoformat(), last.isoformat())
-    elif str(period) in ("7", "30", "90"):
+    elif str(period) in ("7", "30", "60"):
         if from_date or to_date:
             frappe.throw(_("Custom dates require the Custom period"))
         first, last, label = _timeline_range(period)
@@ -286,8 +293,8 @@ def _timeline_range(days, from_date=None, to_date=None):
         label = _("{0} to {1}").format(first_day.isoformat(), last_day.isoformat())
     else:
         days = cint(days)
-        if days not in (7, 30, 90):
-            frappe.throw(_("Choose a 7, 30, or 90 day timeline"))
+        if days not in (7, 30, 60):
+            frappe.throw(_("Choose a 7, 30, or 60 day timeline"))
         last_day = getdate(nowdate())
         first_day = last_day - timedelta(days=days - 1)
         label = _("Last {0} days").format(days)

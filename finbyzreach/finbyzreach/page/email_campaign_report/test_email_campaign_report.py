@@ -1,6 +1,6 @@
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
-from datetime import date
+from datetime import date, timedelta
 
 from finbyzreach.finbyzreach.page.email_campaign_report import email_campaign_report as report
 
@@ -10,12 +10,21 @@ class TestEmailCampaignReport(TestCase):
         self.enterContext(patch.object(report, "_", side_effect=lambda value: value))
         self.enterContext(patch.object(report, "nowdate", return_value="2026-10-06"))
 
-    @patch.object(report, "_summary", return_value={"sent": 4, "opened": 2})
+    @patch.object(report, "_cohort_rows", return_value=[{"eligible": 2, "sent": 1, "opened": 1}])
     @patch.object(report, "_campaign_names", return_value=["Campaign-1"])
-    def test_studio_summary_reuses_report_totals_and_permission_scope(self, campaign_names, summary):
-        self.assertEqual(report.get_campaign_summary("Campaign-1"), {"sent": 4, "opened": 2})
+    def test_studio_summary_uses_selected_send_cohort_and_permission_scope(self, campaign_names, cohort_rows):
+        summary = report.get_campaign_summary("Campaign-1", 60)
+        self.assertEqual(summary["sent"], 1)
+        self.assertEqual(summary["opened"], 1)
+        self.assertEqual(summary["completed"], 1)
         campaign_names.assert_called_once_with("campaign", "Campaign-1")
-        summary.assert_called_once_with(["Campaign-1"])
+        cohort_rows.assert_called_once_with(["Campaign-1"], date(2026, 10, 6) - timedelta(days=59), date(2026, 10, 6))
+
+    @patch.object(report.frappe, "throw", side_effect=ValueError)
+    @patch.object(report, "_campaign_names", return_value=["Campaign-1"])
+    def test_studio_summary_rejects_old_ninety_day_period(self, campaign_names, throw):
+        with self.assertRaises(ValueError):
+            report.get_campaign_summary("Campaign-1", 90)
 
     @patch.object(report.frappe, "get_doc")
     @patch.object(report.frappe, "has_permission")

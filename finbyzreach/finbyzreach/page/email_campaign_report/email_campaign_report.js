@@ -78,7 +78,7 @@ class EmailCampaignReport {
 							<div class="ecr-filter"><label class="control-label ecr-compare-input-label" for="ecr-compare-input">${__("Campaign")}</label><div class="ecr-picker"><input id="ecr-compare-input" class="form-control ecr-compare-input" type="text" autocomplete="off" placeholder="${__("Search campaigns")}"><div class="ecr-suggestions" hidden></div></div></div>
 							<div class="ecr-compare-chips"></div>
 						</div>
-						<div class="ecr-period-row"><label class="ecr-filter"><span class="control-label">${__("Send period")}</span><select class="form-control ecr-cohort-period"><option value="previous_month">${__("Previous calendar month")}</option><option value="7">${__("Last 7 days")}</option><option value="30">${__("Last 30 days")}</option><option value="90">${__("Last 90 days")}</option><option value="custom">${__("Custom")}</option></select></label><button class="btn btn-primary btn-sm ecr-cohort-apply" type="button">${__("Show report")}</button></div>
+					<div class="ecr-period-row"><label class="ecr-filter"><span class="control-label">${__("Send period")}</span><select class="form-control ecr-cohort-period"><option value="previous_month">${__("Previous calendar month")}</option><option value="7">${__("Last 7 days")}</option><option value="30">${__("Last 30 days")}</option><option value="60">${__("Last 60 days")}</option><option value="custom">${__("Custom")}</option></select></label><button class="btn btn-primary btn-sm ecr-cohort-apply" type="button">${__("Show report")}</button></div>
 						<div class="ecr-cohort-custom-range">
 							<label class="ecr-filter"><span class="control-label">${__("From Date")}</span><input class="form-control ecr-cohort-from" type="date"></label>
 							<label class="ecr-filter"><span class="control-label">${__("To Date")}</span><input class="form-control ecr-cohort-to" type="date"></label>
@@ -110,7 +110,7 @@ class EmailCampaignReport {
 		this.scope = make("scope", { fieldtype: "Select", fieldname: "scope", label: __("View by"), options: [__("Campaign"), __("Email Template")], default: __("Campaign"), change: () => this.scope && this.toggleScope() });
 		this.campaign = make("campaign", { fieldtype: "Link", fieldname: "campaign", label: __("Campaign"), options: "Campaign" });
 		this.template = make("template", { fieldtype: "Link", fieldname: "template", label: __("Email Template"), options: "Email Template" });
-		this.period = make("days", { fieldtype: "Select", fieldname: "days", label: __("Timeline in days"), options: ["7", "30", "90", __("Custom")], default: "30", change: () => this.period && this.togglePeriod() });
+		this.period = make("days", { fieldtype: "Select", fieldname: "days", label: __("Timeline in days"), options: ["7", "30", "60", __("Custom")], default: "30", change: () => this.period && this.togglePeriod() });
 		this.fromDate = make("from_date", { fieldtype: "Date", fieldname: "from_date", label: __("From Date"), default: frappe.datetime.add_days(frappe.datetime.get_today(), -29) });
 		this.toDate = make("to_date", { fieldtype: "Date", fieldname: "to_date", label: __("To Date"), default: frappe.datetime.get_today() });
 		this.toggleScope();
@@ -369,7 +369,7 @@ class EmailCampaignReport {
 		const hasAttempts = items.some((item) => Number(item.summary?.completed));
 		this.page.main.find(".ecr-compare-chart-card").toggleClass("is-empty", !hasAttempts);
 		if (!hasAttempts) {
-			this.page.main.find("#ecr-compare-chart").html(`<div class="ecr-chart-empty">${__("No sends in this period. Try Last 90 days or a custom range.")}</div>`);
+			this.page.main.find("#ecr-compare-chart").html(`<div class="ecr-chart-empty">${__("No sends in this period. Try Last 60 days or a custom range.")}</div>`);
 			return;
 		}
 		new frappe.Chart("#ecr-compare-chart", {
