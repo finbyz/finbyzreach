@@ -99,6 +99,12 @@ def _summary(names):
     return data
 
 
+@frappe.whitelist(methods=["GET"])
+def get_campaign_summary(campaign_name):
+    """Return the report's lifetime totals for one permitted broadcast campaign."""
+    return _summary(_campaign_names("campaign", campaign_name))
+
+
 def _period_range(period="previous_month", from_date=None, to_date=None):
     if period == "custom":
         first, last, label = _timeline_range(30, from_date, to_date)

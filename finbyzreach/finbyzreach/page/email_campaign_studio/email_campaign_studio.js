@@ -40,6 +40,7 @@ class EmailCampaignStudio {
 		this.deliveryPlanValid = true;
 		this.bootstrapLoaded = false;
 		this.bootstrapRequest = 0;
+		this.metricsRequest = 0;
 		this.bootstrapApplyQueue = Promise.resolve();
 		this.routeKey = null;
 		this.routeLoading = false;
@@ -120,6 +121,7 @@ class EmailCampaignStudio {
 			".ecs-blacklist-divider{display:flex;align-items:center;gap:9px;margin:14px 0 8px;color:var(--text-muted);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.045em}.ecs-blacklist-divider:before,.ecs-blacklist-divider:after{content:'';height:1px;background:var(--border-color);flex:1}.ecs-exclude-panel .frappe-control:last-child{margin-bottom:0}.ecs-exclude-panel [data-fieldname='exclude_email_groups'] .control-label{font-size:11.5px;font-weight:650}.ecs-exclude-panel [data-fieldname='exclude_email_groups'] .multiselect-list>.form-control{display:flex;align-items:center;min-height:40px;padding:7px 11px;border:1px solid var(--border-color,#d7dce2)!important;background:var(--card-bg,#fff);cursor:pointer}.ecs-exclude-panel [data-fieldname='exclude_email_groups'] .status-text{display:block;width:100%;min-width:0;color:var(--text-color,#1f2937);font-size:11.5px;line-height:1.35}.ecs-exclude-panel [data-fieldname='exclude_email_groups'] .status-text .text-extra-muted{color:var(--text-muted,#6b7280)!important}.ecs-exclude-panel [data-fieldname='exclude_email_groups'] .dropdown-menu{width:100%;min-width:240px;max-height:280px;overflow-y:auto}",
 			".ecs-target-badges{display:flex;align-items:center;gap:5px}.ecs-audience-footer{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:13px 18px;border-top:1px solid var(--border-color,#e5e7eb);background:var(--card-bg,#fff);border-radius:0 0 13px 13px}.ecs-audience-state{display:flex;align-items:center;gap:10px;font-size:11.5px;color:var(--text-muted)}.ecs-audience-state-dot{width:9px;height:9px;border-radius:50%;background:#94a3b8;box-shadow:0 0 0 4px rgba(148,163,184,.13)}.ecs-audience-state-dot.ready{background:#22c55e;box-shadow:0 0 0 4px rgba(34,197,94,.13)}.ecs-audience-state-dot.warn{background:#f59e0b;box-shadow:0 0 0 4px rgba(245,158,11,.13)}.ecs-audience-actions{display:flex;gap:8px;justify-content:flex-end}.ecs-audience-actions .btn{min-width:142px}",
 			".ecs-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.ecs-metric{min-width:0;overflow:hidden;padding:12px 5px;border:1px solid rgba(226,232,240,.8);border-radius:11px;background:linear-gradient(180deg,var(--card-bg,#fff),var(--subtle-fg,#f7f8fa));text-align:center}.ecs-metric strong{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:22px;line-height:1.1;letter-spacing:-.025em}.ecs-metric span{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em}",
+			".ecs-report-card{padding:14px}.ecs-report-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:11px}.ecs-report-head h3{margin:0;font-size:13px}.ecs-report-head p{margin:3px 0 0;color:var(--text-muted);font-size:10px}.ecs-report-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}.ecs-report-metric{min-width:0;padding:10px 5px;border:1px solid var(--border-color,#e5e7eb);border-radius:9px;background:var(--subtle-fg,#f7f8fa);text-align:center}.ecs-report-metric strong{display:block;font-size:18px;line-height:1.2}.ecs-report-metric span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-muted);font-size:9px}.ecs-report-actions{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:11px}.ecs-report-state{color:var(--text-muted);font-size:10px}",
 			".ecs-metric.eligible strong{color:#16803a}.ecs-metric.excluded strong{color:#c2410c}.ecs-preview-empty{padding:24px 10px;text-align:center;color:var(--text-muted);font-size:12px}",
 			".ecs-reasons{margin-top:12px;display:grid;gap:6px}.ecs-reason{display:flex;justify-content:space-between;gap:8px;font-size:11.5px;padding:6px 8px;border-radius:7px;background:var(--subtle-fg,#f7f8fa)}",
 			".ecs-preview-card{flex:0 0 auto;display:flex;flex-direction:column}.ecs-preview-card .ecs-card-head{flex:0 0 auto;padding:14px}.ecs-preview-card .ecs-card-body{display:flex;flex-direction:column;gap:10px;padding:14px;overflow:visible}.ecs-preview-card .ecs-step{background:#dcfce7;color:#15803d}.ecs-preview-card .ecs-metrics,.ecs-preview-card .ecs-reasons{flex:0 0 auto}.ecs-health-action{padding:0 14px 14px}.ecs-health-action .btn{width:100%;min-height:34px;border-radius:8px!important;font-weight:650}.ecs-health-dialog{display:grid;gap:16px;padding:2px 0 6px}.ecs-health-dialog .ecs-metrics{gap:10px}.ecs-health-dialog .ecs-metric{padding:16px 8px}.ecs-health-section{min-width:0;border:1px solid var(--border-color,#d7dce2);border-radius:11px;overflow:hidden;background:var(--card-bg,#fff)}.ecs-health-section-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 13px;background:var(--subtle-fg,#f7f8fa);border-bottom:1px solid var(--border-color,#e5e7eb)}.ecs-health-section-head h4{margin:0;font-size:12px;font-weight:720}.ecs-health-section-head span{color:var(--text-muted);font-size:10.5px}.ecs-health-list{max-height:260px;overflow-y:auto;padding:0 13px}.ecs-health-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(150px,42%);align-items:center;gap:14px;min-width:0;padding:10px 0;color:var(--text-color)!important;text-decoration:none!important}.ecs-health-row+.ecs-health-row{border-top:1px solid var(--border-color,#e5e7eb)}.ecs-health-row span,.ecs-health-row strong,.ecs-health-row small{min-width:0}.ecs-health-row strong,.ecs-health-row small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ecs-health-row small{color:var(--text-muted);text-align:right}.ecs-health-empty{padding:14px;color:var(--text-muted);font-size:11px}.ecs-topic-optouts{flex:0 0 auto;min-width:0;margin-top:0;border:1px solid #fed7aa;border-radius:10px;background:#fffaf5;overflow:hidden}.ecs-topic-optouts summary{display:flex;align-items:center;justify-content:space-between;gap:10px;min-width:0;padding:9px 10px;color:#9a3412;font-size:10.5px;font-weight:700;cursor:pointer;list-style:none}.ecs-topic-optouts summary span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ecs-topic-optouts summary::-webkit-details-marker{display:none}.ecs-topic-optouts summary:after{content:'›';flex:0 0 auto;font-size:16px;line-height:1;transition:transform .15s}.ecs-topic-optouts[open] summary:after{transform:rotate(90deg)}.ecs-topic-optouts summary strong{flex:0 0 auto;margin-left:auto;padding:2px 6px;border-radius:999px;background:#ffedd5;color:#c2410c;font-size:9.5px}.ecs-optout-list{padding:0 10px 7px;border-top:1px solid #fed7aa}.ecs-optout-context{padding:7px 0 4px;color:#9a6a50;font-size:9.5px}.ecs-optout-row{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0;padding:7px 0;color:var(--text-color)!important;text-decoration:none!important}.ecs-optout-row+.ecs-optout-row{border-top:1px solid rgba(254,215,170,.7)}.ecs-optout-row span{min-width:0;overflow:hidden}.ecs-optout-row strong,.ecs-optout-row small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ecs-optout-row strong{font-size:10.5px}.ecs-optout-row small{margin-top:1px;color:var(--text-muted);font-size:9.5px}.ecs-optout-open{flex:0 0 auto;color:#c2410c;font-size:12px}.ecs-optout-more{padding:7px 0 2px;color:#9a6a50;font-size:9.5px;font-weight:650}",
@@ -148,6 +150,7 @@ class EmailCampaignStudio {
 			this.card("4", __("Delivery plan"), __("Set the send time, batch size, cadence, weekdays and optional sending hours."), "<div id='ecs-schedule-form'></div>"),
 			this.card("5", __("Tracking"), __("UTM tags are added automatically; opens and signed clicks feed campaign metrics."), "<div id='ecs-tracking-form'></div>"),
 			"</main><aside class='ecs-side'>",
+			"<section class='ecs-card ecs-report-card' id='ecs-report-card' hidden><div class='ecs-report-head'><div><h3>" + __("Campaign results") + "</h3><p>" + __("All-time totals from Email Campaign Report") + "</p></div><button type='button' class='btn btn-default btn-xs' id='ecs-report-refresh'>" + __("Refresh") + "</button></div><div class='ecs-report-grid' id='ecs-report-grid'></div><div class='ecs-report-actions'><span class='ecs-report-state' id='ecs-report-state' role='status'></span><a id='ecs-report-link' href='/desk/email-campaign-report'>" + __("Open full report") + "</a></div></section>",
 			"<section class='ecs-card ecs-preview-card'><div class='ecs-card-head'><div class='ecs-step'>✓</div><div><h3>" + __("Audience health") + "</h3><p><span class='ecs-status-dot' id='ecs-preview-dot'></span><span id='ecs-preview-status'>" + __("Waiting for filters") + "</span></p></div></div><div class='ecs-card-body' id='ecs-preview-panel'><div class='ecs-preview-empty'>" + __("Add Lead filters or select a segment, then preview the campaign audience.") + "</div></div><div class='ecs-health-action'><button class='btn btn-default btn-sm' id='ecs-health-btn' disabled>" + __("View Full Audience Health") + "</button></div></section>",
 			"<section class='ecs-card ecs-summary-card'><div class='ecs-summary'><div class='ecs-summary-title'><span>" + __("Ready check") + "</span><h3>" + __("Launch summary") + "</h3></div><div id='ecs-summary-rows'></div><div class='ecs-launch-note'>" + __("Scheduling freezes recipients, recipient email addresses, Email Template content and the batch plan. Personalization uses the Lead data current when each email is queued.") + "</div><div class='ecs-side-actions'><button class='btn btn-primary btn-sm' id='ecs-launch-btn'>" + __("Review & Schedule") + "</button><button class='btn btn-default btn-sm' id='ecs-email-preview-btn'>" + __("Preview Email") + "</button><button class='btn btn-default btn-sm' id='ecs-test-btn'>" + __("Send Test") + "</button><button class='btn btn-default btn-sm' id='ecs-draft-btn'>" + __("Save Draft") + "</button></div></div></section>",
 			"</aside></div></div>",
@@ -448,6 +451,7 @@ class EmailCampaignStudio {
 		this.$root.on("click", "#ecs-add-exclude-or-group", () => this.addExcludeFilterGroup());
 		this.$root.on("click", "#ecs-save-segment-btn", () => this.showSaveSegmentDialog());
 		this.$root.on("click", "#ecs-health-btn", () => this.showAudienceHealth());
+		this.$root.on("click", "#ecs-report-refresh", () => this.loadCampaignMetrics(this.sourceCampaign));
 		this.$root.on("click", "#ecs-launch-btn", () => this.reviewAndSchedule());
 		this.$root.on("click", "#ecs-draft-btn", () => this.createCampaign("draft"));
 		this.$root.on("click", "#ecs-email-preview-btn", () => this.showEmailPreviewDialog());
@@ -471,6 +475,43 @@ class EmailCampaignStudio {
 	updateCampaignNavigation() {
 		if (this.goToCampaignButton) {
 			this.goToCampaignButton.toggle(Boolean(this.sourceCampaign));
+		}
+	}
+
+	async loadCampaignMetrics(campaignName) {
+		if (!campaignName) return;
+		const requestId = ++this.metricsRequest;
+		const $card = this.$root.find("#ecs-report-card");
+		$card.prop("hidden", false);
+		this.$root.find("#ecs-report-state").text(__("Loading results…"));
+		this.$root.find("#ecs-report-refresh").prop("disabled", true);
+		this.$root.find("#ecs-report-link").attr("href", "/desk/email-campaign-report?campaign=" + encodeURIComponent(campaignName));
+		try {
+			const response = await frappe.call({
+				method: "finbyzreach.finbyzreach.page.email_campaign_report.email_campaign_report.get_campaign_summary",
+				args: { campaign_name: campaignName },
+				type: "GET",
+			});
+			if (requestId !== this.metricsRequest || campaignName !== this.sourceCampaign) return;
+			const counts = response.message || {};
+			const metrics = [
+				["eligible", __("Eligible")], ["sent", __("Sent")], ["opened", __("Opened")],
+				["clicked", __("Clicked")], ["replied", __("Replied")], ["unsubscribed", __("Unsubscribed")],
+				["failed", __("Failed")], ["hard_bounce", __("Hard bounce")],
+				["soft_bounce", __("Soft bounce")], ["spam", __("Spam")],
+			];
+			this.$root.find("#ecs-report-grid").html(metrics.map(([key, label]) =>
+				"<div class='ecs-report-metric'><strong>" + Number(counts[key] || 0).toLocaleString() +
+				"</strong><span title='" + frappe.utils.escape_html(label) + "'>" + frappe.utils.escape_html(label) + "</span></div>"
+			).join(""));
+			this.$root.find("#ecs-report-state").text(__("Recorded totals"));
+		} catch (error) {
+			if (requestId === this.metricsRequest && campaignName === this.sourceCampaign) {
+				this.$root.find("#ecs-report-grid").empty();
+				this.$root.find("#ecs-report-state").text(__("Results could not load. Try refreshing."));
+			}
+		} finally {
+			if (requestId === this.metricsRequest) this.$root.find("#ecs-report-refresh").prop("disabled", false);
 		}
 	}
 
@@ -674,6 +715,8 @@ class EmailCampaignStudio {
 			: (routeState || { campaign: "", key: "new:direct" });
 		const campaignName = route.campaign || "";
 		const requestId = ++this.bootstrapRequest;
+		this.metricsRequest += 1;
+		this.$root.find("#ecs-report-card").prop("hidden", true);
 		this.routeKey = route.key;
 		this.sourceCampaign = campaignName;
 		this.updateCampaignNavigation();
@@ -712,6 +755,7 @@ class EmailCampaignStudio {
 			}).then(() => {
 				if (requestId !== this.bootstrapRequest || route.key !== this.routeKey) return null;
 				this.bootstrapLoaded = true;
+				if (data.campaign?.name && data.campaign.email_template) this.loadCampaignMetrics(data.campaign.name);
 				this.updateSummary();
 				this.updateDeliveryCapacity();
 				if (this.getFilters().length) this.queuePreview();
@@ -1679,6 +1723,7 @@ class EmailCampaignStudio {
 			}
 			this.sourceCampaign = result.campaign;
 			this.updateCampaignNavigation();
+			if (this.contentForm.get_value("email_template")) this.loadCampaignMetrics(result.campaign);
 			this.preview = result.preview || this.preview;
 			frappe.show_alert({
 				message: mode === "schedule"

@@ -10,6 +10,13 @@ class TestEmailCampaignReport(TestCase):
         self.enterContext(patch.object(report, "_", side_effect=lambda value: value))
         self.enterContext(patch.object(report, "nowdate", return_value="2026-10-06"))
 
+    @patch.object(report, "_summary", return_value={"sent": 4, "opened": 2})
+    @patch.object(report, "_campaign_names", return_value=["Campaign-1"])
+    def test_studio_summary_reuses_report_totals_and_permission_scope(self, campaign_names, summary):
+        self.assertEqual(report.get_campaign_summary("Campaign-1"), {"sent": 4, "opened": 2})
+        campaign_names.assert_called_once_with("campaign", "Campaign-1")
+        summary.assert_called_once_with(["Campaign-1"])
+
     @patch.object(report.frappe, "get_doc")
     @patch.object(report.frappe, "has_permission")
     def test_campaign_scope_checks_document_permission(self, has_permission, get_doc):
