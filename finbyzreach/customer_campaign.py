@@ -49,12 +49,12 @@ def resolve_customer_audience(campaign):
 		return []
 	customers = {}
 	for names in email_marketing._chunks(include):
-		customers.update({row.name: row for row in frappe.get_all(
+		customers.update({row.name: row for row in frappe.get_list(
 			"Customer", filters={"name": ["in", names]},
 			fields=["name", "customer_name", "customer_primary_contact", "disabled"], limit_page_length=0,
 		)})
 	links_by_customer = {}
-	for names in email_marketing._chunks(include):
+	for names in email_marketing._chunks(customers):
 		for row in frappe.get_all(
 			"Dynamic Link",
 			filters={"parenttype": "Contact", "link_doctype": "Customer", "link_name": ["in", names]},
@@ -73,7 +73,7 @@ def resolve_customer_audience(campaign):
 	linked_contacts = {name for names in contacts_by_customer.values() for name in names}
 	contacts_by_name = {}
 	for names in email_marketing._chunks(linked_contacts):
-		contacts_by_name.update({row.name: row for row in frappe.get_all(
+		contacts_by_name.update({row.name: row for row in frappe.get_list(
 			"Contact", filters={"name": ["in", names]},
 			fields=["name", "full_name", "email_id", "unsubscribed"], limit_page_length=0,
 		)})
@@ -96,22 +96,26 @@ def resolve_customer_audience(campaign):
 				preference_statuses_by_email.setdefault(row.email, {})[row.subscription_topic] = row.status
 	seen = set()
 	global_unsubscribed = email_marketing._globally_unsubscribed_emails(contact_emails)
-	customer_unsubscribed = email_marketing._reference_unsubscribed_pairs(include, "Customer")
-	contact_unsubscribed = email_marketing._reference_unsubscribed_pairs(linked_contacts, "Contact")
+	customer_unsubscribed = email_marketing._reference_unsubscribed_pairs(customers, "Customer")
+	contact_unsubscribed = email_marketing._reference_unsubscribed_pairs(contacts_by_name, "Contact")
 	result = []
 	for customer_name in sorted(include):
 		customer = customers.get(customer_name)
+		if not customer:
+			continue
 		contacts = contacts_by_customer.get(customer_name, [])
 		if not contacts:
 			result.append(frappe._dict(
 				lead=customer_name, contact=None, email="", normalized_email="",
-				eligible=False, reason="Customer unavailable" if not customer else "No linked Contact",
+				eligible=False, reason="No linked Contact",
 				topic_unsubscribed=False,
 			))
 			continue
 		for contact_name in dict.fromkeys(contacts):
 			contact = contacts_by_name.get(contact_name)
-			email = contact.email_id if contact else ""
+			if not contact:
+				continue
+			email = contact.email_id
 			normalized = normalized_by_contact.get(contact_name) or ""
 			preference_statuses = preference_statuses_by_email.get(normalized, {})
 			reason = None
@@ -120,8 +124,6 @@ def resolve_customer_audience(campaign):
 				reason = "Excluded by Customer filters"
 			elif cint(customer.disabled):
 				reason = "Customer disabled"
-			elif not contact:
-				reason = "Contact unavailable"
 			elif cint(contact.unsubscribed):
 				reason = "Contact unsubscribed"
 			elif not normalized:

@@ -969,6 +969,7 @@ def _recipient_values(campaign, row, batch_number=0, scheduled_at=None):
 		"custom_recipient_email": row.email,
 		"custom_normalized_email": row.normalized_email,
 		"custom_excluded_reason": row.reason,
+		"custom_topic_unsubscribed": cint(row.get("topic_unsubscribed")),
 	}
 
 
@@ -1631,6 +1632,7 @@ def sync_marketing_email_statuses():
 			"name",
 			"campaign_name",
 			"recipient",
+			"email_campaign_for",
 			"custom_email_queue",
 			"custom_communication",
 			"custom_opened",
@@ -1645,7 +1647,7 @@ def sync_marketing_email_statuses():
 	opened_rows = frappe.db.sql(
 		"""
 			select
-				ec.name, ec.campaign_name, ec.recipient, ec.custom_email_queue,
+				ec.name, ec.campaign_name, ec.recipient, ec.email_campaign_for, ec.custom_email_queue,
 				ec.custom_communication, ec.custom_opened,
 				ec.custom_delivery_status, comm.read_by_recipient_on
 			from `tabEmail Campaign` ec
@@ -1663,7 +1665,7 @@ def sync_marketing_email_statuses():
 	# reached Sent. Reconcile those later outcomes in bounded batches as well.
 	feedback_rows = frappe.db.sql(
 		"""
-			select ec.name, ec.campaign_name, ec.recipient, ec.custom_email_queue,
+			select ec.name, ec.campaign_name, ec.recipient, ec.email_campaign_for, ec.custom_email_queue,
 				ec.custom_communication, ec.custom_opened, ec.custom_delivery_status,
 				comm.delivery_status as communication_delivery_status
 			from `tabEmail Campaign` ec

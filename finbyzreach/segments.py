@@ -30,6 +30,23 @@ def _calculate_static_leads(filter_groups_json, exclude_filters_json, exclude_em
 				limit_page_length=0
 			)
 			exclude_leads.update(excluded_by_email)
+		elif exclude_emails and audience_doctype == "Customer" and include_leads:
+			links = []
+			for names in email_marketing._chunks(include_leads):
+				links.extend(frappe.get_all("Dynamic Link", filters={
+					"parenttype": "Contact", "link_doctype": "Customer", "link_name": ["in", names],
+				}, fields=["parent", "link_name"], limit_page_length=0))
+			contact_names = {row.parent for row in links}
+			blocked_contacts = set()
+			for names in email_marketing._chunks(contact_names):
+				blocked_contacts.update(frappe.get_list("Contact", filters={
+					"name": ["in", names], "email_id": ["in", list(exclude_emails)],
+				}, pluck="name", limit_page_length=0))
+			linked = {}
+			for row in links:
+				linked.setdefault(row.link_name, set()).add(row.parent)
+			exclude_leads.update(name for name, contacts in linked.items()
+				if contacts and contacts <= blocked_contacts)
 	return sorted(list(include_leads - exclude_leads))
 
 @frappe.whitelist(methods=["POST"])
