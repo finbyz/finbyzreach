@@ -133,6 +133,12 @@ def _audience_context(
 			static_leads = frappe.parse_json(segment.static_leads_json or "[]")
 		else:
 			filters = get_segment_filters(segment_name)["filters"]
+		# A saved segment's exclusions remain mandatory even when an older Studio
+		# client omits them from the audience payload.
+		saved_groups = _parse_json_list(segment.exclude_email_groups_json, _("blacklist email groups"))
+		exclude_email_groups = list(dict.fromkeys(
+			[*saved_groups, *_parse_json_list(exclude_email_groups, _("blacklist email groups"))]
+		))
 	include_filters_json = email_marketing.validate_lead_filter_groups(
 		filter_payload(filters), require_filters=require_filters, audience_doctype=audience_doctype
 	)
@@ -190,10 +196,23 @@ def _lead_preview_rows(lead_names, limit):
 
 
 def _customer_preview_rows(rows, limit):
+	rows = list(rows or [])[:limit]
+	customer_names = list({row.lead for row in rows if row.get("lead")})
+	contact_names = list({row.get("contact") for row in rows if row.get("contact")})
+	customers = {
+		row.name: row.customer_name
+		for row in frappe.get_list("Customer", filters={"name": ["in", customer_names]},
+			fields=["name", "customer_name"], limit_page_length=0)
+	} if customer_names else {}
+	contacts = {
+		row.name: row.full_name
+		for row in frappe.get_list("Contact", filters={"name": ["in", contact_names]},
+			fields=["name", "full_name"], limit_page_length=0)
+	} if contact_names else {}
 	result = []
-	for row in list(rows or [])[:limit]:
-		customer = frappe.db.get_value("Customer", row.lead, "customer_name") or row.lead
-		contact = frappe.db.get_value("Contact", row.get("contact"), "full_name") if row.get("contact") else ""
+	for row in rows:
+		customer = customers.get(row.lead) or row.lead
+		contact = contacts.get(row.get("contact")) or ""
 		result.append(frappe._dict(
 			name=row.lead, lead_name=f"{customer} / {contact}" if contact else customer,
 			company_name=customer, email_id=row.get("email") or row.get("custom_recipient_email") or "",
@@ -459,9 +478,10 @@ def _frozen_preview_response(
 	)
 	topic_names = []
 	topic_count = 0
-	if topic_reason:
+	if campaign.custom_subscription_topic:
 		topic_query = base_query.where(
-			(recipient.custom_excluded_reason == topic_reason)
+			(recipient.custom_topic_unsubscribed == 1)
+			| (recipient.custom_excluded_reason == topic_reason)
 			| (recipient.custom_unsubscribed == 1)
 		)
 		topic_count = _query_count(topic_query, recipient)

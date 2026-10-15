@@ -873,6 +873,7 @@ class EmailCampaignStudio {
 			}));
 			await this.runBootstrapStep(__("Loading filters"), () => this.applyIncludeFilterGroups(campaign.filters || []));
 			await this.runBootstrapStep(__("Loading exclusions"), () => this.applyExcludeFilterGroups(campaign.exclude_filters || []));
+			this.exclude_email_groups = Array.isArray(campaign.exclude_email_groups) ? campaign.exclude_email_groups : [];
 			await this.runBootstrapStep(__("Freezing scheduled campaign controls"), () => this.setEditableState(editable, status));
 		} finally {
 			this.applyingBootstrap = false;
@@ -957,6 +958,7 @@ class EmailCampaignStudio {
 			}
 			this.presetFilters = null;
 			this.activeStaticSegment = segment.segment_type === "Static";
+			this.exclude_email_groups = Array.isArray(segment.exclude_email_groups) ? segment.exclude_email_groups : [];
 			return this.applyIncludeFilterGroups(segment.filters || []).then(() => {
 				return this.applyExcludeFilterGroups(segment.exclude_filters || []);
 			}).then(() => {
@@ -1063,7 +1065,7 @@ class EmailCampaignStudio {
 		const count = groups.reduce((total, group) => total + group.length, 0);
 		const excludeGroups = this.getExcludeFilters();
 		const excludeCount = excludeGroups.reduce((total, group) => total + group.length, 0);
-		const emailGroupCount = 0;
+		const emailGroupCount = (this.exclude_email_groups || []).length;
 		const totalExclusions = excludeCount + emailGroupCount;
 		const displayCount = this.activeStaticSegment ? 0 : count;
 		this.$root.find("#ecs-filter-count").text(displayCount + " " + (displayCount === 1 ? __("filter") : __("filters")));

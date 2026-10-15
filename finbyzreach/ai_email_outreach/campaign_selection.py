@@ -111,7 +111,7 @@ def party_rows(project_name, excluded_roles, excluded_companies=None, excluded_c
 	only filter is the campaign's own exclusions and whether an address exists.
 	"""
 	rows = frappe.db.sql(
-		"""select pp.party_type, pp.roletype_name, pp.company, pp.contact,
+		"""select pp.party_type, pp.role_label as roletype_name, pp.company, pp.contact,
 		          co.name1 as company_name, co.email as company_email,
 		          ct.full_name as contact_name, ct.email as contact_email
 		   from `tabInfomanager Project Participant` pp

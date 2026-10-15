@@ -10,6 +10,7 @@ from finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio im
 	_campaign_for_studio,
 	_frozen_preview_response,
 	_frozen_recipient_preview_rows,
+	_customer_preview_rows,
 	_lead_names,
 	_preview_response,
 	_parse_payload,
@@ -22,6 +23,31 @@ from finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio im
 
 
 class TestEmailCampaignStudio(UnitTestCase):
+	def test_saved_segment_email_groups_survive_missing_client_payload(self):
+		segment = frappe._dict(segment_type="Static", audience_doctype="Customer",
+			static_leads_json='["CUST-1"]', exclude_email_groups_json='["Excluded Group"]')
+		segment.check_permission = lambda permission: None
+		with patch("finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio.frappe.get_doc",
+			return_value=segment), \
+			patch("finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio.email_marketing.validate_lead_filter_groups",
+			return_value="[]"), \
+			patch("finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio.email_marketing.validate_excluded_email_groups",
+			side_effect=lambda value: frappe.parse_json(value)):
+			context = _audience_context("[]", segment_name="Saved", audience_doctype="Customer")
+		self.assertEqual(context.email_groups, ["Excluded Group"])
+
+	def test_customer_preview_batches_labels(self):
+		rows = [frappe._dict(lead=f"CUST-{i}", contact=f"CONT-{i}", email=f"p{i}@example.com")
+			for i in range(1000)]
+		def labels(doctype, filters, **kwargs):
+			return [frappe._dict(name=name, **({"customer_name": name} if doctype == "Customer"
+				else {"full_name": name})) for name in filters["name"][1]]
+		with patch("finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio.frappe.get_list",
+			side_effect=labels) as get_list:
+			result = _customer_preview_rows(rows, 1000)
+		self.assertEqual(len(result), 1000)
+		self.assertEqual(get_list.call_count, 2)
+
 	def test_invalid_json_is_reported_as_campaign_validation(self):
 		with self.assertRaises(frappe.ValidationError):
 			_parse_payload("{invalid")
