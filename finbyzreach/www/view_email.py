@@ -200,9 +200,25 @@ def get_context(context):
 		if lead_name and frappe.db.exists("Lead", lead_name):
 			doc_context = frappe.get_doc("Lead", lead_name)
 			recipient_email = doc_context.get("email_id") or ""
-		elif ref_doctype and ref_name and frappe.db.exists(ref_doctype, ref_name):
-			doc_context = frappe.get_doc(ref_doctype, ref_name)
-			recipient_email = doc_context.get("email_id") or ""
+		elif ref_doctype in ("Customer", "Contact") and ref_name and frappe.db.exists(ref_doctype, ref_name):
+			customer_name = params.get("customer")
+			contact_name = params.get("contact")
+			if (not customer_name or not contact_name
+				or not frappe.db.exists("Customer", customer_name)
+				or not frappe.db.exists("Contact", contact_name)):
+				context.error_message = _("Invalid Customer preview reference")
+				return context
+			from finbyzreach.customer_campaign import contact_for_customer
+			if ((ref_doctype == "Customer" and ref_name != customer_name)
+				or (ref_doctype == "Contact" and ref_name != contact_name)
+				or not contact_for_customer(customer_name, contact_name)):
+				context.error_message = _("Contact is not linked to Customer")
+				return context
+			customer = frappe.get_doc("Customer", customer_name)
+			contact = frappe.get_doc("Contact", contact_name)
+			doc_context = contact if ref_doctype == "Contact" else customer
+			extra_context = {"customer": customer, "contact": contact}
+			recipient_email = contact.get("email_id") or ""
 	else:
 		context.error_message = _("No email reference provided.")
 		return context

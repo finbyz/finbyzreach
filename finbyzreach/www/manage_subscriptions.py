@@ -31,8 +31,18 @@ def get_context(context):
 		raw = frappe.safe_decode(getattr(frappe.request, "query_string", b""))
 		campaign_recipient = frappe.form_dict.get("campaign_recipient")
 		recipient, email = signed_recipient(campaign_recipient, raw)
-		lead = frappe.get_doc("Lead", recipient.recipient)
-		preferred = (lead.get("custom_preferred_language") or lead.get("language") or "en").lower()[:2]
+		party_doctype = recipient.get("email_campaign_for") or "Lead"
+		if party_doctype not in ("Lead", "Customer"):
+			raise frappe.ValidationError
+		party = frappe.get_doc(party_doctype, recipient.recipient)
+		preferred_doc = party
+		if party_doctype == "Customer" and recipient.get("custom_contact"):
+			from finbyzreach.customer_campaign import contact_for_customer
+			if not contact_for_customer(party.name, recipient.custom_contact):
+				raise frappe.ValidationError
+			preferred_doc = frappe.get_doc("Contact", recipient.custom_contact)
+		preferred = (preferred_doc.get("custom_preferred_language") or preferred_doc.get("language")
+			or party.get("custom_preferred_language") or party.get("language") or "en").lower()[:2]
 		language = frappe.form_dict.get("lang") or preferred
 		language = language if language in LANGUAGES else "en"
 		campaign = frappe.db.get_value("Campaign", recipient.campaign_name, ["custom_subscription_topic", "custom_content_topic"], as_dict=True)
