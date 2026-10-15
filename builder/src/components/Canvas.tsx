@@ -274,7 +274,7 @@ type RichTextToolbarState = {
 type RichTextToolbarAction =
   | { type: 'reset-format' }
   | { type: 'sync-format'; format: TextFormatState }
-  | { type: 'open-link-editor' }
+  | { type: 'open-link-editor'; value: string }
   | { type: 'close-link-editor' }
   | { type: 'set-link-value'; value: string }
 
@@ -291,7 +291,7 @@ function richTextToolbarReducer(state: RichTextToolbarState, action: RichTextToo
   if (action.type === 'sync-format') {
     return isSameTextFormat(state.format, action.format) ? state : { ...state, format: action.format }
   }
-  if (action.type === 'open-link-editor') return { ...state, linkOpen: true, linkValue: 'https://' }
+  if (action.type === 'open-link-editor') return { ...state, linkOpen: true, linkValue: action.value }
   if (action.type === 'close-link-editor') return state.linkOpen ? { ...state, linkOpen: false } : state
   return state.linkValue === action.value ? state : { ...state, linkValue: action.value }
 }
@@ -475,7 +475,14 @@ function RichTextToolbar({
   }, [block.id, captureSelection, getEditor, onUpdate, restoreSelection])
 
   const openLinkEditor = () => {
-    dispatchToolbar({ type: 'open-link-editor' })
+    const editor = getEditor()
+    const selection = document.getSelection()
+    const liveRange = selection?.rangeCount ? selection.getRangeAt(0) : null
+    const range = editor && liveRange && isRangeInside(editor, liveRange) ? liveRange
+      : editor && restoreBookmark(editor, savedSelection.current)
+    const links = range && editor ? Array.from(editor.querySelectorAll('a[href]')).filter((link) => range.intersectsNode(link)) : []
+    const selectedLink = links.length === 1 ? links[0] : null
+    dispatchToolbar({ type: 'open-link-editor', value: selectedLink?.getAttribute('href') || 'https://' })
   }
 
   const applyLink = () => {
