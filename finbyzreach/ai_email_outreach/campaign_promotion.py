@@ -17,6 +17,25 @@ from frappe.utils import cint, now_datetime
 
 CANDIDATE = "Campaign Candidate"
 
+# Aaron's rule is that an imported record becomes a Lead only through the
+# selection step, and that the Lead says so. This system runs Frappe CRM's
+# Lead, which has no `source` field at all - only `utm_source`, a Link to UTM
+# Source - so that is where the provenance goes.
+LEAD_SOURCE = "InfoManager"
+
+
+def ensure_lead_source():
+	"""The UTM Source every promoted Lead is stamped with, created on demand."""
+	if not frappe.db.exists("UTM Source", LEAD_SOURCE):
+		# UTM Source names itself by prompt, so the name is supplied here.
+		frappe.get_doc({
+			"doctype": "UTM Source",
+			"name": LEAD_SOURCE,
+			"description": "Imported from the Baublatt Infomanager feed and "
+						   "promoted through campaign selection.",
+		}).insert(ignore_permissions=True, ignore_if_duplicate=True)
+	return LEAD_SOURCE
+
 
 def swiss_phone(number):
 	"""Infomanager sends Swiss numbers in local form; ERPNext demands a country code."""
@@ -65,6 +84,8 @@ def build_lead(candidate, source):
 		"status": "Lead",
 		"country": "Switzerland",
 	})
+	if frappe.get_meta("Lead").has_field("utm_source"):
+		lead.utm_source = ensure_lead_source()
 	if source:
 		lead.city = source.get("town")
 		phone = swiss_phone(source.get("phone"))
