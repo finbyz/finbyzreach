@@ -1,10 +1,16 @@
-"""Turning approved candidates into Leads and starting their outreach.
+"""Turning approved candidates into CRM records and starting their outreach.
 
-One Lead per recipient, not one per project. A firm on six projects becomes a
-single Lead carrying all six as context, so it receives one conversation.
+The shape follows frame 8 of the CRM board and the decisions agreed with
+Megasol, not the shape of the Baublatt feed:
 
-An existing Lead with the same address is reused rather than duplicated, which
-is what Aaron asked for: "become Leads, or link to existing Leads".
+  - the **Lead** is a person. First name, last name, salutation, email.
+  - the **Prospect** is the organisation. It is created as soon as there are
+	company details, and every Lead at that firm is listed on it.
+  - the **Contact** carries the address and links to both, which is what keeps
+	one person joined to several projects instead of duplicated across them.
+
+A person already in the CRM is reused rather than duplicated, and the repeat
+enquiry is logged on the Lead that is already there.
 """
 
 from __future__ import annotations
@@ -13,14 +19,14 @@ import re
 
 import frappe
 from frappe import _
-from frappe.utils import cint, now_datetime
+from frappe.utils import cint, now_datetime, today
 
 CANDIDATE = "Campaign Candidate"
 
 # Aaron's rule is that an imported record becomes a Lead only through the
-# selection step, and that the Lead says so. This system runs Frappe CRM's
-# Lead, which has no `source` field at all - only `utm_source`, a Link to UTM
-# Source - so that is where the provenance goes.
+# selection step, and that the Lead says so. ERPNext dropped Lead.source in
+# favour of `utm_source`, a Link to UTM Source - frame 8 keeps it and asks for
+# it to be set everywhere - so that is where the provenance goes.
 LEAD_SOURCE = "InfoManager"
 
 
@@ -37,6 +43,23 @@ def ensure_lead_source():
 	return LEAD_SOURCE
 
 
+def ensure_salutation(label):
+	"""The Salutation record for a Baublatt salutation, created on demand.
+
+	Baublatt sends the German wording - "Herr" - and the installed list is
+	English. Translating it would be a guess about how Megasol addresses people,
+	so the German form is kept and registered as it arrived.
+	"""
+	label = (label or "").strip()
+	if not label:
+		return None
+	if not frappe.db.exists("Salutation", label):
+		frappe.get_doc({"doctype": "Salutation", "salutation": label}).insert(
+			ignore_permissions=True, ignore_if_duplicate=True
+		)
+	return label
+
+
 def swiss_phone(number):
 	"""Infomanager sends Swiss numbers in local form; ERPNext demands a country code."""
 	if not number:
@@ -51,12 +74,48 @@ def swiss_phone(number):
 	return "+41" + digits if digits else None
 
 
-def find_existing_lead(candidate):
-	"""An address already in the CRM is the same prospect, not a new one."""
+def opt_out_reason(email):
+	"""Why this address must not be emailed, or None.
+
+	The CRM Campaign path already answers this - unsubscribed, Do Not Contact,
+	topic opt-outs, excluded email groups - and promotion has to give the same
+	answer. Otherwise the AI path is simply a way around the opt-out.
+	"""
+	if not email:
+		return _("No email address")
+	from finbyzreach.email_marketing import test_recipient_exclusion
+
+	return test_recipient_exclusion(email)
+
+
+def source_records(candidate):
+	"""The Infomanager person and firm behind a candidate, either of which may be absent."""
+	person = company = None
+	if candidate.party_type == "Contact" and candidate.contact:
+		person = frappe.get_doc("Infomanager Contact", candidate.contact)
+		if person.company:
+			company = frappe.get_doc("Infomanager Company", person.company)
+	if not company and candidate.company:
+		company = frappe.get_doc("Infomanager Company", candidate.company)
+	return person, company
+
+
+def find_existing_lead(candidate, person):
+	"""The Lead this recipient already has, if any.
+
+	A person is never matched to their employer's Lead. Two people at the same
+	firm are two Leads - frame 8 puts one Lead per person - and falling back to
+	the company Lead would quietly merge them and send one of them an email
+	addressed to the other.
+	"""
 	if candidate.email:
 		lead = frappe.db.get_value("Lead", {"email_id": candidate.email}, "name")
 		if lead:
 			return lead
+
+	if person:
+		return frappe.db.get_value("Lead", {"custom_infomanager_contact_id": person.name}, "name")
+
 	if candidate.company:
 		lead = frappe.db.get_value("Infomanager Company", candidate.company, "lead")
 		if lead and frappe.db.exists("Lead", lead):
@@ -64,49 +123,202 @@ def find_existing_lead(candidate):
 	return None
 
 
-def source_record(candidate):
-	"""The Infomanager record this candidate came from."""
-	if candidate.party_type == "Contact" and candidate.contact:
-		return frappe.get_doc("Infomanager Contact", candidate.contact)
-	if candidate.company:
-		return frappe.get_doc("Infomanager Company", candidate.company)
-	return None
+def apply_address(lead, *sources):
+	"""Postcode and town, which is what partner matching runs on.
 
-
-def build_lead(candidate, source):
-	lead = frappe.new_doc("Lead")
-	is_person = candidate.party_type == "Contact"
-
-	lead.update({
-		"lead_name": candidate.recipient_name,
-		"first_name": candidate.recipient_name,
-		"email_id": candidate.email,
-		"status": "Lead",
-		"country": "Switzerland",
-	})
-	if frappe.get_meta("Lead").has_field("utm_source"):
-		lead.utm_source = ensure_lead_source()
-	if source:
-		lead.city = source.get("town")
-		phone = swiss_phone(source.get("phone"))
+	The sources are applied in order, so the firm's address is laid down first
+	and the person's overrides it where they have their own. Baublatt often
+	sends a person with no address at all, and reading only the person would
+	leave the Lead with no postcode to match a partner on.
+	"""
+	for source in sources:
+		if not source:
+			continue
+		lead.city = source.get("town") or lead.city
+		if lead.meta.has_field("custom_postal_code"):
+			lead.custom_postal_code = source.get("postcode") or lead.custom_postal_code
+		phone = swiss_phone(source.get("phone") or source.get("direct_phone"))
 		if phone:
 			lead.phone = phone
-			lead.mobile_no = phone
-		if not is_person:
-			lead.company_name = source.get("name1")
-			lead.website = source.get("website")
-			if frappe.get_meta("Lead").has_field("custom_infomanager_company_id"):
-				lead.custom_infomanager_company_id = source.name
-		elif frappe.get_meta("Lead").has_field("custom_infomanager_contact_id"):
-			lead.custom_infomanager_contact_id = source.name
+		mobile = swiss_phone(source.get("mobile_phone"))
+		if mobile:
+			lead.mobile_no = mobile
+
+
+def apply_identity(lead, person, company):
+	"""The Infomanager keys, so the Lead can always be traced back to the feed."""
+	if person and lead.meta.has_field("custom_infomanager_contact_id"):
+		lead.custom_infomanager_contact_id = person.name
+	if company and lead.meta.has_field("custom_infomanager_company_id"):
+		lead.custom_infomanager_company_id = company.name
+	if lead.meta.has_field("custom_infomanager_status"):
+		# Baublatt marks a contact inactive when the person has left the firm.
+		lead.custom_infomanager_status = (
+			"Inactive" if person and not cint(person.active) else "Active"
+		)
+
+
+def build_lead(candidate, person, company):
+	"""A new Lead in the shape frame 8 asks for: a person, with their employer named."""
+	lead = frappe.new_doc("Lead")
+	lead.status = "Lead"
+	lead.country = "Switzerland"
+	lead.email_id = candidate.email
+
+	if person:
+		lead.salutation = ensure_salutation(person.salutation_label)
+		lead.first_name = person.first_name or candidate.recipient_name
+		lead.last_name = person.last_name
+
+	# Organization Name is what creates the Prospect. It is set for a person's
+	# employer too, not only for an enquiry that arrived without a person.
+	if company:
+		lead.company_name = company.name1
+		lead.website = company.website
+	elif not person:
+		lead.company_name = candidate.recipient_name
+
+	if not person:
+		# Baublatt delivers plenty of firms with a general mailbox and nobody
+		# named behind it. Left blank, ERPNext splits the organisation name
+		# across the person fields and invents a Herr Hartmann with the surname
+		# AG; naming the firm in one field keeps the record honest until a
+		# person is actually delivered.
+		lead.first_name = lead.company_name
+		lead.last_name = None
+
+	if lead.meta.has_field("utm_source"):
+		lead.utm_source = ensure_lead_source()
+
+	apply_address(lead, company, person)
+	apply_identity(lead, person, company)
 
 	lead.flags.ignore_permissions = True
 	lead.insert(ignore_permissions=True)
 	return lead
 
 
-def ensure_contact(candidate, lead):
-	"""A Contact carrying the address, linked to the Lead.
+def refresh_lead(lead, person, company):
+	"""Fill the gaps on a Lead we are reusing, without overwriting anyone's edits.
+
+	`custom_base_data_manipulated` is the flag Megasol uses to say the imported
+	base data has been corrected by hand. Once it is set, the feed stops being
+	the authority for this record and only blank fields are filled.
+	"""
+	edited = cint(lead.get("custom_base_data_manipulated"))
+	changed = False
+
+	if not edited and person:
+		for field, value in (
+			("salutation", ensure_salutation(person.salutation_label)),
+			("first_name", person.first_name),
+			("last_name", person.last_name),
+		):
+			if value and lead.get(field) != value:
+				lead.set(field, value)
+				changed = True
+
+	if company and not lead.company_name:
+		lead.company_name = company.name1
+		changed = True
+	if company and not lead.website and company.website:
+		lead.website = company.website
+		changed = True
+	if lead.meta.has_field("utm_source") and not lead.utm_source:
+		lead.utm_source = ensure_lead_source()
+		changed = True
+
+	before = (lead.get("custom_infomanager_contact_id"), lead.get("custom_infomanager_company_id"))
+	apply_identity(lead, person, company)
+	if before != (lead.get("custom_infomanager_contact_id"), lead.get("custom_infomanager_company_id")):
+		changed = True
+
+	if changed:
+		lead.flags.ignore_permissions = True
+		lead.save(ignore_permissions=True)
+	return lead
+
+
+def log_inquiry(lead, candidate):
+	"""Record this project against the Lead, as a repeat enquiry if it already has one.
+
+	Megasol asked for repeat enquiries to stay on the same Lead rather than
+	spawning another, so the project is appended to a running list and the
+	counter frame 8 asks for is kept alongside it.
+	"""
+	line = "{0} · {1} · {2}".format(
+		today(), candidate.project or "-", candidate.project_title or ""
+	).strip(" ·")
+
+	values = {}
+	if lead.meta.has_field("custom_infomanager"):
+		existing = (lead.get("custom_infomanager") or "").strip()
+		if line not in existing:
+			values["custom_infomanager"] = (existing + "\n" + line).strip()
+
+	# A single Link field holds one project. The first one claims it; the rest
+	# live in the list above until this becomes a child table.
+	if lead.meta.has_field("custom_infomanager_projects") and candidate.project:
+		if not lead.get("custom_infomanager_projects"):
+			values["custom_infomanager_projects"] = candidate.project
+
+	if lead.meta.has_field("custom_inquiry_count"):
+		values["custom_inquiry_count"] = cint(lead.get("custom_inquiry_count")) + 1
+	if lead.meta.has_field("custom_last_inquiry_on"):
+		values["custom_last_inquiry_on"] = now_datetime()
+
+	if values:
+		frappe.db.set_value("Lead", lead.name, values, update_modified=False)
+		lead.reload()
+	return lead
+
+
+def ensure_prospect(company, lead):
+	"""The organisation record, created as soon as there are company details.
+
+	Reused by name rather than recreated: ERPNext names a Prospect after the
+	company, and its own create_prospect throws on a second Lead at the same
+	firm instead of adding them to it.
+	"""
+	if not company or not company.name1:
+		return None
+
+	name = frappe.db.get_value("Prospect", {"company_name": company.name1}, "name")
+	prospect = frappe.get_doc("Prospect", name) if name else frappe.new_doc("Prospect")
+	if not name:
+		prospect.company_name = company.name1
+		prospect.company = lead.company
+
+	prospect.website = prospect.website or company.website
+	prospect.territory = prospect.territory or lead.territory
+	prospect.prospect_owner = prospect.prospect_owner or lead.lead_owner
+
+	if not any(row.lead == lead.name for row in prospect.leads):
+		prospect.append("leads", {
+			"lead": lead.name,
+			"lead_name": lead.lead_name,
+			"email": lead.email_id,
+			"mobile_no": lead.mobile_no,
+			"lead_owner": lead.lead_owner,
+			"status": lead.status,
+		})
+
+	prospect.flags.ignore_permissions = True
+	prospect.flags.ignore_mandatory = True
+	prospect.save(ignore_permissions=True)
+
+	if company.meta.has_field("prospect") and company.prospect != prospect.name:
+		frappe.db.set_value("Infomanager Company", company.name, "prospect", prospect.name,
+		                    update_modified=False)
+	return prospect
+
+
+def ensure_contact(candidate, lead, prospect, person, company):
+	"""The Contact carrying the address, linked to the Lead and the Prospect.
+
+	The links are appended, never replaced. Someone who turns up on a second
+	project keeps the first project's Lead on their Contact, which is what
+	Megasol asked for when a person appears across several projects.
 
 	The outreach automation fires on Contact creation and would start the
 	*default* campaign. Creating this candidate's Outbound Email in the same
@@ -118,12 +330,27 @@ def ensure_contact(candidate, lead):
 		contact = frappe.get_doc("Contact", existing)
 	else:
 		contact = frappe.new_doc("Contact")
-		contact.first_name = candidate.recipient_name or candidate.email
-		contact.company_name = candidate.recipient_name if candidate.party_type == "Company" else None
+		if person:
+			contact.salutation = ensure_salutation(person.salutation_label)
+			contact.first_name = person.first_name or candidate.recipient_name
+			contact.last_name = person.last_name
+		else:
+			# A firm's general mailbox with nobody named behind it. The Contact
+			# has to be called something, and the firm is all we were sent.
+			contact.first_name = candidate.recipient_name or candidate.email
 		contact.append("email_ids", {"email_id": candidate.email, "is_primary": 1})
 
-	if not any(l.link_doctype == "Lead" and l.link_name == lead.name for l in contact.links):
-		contact.append("links", {"link_doctype": "Lead", "link_name": lead.name})
+	if person and contact.meta.has_field("custom_infomanager_contact_id"):
+		contact.custom_infomanager_contact_id = person.name
+	if company and contact.meta.has_field("custom_infomanager_company_id"):
+		contact.custom_infomanager_company_id = company.name
+
+	targets = [("Lead", lead.name)]
+	if prospect:
+		targets.append(("Prospect", prospect.name))
+	for doctype, docname in targets:
+		if not any(l.link_doctype == doctype and l.link_name == docname for l in contact.links):
+			contact.append("links", {"link_doctype": doctype, "link_name": docname})
 
 	contact.flags.ignore_permissions = True
 	contact.save(ignore_permissions=True)
@@ -142,7 +369,6 @@ def candidate_context_summary(candidate):
 	return ". ".join(bits) + "."
 
 
-
 def _research_call(default_path):
 	"""Resolve a research entry point, honouring any site override.
 
@@ -157,7 +383,7 @@ def _research_call(default_path):
 	return frappe.get_attr(target or default_path)
 
 
-def run_research(lead, contact, candidate):
+def run_research(lead, contact, candidate, prospect=None):
 	"""Research the company and the person before any email is written.
 
 	The outreach automation normally does this, but it bails out as soon as an
@@ -203,6 +429,7 @@ def run_research(lead, contact, candidate):
 	# refreshes it on save — and by this point the Lead has already been saved
 	# by the company research above, so the copy would otherwise stay empty.
 	copy_person_research_to_lead(lead, contact)
+	copy_company_research_to_prospect(lead, prospect)
 
 	return " · ".join(notes)
 
@@ -215,6 +442,16 @@ def copy_person_research_to_lead(lead, contact):
 		frappe.db.set_value("Lead", lead.name, "custom_person_research", summary,
 		                    update_modified=False)
 		lead.reload()
+
+
+def copy_company_research_to_prospect(lead, prospect):
+	"""Frame 8 moves company research off the Lead and onto the organisation."""
+	if not prospect or not prospect.meta.has_field("custom_company_research"):
+		return
+	summary = lead.get("customer_details")
+	if summary and not prospect.get("custom_company_research"):
+		frappe.db.set_value("Prospect", prospect.name, "custom_company_research", summary,
+		                    update_modified=False)
 
 
 @frappe.whitelist()
@@ -240,22 +477,34 @@ def promote(names=None, campaign_name: str = None):
 			skipped += 1
 			continue
 
+		blocked = opt_out_reason(candidate.email)
+		if blocked:
+			candidate.db_set({"status": "Skipped", "skip_reason": blocked}, update_modified=False)
+			frappe.db.commit()
+			skipped += 1
+			continue
+
 		try:
-			source = source_record(candidate)
-			lead_name = find_existing_lead(candidate)
-			lead = frappe.get_doc("Lead", lead_name) if lead_name else build_lead(candidate, source)
+			person, company = source_records(candidate)
+			lead_name = find_existing_lead(candidate, person)
+			if lead_name:
+				lead = refresh_lead(frappe.get_doc("Lead", lead_name), person, company)
+			else:
+				lead = build_lead(candidate, person, company)
+			lead = log_inquiry(lead, candidate)
 
-			if source and source.doctype == "Infomanager Company" and not source.lead:
-				frappe.db.set_value("Infomanager Company", source.name, "lead", lead.name,
+			if company and not company.lead:
+				frappe.db.set_value("Infomanager Company", company.name, "lead", lead.name,
 				                    update_modified=False)
 
-			contact = ensure_contact(candidate, lead)
+			prospect = ensure_prospect(company, lead)
+			contact = ensure_contact(candidate, lead, prospect, person, company)
 
-			if source and source.doctype == "Infomanager Contact" and not source.contact:
-				frappe.db.set_value("Infomanager Contact", source.name, "contact", contact.name,
+			if person and not person.contact:
+				frappe.db.set_value("Infomanager Contact", person.name, "contact", contact.name,
 				                    update_modified=False)
 
-			research_note = run_research(lead, contact, candidate)
+			research_note = run_research(lead, contact, candidate, prospect)
 
 			outbound = frappe.get_doc({
 				"doctype": "Outbound Email",
