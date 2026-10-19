@@ -152,11 +152,11 @@ frappe.ui.form.on("AI Email Campaign", {
 
 		frm.add_custom_button(__("Find Candidates"), () => {
 			if (!frm.doc.description) {
-				frappe.msgprint(__("Add a campaign description first — the AI scores against it."));
+				frappe.msgprint(__("Add a campaign description first - the AI scores against it."));
 				return;
 			}
 			frappe.confirm(
-				__("Find everyone the criteria match and score them against the brief?<br><br>Nothing is contacted — candidates are stored for review."),
+				__("Find everyone the criteria match and score them against the brief?<br><br>Nothing is contacted - candidates are stored for review."),
 				() => run(frm, `${SEL}.build_candidates`,
 					{ campaign_name: frm.doc.name, score_with_ai: 1 },
 					__("Finding candidates…"))

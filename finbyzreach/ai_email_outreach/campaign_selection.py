@@ -320,7 +320,7 @@ def resolve_relevance_agent(campaign=None):
 
 	A campaign may name its own; otherwise the shared one from Followup
 	Settings is used, so a change there applies everywhere at once. Nothing is
-	hardcoded — an agent that has been renamed or removed simply resolves to
+	hardcoded - an agent that has been renamed or removed simply resolves to
 	nothing and the caller reports it.
 	"""
 	if campaign and campaign.get("relevance_agent"):
@@ -416,7 +416,7 @@ def score_candidates(campaign_name: str, limit: int = 0, user: str = None, force
 			scored += 1
 			notify_progress(
 				campaign_name, "scoring",
-				_("Scored {0} ({1}/{2}) — Score: {3}").format(recipient, idx, total, score),
+				_("Scored {0} ({1}/{2}) - Score: {3}").format(recipient, idx, total, score),
 				idx, total, user=user
 			)
 		except Exception:

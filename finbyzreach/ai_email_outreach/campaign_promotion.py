@@ -372,8 +372,8 @@ def candidate_context_summary(candidate):
 def _research_call(default_path):
 	"""Resolve a research entry point, honouring any site override.
 
-	A site can remap these through override_whitelisted_methods — this one
-	does — so the promotion path must use the same implementation the rest of
+	A site can remap these through override_whitelisted_methods - this one
+	does - so the promotion path must use the same implementation the rest of
 	the system uses rather than hardcoding one.
 	"""
 	overrides = frappe.get_hooks("override_whitelisted_methods") or {}
@@ -387,7 +387,7 @@ def run_research(lead, contact, candidate, prospect=None):
 	"""Research the company and the person before any email is written.
 
 	The outreach automation normally does this, but it bails out as soon as an
-	Outbound Email exists — and promotion creates one deliberately, to keep the
+	Outbound Email exists - and promotion creates one deliberately, to keep the
 	recipient on their own campaign. So it has to happen here instead.
 
 	Failure is reported, never fatal: an email written without research is worth
@@ -426,7 +426,7 @@ def run_research(lead, contact, candidate, prospect=None):
 		notes.append(_("Used project details in place of person research"))
 
 	# Person research lives on the Contact. The Lead keeps a copy, but only
-	# refreshes it on save — and by this point the Lead has already been saved
+	# refreshes it on save - and by this point the Lead has already been saved
 	# by the company research above, so the copy would otherwise stay empty.
 	copy_person_research_to_lead(lead, contact)
 	copy_company_research_to_prospect(lead, prospect)
