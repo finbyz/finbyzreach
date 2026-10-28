@@ -29,7 +29,7 @@ frappe.ui.form.on("Outbound Email", {
 					__("Approve {0} email(s)? The first will be sent shortly; later steps wait for their branch condition.", [held.length]),
 					() => {
 						frm.call({
-							method: "finbyzreach.ai_email_outreach.campaign_promotion.approve_emails",
+							method: "finbyzreach.ai_email_outreach.approval.approve_emails",
 							args: { outbound_name: frm.doc.name },
 							freeze: true,
 							freeze_message: __("Approving…"),

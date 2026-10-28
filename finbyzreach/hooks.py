@@ -18,10 +18,10 @@ add_to_apps_screen = [
 # ------------------
 
 # include js, css files in header of desk.html
-app_include_css = "/assets/finbyzreach/css/subscription_preferences.css?v=20261009.2"
+app_include_css = "/assets/finbyzreach/css/subscription_preferences.css?v=20261028.1"
 after_request = ["finbyzreach.subscription_embed.set_subscription_embed_policy"]
 app_include_js = [
-    "/assets/finbyzreach/js/subscription_preferences.js?v=20261009.2",
+    "/assets/finbyzreach/js/subscription_preferences.js?v=20261028.1",
     "/assets/finbyzreach/js/email_builder_composer.js?v=20260716.1",
     "/assets/finbyzreach/js/email_template_library.js?v=20260930.4",
     "/assets/finbyzreach/js/email_template_quick_entry.js?v=20260930.3",

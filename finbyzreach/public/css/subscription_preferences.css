@@ -22,10 +22,11 @@
   cursor: pointer;
 }
 .fr-subscriptions-head:hover { background: var(--subtle-fg, #f8fafc); }
+.fr-subscriptions.is-collapsed .fr-subscriptions-head { padding-bottom: 14px; }
 .fr-subscriptions-head strong { display: block; font-size: 15px; }
 .fr-subscriptions-head small { display: block; margin-top: 3px; color: var(--text-muted, #6b7280); }
-.fr-subscriptions-chevron { font-size: 20px; line-height: 1; transition: transform .2s ease; }
-.fr-subscriptions.is-open .fr-subscriptions-chevron { transform: rotate(180deg); }
+.fr-subscriptions.is-collapsed .fr-subscriptions-head small { display: none; }
+.fr-subscriptions-chevron { display: inline-flex; align-items: center; }
 .fr-subscriptions-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; padding: 6px 18px 16px; }
 .fr-subscriptions-summary-item {
   display: flex;

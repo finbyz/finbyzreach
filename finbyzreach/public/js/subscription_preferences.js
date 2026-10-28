@@ -18,11 +18,11 @@ window.finbyzreachPreferences = {
                     if (unknown) $status.attr("title", __("No subscription choice has been recorded for this email."));
                 };
                 const $panel = $("<section class='fr-subscriptions'>").appendTo($root);
-                const $heading = $("<button type='button' class='fr-subscriptions-head' aria-expanded='false'>").appendTo($panel);
+                const $heading = $("<button type='button' class='fr-subscriptions-head'>").appendTo($panel);
                 const $headingCopy = $("<span>").appendTo($heading);
                 $("<strong>").text(__("Communication subscriptions")).appendTo($headingCopy);
                 $("<small>").text(message.email || __("No email address")).appendTo($headingCopy);
-                $("<span class='fr-subscriptions-chevron' aria-hidden='true'>").text("⌄").appendTo($heading);
+                const $chevron = $("<span class='fr-subscriptions-chevron' aria-hidden='true'>").appendTo($heading);
 
                 const $summary = $("<div class='fr-subscriptions-summary'>").appendTo($panel);
                 const mailingTypes = topics.filter(topic => topic.category === "Mailing Type");
@@ -36,7 +36,7 @@ window.finbyzreachPreferences = {
                 });
                 $("<button type='button' class='fr-subscriptions-manage'>")
                     .text(__("Change communication subscriptions") + " ›")
-                    .on("click", () => setOpen(true))
+                    .on("click", () => setDetailsOpen(true))
                     .appendTo($summary);
 
                 const $body = $("<div class='fr-subscriptions-body'>").appendTo($panel);
@@ -83,15 +83,23 @@ window.finbyzreachPreferences = {
                         });
                     });
                 }
-                const setOpen = open => {
-                    frm.__finbyzSubscriptionOpen = open;
-                    $panel.toggleClass("is-open", open);
-                    $heading.attr("aria-expanded", open ? "true" : "false");
-                    $summary.toggle(!open);
-                    $body.toggle(open);
+                const storageKey = `finbyzreach-subscriptions-${frm.doctype}-closed`;
+                const setCollapsed = collapsed => {
+                    frm.__finbyzSubscriptionCollapsed = collapsed;
+                    localStorage.setItem(storageKey, collapsed ? "1" : "");
+                    if (collapsed) frm.__finbyzSubscriptionDetailsOpen = false;
+                    $panel.toggleClass("is-collapsed", collapsed);
+                    $heading.attr("aria-expanded", collapsed ? "false" : "true");
+                    $chevron.html(frappe.utils.icon(collapsed ? "chevron-right" : "chevron-down", "sm"));
+                    $summary.toggle(!collapsed && !frm.__finbyzSubscriptionDetailsOpen);
+                    $body.toggle(!collapsed && Boolean(frm.__finbyzSubscriptionDetailsOpen));
                 };
-                $heading.on("click", () => setOpen(!frm.__finbyzSubscriptionOpen));
-                setOpen(Boolean(frm.__finbyzSubscriptionOpen));
+                const setDetailsOpen = open => {
+                    frm.__finbyzSubscriptionDetailsOpen = open;
+                    setCollapsed(false);
+                };
+                $heading.on("click", () => setCollapsed(!frm.__finbyzSubscriptionCollapsed));
+                setCollapsed(frm.__finbyzSubscriptionCollapsed ?? localStorage.getItem(storageKey) === "1");
             }
         });
     }
