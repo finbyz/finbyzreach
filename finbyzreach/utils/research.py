@@ -45,10 +45,7 @@ def research_company(party_type: str, party_name: str, enforce_permissions: bool
     company_research_service = AgentService(setting.company_research_agent)
 
     result = company_research_service.invoke(**lead_info)
-    frappe.log_error(
-        title="Perplexity Company Research Result",
-        message=frappe.as_json(result)
-    )
+    frappe.logger("finbyzreach").info(f"Company research result: {frappe.as_json(result)}")
 
     doc.customer_details = result.company_overview
     doc.industry = result.industry_type

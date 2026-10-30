@@ -160,20 +160,21 @@ def get_lead_activities(lead_name):
     comms = frappe.get_all(
         "Communication",
         filters={"reference_doctype": "Lead", "reference_name": lead_name},
-        fields=["subject", "content", "communication_date as date", "'Email' as type"],
+        fields=["subject", "content", "communication_date as date"],
         order_by="communication_date desc",
         limit=5,
     )
-    activities.extend(comms)
+    # set here: Frappe v16 no longer accepts string literals ("'Email' as type") in fields
+    activities.extend(dict(c, type="Email") for c in comms)
 
     notes = frappe.get_all(
         "CRM Note",
         filters={"parent": lead_name},
-        fields=["note as subject", "creation as date", "'Note' as type"],
+        fields=["note as subject", "creation as date"],
         order_by="creation desc",
         limit=5,
     )
-    activities.extend(notes)
+    activities.extend(dict(n, type="Note") for n in notes)
 
     return activities
 
@@ -184,20 +185,21 @@ def get_party_activities(party_type, party_name):
     comms = frappe.get_all(
         "Communication",
         filters={"reference_doctype": party_type, "reference_name": party_name},
-        fields=["subject", "content", "communication_date as date", "'Email' as type"],
+        fields=["subject", "content", "communication_date as date"],
         order_by="communication_date desc",
         limit=5,
     )
-    activities.extend(comms)
+    # set here: Frappe v16 no longer accepts string literals ("'Email' as type") in fields
+    activities.extend(dict(c, type="Email") for c in comms)
 
     notes = frappe.get_all(
         "CRM Note",
         filters={"parent": party_name},
-        fields=["note as subject", "creation as date", "'Note' as type"],
+        fields=["note as subject", "creation as date"],
         order_by="creation desc",
         limit=5,
     )
-    activities.extend(notes)
+    activities.extend(dict(n, type="Note") for n in notes)
 
     return activities
 
