@@ -276,7 +276,7 @@ AI_AGENTS = [{'agent_type': 'LangChain Chain',
                            'procurement, or executive)\n'
                            '- Company context relevant to solar energy sales (e.g., sustainability '
                            'initiatives, building projects, energy procurement)\n'
-                           '- Recent professional activity or signals (last 6–12 months if '
+                           '- Recent professional activity or signals (last 6-12 months if '
                            'available): job changes, promotions, company expansions, '
                            'sustainability commitments, new construction projects\n'
                            '- Clear potential sales opportunities or conversation starters based '
