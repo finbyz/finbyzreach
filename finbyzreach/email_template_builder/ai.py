@@ -556,7 +556,7 @@ try:
 	from langchain_core.callbacks import BaseCallbackHandler
 except Exception:
 	try:
-		from langchain.callbacks.base import BaseCallbackHandler
+		from langchain_core.callbacks.base import BaseCallbackHandler
 	except Exception:
 		class BaseCallbackHandler:
 			pass
