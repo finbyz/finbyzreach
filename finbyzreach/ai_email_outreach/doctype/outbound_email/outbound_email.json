@@ -17,9 +17,7 @@
   "replied",
   "research_note",
   "source_section",
-  "lead",
-  "col_source",
-  "infomanager_project"
+  "lead"
  ],
  "fields": [
   {
@@ -98,18 +96,6 @@
    "label": "Lead",
    "read_only": 1,
    "description": "The prospect this conversation belongs to. Makes earlier outreach visible on the Lead."
-  },
-  {
-   "fieldname": "col_source",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "infomanager_project",
-   "fieldtype": "Link",
-   "options": "Infomanager Project",
-   "label": "Project",
-   "read_only": 1,
-   "description": "The building project this conversation leads with."
   }
  ],
  "index_web_pages_for_search": 1,

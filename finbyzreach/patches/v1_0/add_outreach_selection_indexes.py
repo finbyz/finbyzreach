@@ -1,26 +1,8 @@
-"""Index the columns the campaign selection pass filters and joins on.
-
-Candidate building runs one duplicate check per party and joins participants
-to projects, so every one of these is hit repeatedly. Unindexed they are full
-table scans, which is invisible at a few hundred rows and fatal at a hundred
-thousand.
-"""
+"""Index contact lookups for outreach."""
 
 import frappe
 
-INDEXES = [
-	("Infomanager Project Participant", ["company"]),
-	("Infomanager Project Participant", ["contact"]),
-	("Infomanager Project Detail", ["detailtype_name"]),
-	("Infomanager Project", ["planstage_name"]),
-	("Infomanager Project", ["province_name"]),
-	("Infomanager Project", ["projecttype_name"]),
-	("Infomanager Company", ["email"]),
-	("Infomanager Contact", ["email"]),
-	("Campaign Candidate", ["email"]),
-	("Campaign Candidate", ["ai_email_campaign"]),
-	("Outbound Email", ["contact"]),
-]
+INDEXES = [("Outbound Email", ["contact"])]
 
 
 def execute():

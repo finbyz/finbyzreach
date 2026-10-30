@@ -136,10 +136,7 @@ class OutboundEmail(Document):
         # there are steps.
         template_context = self.get_template_context(contact, party_link, email_campaign)
 
-        # Record what the sequence was written about, for outbounds that were not
-        # created through campaign promotion.
-        if not self.get("infomanager_project") and template_context.get("project_id"):
-            self.infomanager_project = template_context["project_id"]
+        # Link the conversation to its CRM lead when drafting.
         if not self.get("lead") and party_link and party_link.link_doctype == "Lead":
             self.lead = party_link.link_name
         ai_queue = list(drafted_emails)
@@ -203,82 +200,13 @@ class OutboundEmail(Document):
             "full_name": " ".join(filter(None, [contact.first_name, contact.last_name])),
             "email_id": contact.email_id or "",
             "company_name": contact.company_name or lead.get("company_name") or "",
-            "salutation_lettertext": "",
             "lead_name": lead.get("name") or "",
             "website": lead.get("website") or "",
             "city": lead.get("city") or "",
             "country": lead.get("country") or "",
-            "role": "",
-            "project_id": "",
-            "project_title": "",
-            "street": "",
-            "postcode": "",
-            "town": "",
-            "planstage_name": "",
-            "projecttype_name": "",
-            "rooftype_name": "",
-            "project_value": 0,
         }
-        context.update(self.get_infomanager_context(lead.get("name")))
         return context
 
-    def get_infomanager_context(self, lead_name):
-        """Project details for the lead, when the lead came from Infomanager.
-
-        Resolved through Infomanager Company.lead, so no extra field on Lead is
-        needed. Returns an empty dict when the app or the link is absent.
-        """
-        if not lead_name or not frappe.db.has_table("Infomanager Company"):
-            return {}
-
-        company = frappe.db.get_value(
-            "Infomanager Company", {"lead": lead_name},
-            ["name", "salutation_code", "language_code"], as_dict=True,
-        )
-        if not company:
-            return {}
-
-        # Lead with the project most worth writing about: the solar score first,
-        # then a granted permit, then the largest build value. The score is
-        # computed on import from Baublatt's own detail and role codes.
-        row = frappe.db.sql("""
-            select p.name, p.title, p.street, p.postcode, p.town,
-                   p.planning_stage_label, p.planning_stage_code,
-                   p.project_type_label, p.project_value, p.solar_score,
-                   pp.role_label,
-                   (select group_concat(d.detail_label separator ', ')
-                      from `tabInfomanager Project Detail` d
-                     where d.parent = p.name and d.detail_code in ('101', '102', '154')
-                   ) as roof_types
-            from `tabInfomanager Project Participant` pp
-            join `tabInfomanager Project` p on p.name = pp.parent
-            where pp.company = %s
-            order by p.solar_score desc,
-                     (p.planning_stage_code = 'CH_PERMIT_GRANTED') desc,
-                     p.project_value desc
-            limit 1
-        """, company.name, as_dict=True)
-
-        # Xplorer sends no letter text, and no salutation at all on companies,
-        # so the opening is composed from the salutation code and language.
-        from megasol_customisation.megasol_crm.infomanager.salutations import company_opening
-
-        context = {"salutation_lettertext": company_opening(company)}
-        if row:
-            p = row[0]
-            context.update({
-                "role": p.role_label or "",
-                "project_id": p.name,
-                "project_title": p.title or "",
-                "street": p.street or "",
-                "postcode": p.postcode or "",
-                "town": p.town or "",
-                "planstage_name": p.planning_stage_label or "",
-                "projecttype_name": p.project_type_label or "",
-                "rooftype_name": p.roof_types or "",
-                "project_value": p.project_value or 0,
-            })
-        return context
 
 
 def get_schedule_objective(schedule, index):

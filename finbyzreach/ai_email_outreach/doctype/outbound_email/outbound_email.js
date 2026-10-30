@@ -48,36 +48,5 @@ frappe.ui.form.on("Outbound Email", {
 		// Editing a held email before approving it is the point of review mode.
 		frm.fields_dict.communication_email.grid.get_field("subject").df.read_only = 0;
 		frm.fields_dict.communication_email.grid.get_field("content").df.read_only = 0;
-
-		// Pre-existing action, kept as it was.
-		frm.add_custom_button(__("Regenerate Emails"), () => regenerate_emails(frm), __("Actions"));
 	},
 });
-
-function regenerate_emails(frm) {
-	frappe.confirm(
-		__("This will clear existing unsent emails and generate new ones. Continue?"),
-		function () {
-			frm.doc.communication_email = frm.doc.communication_email.filter(
-				(e) => e.status !== "Unsent"
-			);
-
-			frappe.call({
-				method: "finbyzreach.ai_email_outreach.doctype.communication_log.communication_log.regenerate_emails_for_log",
-				args: { log_name: frm.doc.name },
-				freeze: true,
-				freeze_message: __("Generating emails..."),
-				callback: function (r) {
-					if (r.message) {
-						frappe.msgprint({
-							title: __("Success"),
-							indicator: "green",
-							message: __("Generated {0} emails successfully!", [r.message.count]),
-						});
-						frm.reload_doc();
-					}
-				},
-			});
-		}
-	);
-}
