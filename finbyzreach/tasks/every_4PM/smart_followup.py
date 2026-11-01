@@ -215,10 +215,12 @@ def draft_email(lead, activity_summary):
         "country":lead.get("country", ""),
         "status":lead.get("status", ""),
         "email":lead.get("email_id", ""),
-        "company_research":lead.get("company_research"),
+        # process_followup_row stores the company research under customer_details
+        "company_research":lead.get("company_research") or lead.get("customer_details"),
         "person_research":lead.get("person_research"),
         "activity_summary":activity_summary or "No recent activities.",
-        "research_text":research_text
+        "research_text":research_text,
+        "today":frappe.utils.formatdate(frappe.utils.today(), "d MMMM yyyy"),
     }
     result = email_service.invoke(**input_vars)
     signature = frappe.get_value("Email Account", setting.email_account , "signature")
