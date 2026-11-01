@@ -110,22 +110,6 @@ def get_segment_filters(segment_name):
 	}
 
 @frappe.whitelist(methods=["POST"])
-def update_segment(segment_name, filter_groups, exclude_filters="[]", exclude_email_groups="[]"):
-	frappe.has_permission("Reach Segment", "write", throw=True)
-	doc = frappe.get_doc("Reach Segment", segment_name)
-	doc.check_permission("write")
-	filter_groups_json = email_marketing.validate_lead_filter_groups(
-		filter_groups, require_filters=True, audience_doctype=doc.get("audience_doctype") or "Lead"
-	)
-		
-	doc.filter_groups_json = filter_groups_json
-	doc.exclude_filters_json = exclude_filters
-	doc.exclude_email_groups_json = exclude_email_groups
-	doc.save()
-	
-	return {"name": doc.name}
-
-@frappe.whitelist(methods=["POST"])
 def refresh_static_segment_leads(segment_name):
 	frappe.has_permission("Reach Segment", "write", throw=True)
 	doc = frappe.get_doc("Reach Segment", segment_name)

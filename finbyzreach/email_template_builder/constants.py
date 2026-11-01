@@ -66,7 +66,3 @@ DEFAULT_SETTINGS = {
 	"button_radius": "4px",
 	"section_padding": "0px",
 }
-
-
-def new_schema() -> dict:
-	return {"version": SCHEMA_VERSION, "settings": dict(DEFAULT_SETTINGS), "sections": []}

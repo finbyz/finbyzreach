@@ -622,27 +622,6 @@ def _reference_unsubscribed_pairs(lead_names, audience_doctype="Lead"):
 	return result
 
 
-def _topic_unsubscribed_leads(lead_names, subscription_topic):
-	if not subscription_topic:
-		return set()
-	result = set()
-	for names in _chunks(lead_names):
-		result.update(
-			frappe.get_all(
-				"Unsubscribe Topic Multi Select",
-				filters={
-					"parenttype": "Lead",
-					"parentfield": "custom_unsubscribe_topics",
-					"parent": ["in", names],
-					"subscription_topic": subscription_topic,
-				},
-				pluck="parent",
-				limit_page_length=0,
-			)
-		)
-	return result
-
-
 def test_recipient_exclusion(email, subscription_topic=None, audience_doctype="Lead"):
 	"""Return a suppression reason when a campaign test address is opted out."""
 	normalized_email = _normalized_email(email)

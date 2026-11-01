@@ -150,34 +150,6 @@ def get_opportunity_followups(days_since_last_activity=5):
     result = [*customers_opportunity,*lead_opportunity]
     return result
 
-
-
-
-def get_lead_activities(lead_name):
-    """Fetch recent activities (Communication/Activity/Notes) linked to Lead"""
-    activities = []
-
-    comms = frappe.get_all(
-        "Communication",
-        filters={"reference_doctype": "Lead", "reference_name": lead_name},
-        fields=["subject", "content", "communication_date as date"],
-        order_by="communication_date desc",
-        limit=5,
-    )
-    # set here: Frappe v16 no longer accepts string literals ("'Email' as type") in fields
-    activities.extend(dict(c, type="Email") for c in comms)
-
-    notes = frappe.get_all(
-        "CRM Note",
-        filters={"parent": lead_name},
-        fields=["note as subject", "creation as date"],
-        order_by="creation desc",
-        limit=5,
-    )
-    activities.extend(dict(n, type="Note") for n in notes)
-
-    return activities
-
 def get_party_activities(party_type, party_name):
     """Fetch recent activities for a given party type (Lead/Customer) and name"""
     activities = []
