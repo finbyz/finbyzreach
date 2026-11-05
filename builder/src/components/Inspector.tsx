@@ -1051,12 +1051,32 @@ function RecordConditionsEditor({ selection, visibility, props }: { selection: N
   </Group>
 }
 
+function SegmentConditionsEditor({ selection, visibility, props }: { selection: NonNullable<Selection>; visibility: Visibility; props: InspectorProps }) {
+  const audience = String(props.document.metadata.reference_doctype || '')
+  const method = 'finbyzreach.segments.template_segments'
+  const params = { audience_doctype: audience }
+  const { data } = useFrappeGetCall<ApiResponse<{name:string}[]>>(method, params, audience ? makeCallKey(method, params) : null, { revalidateOnFocus:false })
+  const rules = visibility.segment_conditions || []
+  const setRules = (next: NonNullable<Visibility['segment_conditions']>) => props.onNode(selection, 'visibility.segment_conditions', next)
+  return <Group title="Segment conditions">
+    {rules.map((rule,index) => <div key={index} className="condition-rule">
+      <select value={rule.segment} disabled={props.readOnly} onChange={event => setRules(rules.map((item,i)=>i===index?{...item,segment:event.target.value}:item))}>
+        <option value="">Choose a segment</option>{(data?.message || []).map(segment=><option key={segment.name} value={segment.name}>{segment.name}</option>)}
+      </select>
+      <select value={rule.member?'in':'out'} disabled={props.readOnly} onChange={event=>setRules(rules.map((item,i)=>i===index?{...item,member:event.target.value==='in'}:item))}><option value="in">Is a member</option><option value="out">Is not a member</option></select>
+      <button type="button" className="secondary-button" disabled={props.readOnly} onClick={()=>setRules(rules.filter((_,i)=>i!==index))}>Remove</button>
+    </div>)}
+    <button type="button" className="secondary-button" disabled={props.readOnly || !data?.message?.length || rules.length>=5} onClick={()=>setRules([...rules,{segment:data?.message?.[0]?.name || '',member:true}])}>Add segment condition</button>
+  </Group>
+}
+
 function VisibilityInspector({ selection, visibility, props }: { selection: NonNullable<Selection>; visibility?: Visibility; props: InspectorProps }) {
   const value = visibility || { device: 'both', match: 'all', conditions: [] }
   const set = (key: string, next: unknown) => props.onNode(selection, `visibility.${key}`, next)
   return <>
     <Group title="Device visibility"><DeviceVisibilityControl value={value.device} onChange={(next) => set('device', next)} /></Group>
     <RecordConditionsEditor selection={selection} visibility={value} props={props} />
+    <SegmentConditionsEditor selection={selection} visibility={value} props={props} />
   </>
 }
 

@@ -43,6 +43,7 @@ export type VisibilityCondition = {
 export type Visibility = {
   device: DeviceVisibility
   match: 'all' | 'any'
+  segment_conditions?: { segment: string; member: boolean }[]
   conditions: VisibilityCondition[]
 }
 
