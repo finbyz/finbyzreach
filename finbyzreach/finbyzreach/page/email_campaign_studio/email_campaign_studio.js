@@ -144,7 +144,7 @@ class EmailCampaignStudio {
 			"<nav class='ecs-flow' aria-label='" + __("Campaign steps") + "'><button type='button' data-scroll-step='1'><b>1</b><span>" + __("Audience") + "</span></button><button type='button' data-scroll-step='2'><b>2</b><span>" + __("Content") + "</span></button><button type='button' data-scroll-step='3'><b>3</b><span>" + __("Sender") + "</span></button><button type='button' data-scroll-step='4'><b>4</b><span>" + __("Delivery") + "</span></button><button type='button' data-scroll-step='5'><b>5</b><span>" + __("Tracking") + "</span></button></nav></section>",
 			"<div class='ecs-state-banner' id='ecs-state-banner'></div>",
 			"<div class='ecs-grid'><main class='ecs-main'>",
-			this.card("1", __("Build your audience"), __("Choose who should receive this email, then remove anyone who should not."), "<section class='ecs-target-panel' style='margin-bottom: 20px;'><div id='ecs-audience-form'></div></section><section class='ecs-target-panel' style='margin-bottom: 20px; border-radius: 8px; border: 1px solid var(--border-color); background: rgba(248,250,252,.52);'><div class='ecs-target-head' style='margin-bottom: 8px;'><div class='ecs-target-title'><span class='ecs-target-icon' style='background: #e0e7ff; color: #4338ca;'>★</span><div><h4>" + __("Audience Segment") + "</h4><p>" + __("Load an existing saved segment") + "</p></div></div></div><div id='ecs-segment-form'></div></section><div class='ecs-audience-intro'><div class='ecs-presets'><span class='ecs-presets-label'>" + __("Quick start") + "</span><button class='btn btn-sm ecs-preset-card' data-audience-preset='active-email'><span class='ecs-preset-mark'>✓</span><span>" + __("Active leads with email") + "</span></button><button class='btn btn-sm ecs-preset-card' data-audience-preset='all-email'><span class='ecs-preset-mark'>@</span><span>" + __("All leads with email") + "</span></button><button class='btn btn-sm ecs-preset-clear' data-audience-preset='clear'>" + __("Reset") + "</button></div><div class='ecs-safety-note'><span class='ecs-safety-icon'>i</span><span>" + __("Rules inside a group use AND. Add another group to include Leads matching either group.") + "</span></div></div><div class='ecs-audience-columns'><section class='ecs-target-panel ecs-include-panel'><div class='ecs-target-head'><div class='ecs-target-title'><span class='ecs-target-icon'>+</span><div><h4>" + __("Include Leads") + "</h4><p>" + __("Who should receive this campaign?") + "</p></div></div><div style='display: flex; gap: 8px; align-items: center;'><span class='ecs-count-pill' id='ecs-filter-count'>0 " + __("filters") + "</span><button class='btn btn-default btn-sm' id='ecs-save-segment-btn'>" + __("Save as Segment") + "</button></div></div><div id='ecs-filter-builder'><div id='ecs-filter-groups'></div><button type='button' class='btn btn-default btn-sm' id='ecs-add-or-group'>" + __("Add OR group") + "</button></div></section><section class='ecs-target-panel ecs-exclude-panel'><div class='ecs-target-head'><div class='ecs-target-title'><span class='ecs-target-icon'>−</span><div><h4>" + __("Exclude and suppress") + "</h4><p>" + __("Remove matching Leads.") + "</p></div></div><div class='ecs-target-badges'><span class='ecs-count-pill' id='ecs-exclude-filter-count'>0 " + __("rules") + "</span><span class='ecs-optional-pill'>" + __("Optional") + "</span></div></div><div id='ecs-exclude-filter-builder'><div id='ecs-exclude-filter-groups'></div><button type='button' class='btn btn-default btn-sm' id='ecs-add-exclude-or-group'>" + __("Add OR group") + "</button></div></section></div><div class='ecs-audience-footer'><div class='ecs-audience-state'><span class='ecs-audience-state-dot' id='ecs-audience-state-dot'></span><span id='ecs-audience-state-text'>" + __("Choose a preset or add at least one include filter.") + "</span></div><div class='ecs-audience-actions'><button class='btn btn-primary btn-sm' id='ecs-preview-btn' disabled>" + __("Preview Audience") + "</button></div></div>"),
+			this.card("1", __("Build your audience"), __("Choose who should receive this email, then remove anyone who should not."), "<section class='ecs-target-panel' style='margin-bottom: 20px;'><div id='ecs-audience-form'></div></section><section class='ecs-target-panel' style='margin-bottom: 20px; border-radius: 8px; border: 1px solid var(--border-color); background: rgba(248,250,252,.52);'><div class='ecs-target-head' style='margin-bottom: 8px;'><div class='ecs-target-title'><span class='ecs-target-icon' style='background: #e0e7ff; color: #4338ca;'>★</span><div><h4>" + __("Audience Segment") + "</h4><p>" + __("Load an existing saved segment") + "</p></div></div></div><div id='ecs-segment-form'></div></section><div class='ecs-audience-intro'><div class='ecs-presets'><span class='ecs-presets-label'>" + __("Quick start") + "</span><button class='btn btn-sm ecs-preset-card' data-audience-preset='active-email'><span class='ecs-preset-mark'>✓</span><span>" + __("Active leads with email") + "</span></button><button class='btn btn-sm ecs-preset-card' data-audience-preset='all-email'><span class='ecs-preset-mark'>@</span><span>" + __("All leads with email") + "</span></button><button class='btn btn-sm ecs-preset-clear' data-audience-preset='clear'>" + __("Reset") + "</button></div><div class='ecs-safety-note'><span class='ecs-safety-icon'>i</span><span>" + __("Rules inside a group use AND. Add another group to include Leads matching either group.") + "</span></div></div><div class='ecs-audience-columns'><section class='ecs-target-panel ecs-include-panel'><div class='ecs-target-head'><div class='ecs-target-title'><span class='ecs-target-icon'>+</span><div><h4>" + __("Include Leads") + "</h4><p>" + __("Who should receive this campaign?") + "</p></div></div><div style='display: flex; gap: 8px; align-items: center;'><span class='ecs-count-pill' id='ecs-filter-count'>0 " + __("filters") + "</span><button class='btn btn-default btn-sm' id='ecs-save-segment-btn'>" + __("Save as Segment") + "</button></div></div><div id='ecs-filter-builder'><div id='ecs-filter-groups'></div><button type='button' class='btn btn-default btn-sm' id='ecs-add-or-group'>" + __("Add OR group") + "</button></div></section><section class='ecs-target-panel ecs-exclude-panel'><div class='ecs-target-head'><div class='ecs-target-title'><span class='ecs-target-icon'>-</span><div><h4>" + __("Exclude and suppress") + "</h4><p>" + __("Remove matching Leads.") + "</p></div></div><div class='ecs-target-badges'><span class='ecs-count-pill' id='ecs-exclude-filter-count'>0 " + __("rules") + "</span><span class='ecs-optional-pill'>" + __("Optional") + "</span></div></div><div id='ecs-exclude-filter-builder'><div id='ecs-exclude-filter-groups'></div><button type='button' class='btn btn-default btn-sm' id='ecs-add-exclude-or-group'>" + __("Add OR group") + "</button></div></section></div><div class='ecs-audience-footer'><div class='ecs-audience-state'><span class='ecs-audience-state-dot' id='ecs-audience-state-dot'></span><span id='ecs-audience-state-text'>" + __("Choose a preset or add at least one include filter.") + "</span></div><div class='ecs-audience-actions'><button class='btn btn-primary btn-sm' id='ecs-preview-btn' disabled>" + __("Preview Audience") + "</button></div></div>"),
 			this.card("2", __("Campaign and email"), __("Name the campaign and select a standard or visual-builder Email Template."), "<div id='ecs-content-form'></div>"),
 			this.card("3", __("Sender identity"), __("Choose the outgoing account recipients should see."), "<div id='ecs-sender-form'></div>"),
 			this.card("4", __("Delivery plan"), __("Set the send time, batch size, cadence, weekdays and optional sending hours."), "<div id='ecs-schedule-form'></div>"),
@@ -174,7 +174,7 @@ class EmailCampaignStudio {
 			this.queuePreview();
 		};
 		this.audienceForm = this.makeForm("#ecs-audience-form", [
-			{ fieldname: "audience_doctype", label: __("Audience Type"), fieldtype: "Select", options: "Lead\nCustomer", default: "Lead", reqd: 1,
+			{ fieldname: "audience_doctype", label: __("Audience Type"), fieldtype: "Select", options: "Lead\nContact\nCustomer", default: "Lead", reqd: 1,
 				change: () => { if (!this.applyingBootstrap) this.changeAudienceType(); } },
 			{ fieldname: "contact_mode", label: __("Send Customer Emails To"), fieldtype: "Select", options: "Primary Contact\nAll Linked Contacts", default: "Primary Contact",
 				change: () => { if (!this.applyingBootstrap) this.queuePreview(); } },
@@ -187,7 +187,7 @@ class EmailCampaignStudio {
 				label: "",
 				fieldtype: "Link",
 				options: "Reach Segment",
-				get_query: () => ({ filters: { audience_doctype: this.audienceDoctype() } }),
+				get_query: () => ({ filters: { audience_doctype: this.audienceDoctype(), archived: 0 } }),
 				description: __("Optional. Selecting a segment replaces your current rules."),
 				change: () => {
 					if (this.applyingBootstrap || this.applyingSegmentSelection) return;
@@ -232,7 +232,7 @@ class EmailCampaignStudio {
 				},
 			},
 			{ fieldtype: "Column Break" },
-			{ fieldname: "subject_override", label: __("Subject Override"), fieldtype: "Data", description: __("Optional—leave blank to use the template subject."), change },
+			{ fieldname: "subject_override", label: __("Subject Override"), fieldtype: "Data", description: __("Optional-leave blank to use the template subject."), change },
 			{ fieldtype: "Section Break" },
 			{ fieldname: "template_state", fieldtype: "HTML" },
 		]);
@@ -298,7 +298,7 @@ class EmailCampaignStudio {
 	}
 
 	personalizationDoctype() {
-		return this.audienceDoctype() === "Lead" ? "Lead" : (this.audienceForm.get_value("personalization_doctype") || "Customer");
+		return this.audienceDoctype() !== "Customer" ? this.audienceDoctype() : (this.audienceForm.get_value("personalization_doctype") || "Customer");
 	}
 
 	async changeAudienceType() {
@@ -320,8 +320,8 @@ class EmailCampaignStudio {
 		this.$root.find(".ecs-include-panel h4").text(__("Include {0}", [audience]));
 		this.$root.find(".ecs-exclude-panel .ecs-target-head p").text(__("Remove matching {0} records.", [audience]));
 		this.$root.find("[data-fieldname='contact_mode'],[data-fieldname='personalization_doctype']").toggle(audience === "Customer");
-		this.$root.find("[data-audience-preset='active-email'] span:last-child").text(audience === "Customer" ? __("Active customers") : __("Active leads with email"));
-		this.$root.find("[data-audience-preset='all-email'] span:last-child").text(audience === "Customer" ? __("All customers") : __("All leads with email"));
+		this.$root.find("[data-audience-preset='active-email'] span:last-child").text(audience === "Customer" ? __("Active customers") : audience === "Contact" ? __("Contacts with email (not opted out)") : __("Active leads with email"));
+		this.$root.find("[data-audience-preset='all-email'] span:last-child").text(audience === "Customer" ? __("All customers") : audience === "Contact" ? __("All contacts with email") : __("All leads with email"));
 		this.$root.find(".ecs-safety-note").text(__("Rules inside a group use AND. Add another group to include {0} matching either group.", [audience]));
 		this.$root.find(".ecs-preview-empty").text(__("Add {0} filters or select a segment, then preview the campaign audience.", [audience]));
 		this.$root.find(".ecs-launch-note").text(__("Scheduling freezes recipients, email addresses, template content and batch plan. Personalization uses current {0} data when each email is queued.", [this.personalizationDoctype()]));
@@ -529,6 +529,13 @@ class EmailCampaignStudio {
 		const presets = this.audienceDoctype() === "Customer" ? {
 			"active-email": [["Customer", "disabled", "=", 0]],
 			"all-email": [["Customer", "name", "is", "set"]],
+			clear: [],
+		} : this.audienceDoctype() === "Contact" ? {
+			"active-email": [
+				["Contact", "unsubscribed", "=", 0],
+				["Contact", "email_id", "is", "set"],
+			],
+			"all-email": [["Contact", "email_id", "is", "set"]],
 			clear: [],
 		} : {
 			"active-email": [
@@ -1463,7 +1470,7 @@ class EmailCampaignStudio {
 			const label = escape(row.lead_name || row.name);
 			const company = escape(row.company_name || "");
 			const email = escape(row.email_id || "");
-			return "<a class='ecs-health-row' href='" + route + "'><span><strong>" + label + "</strong>" + (company ? "<small style='text-align:left'>" + company + "</small>" : "") + "</span><small title='" + email + "'>" + (email || "—") + "</small></a>";
+			return "<a class='ecs-health-row' href='" + route + "'><span><strong>" + label + "</strong>" + (company ? "<small style='text-align:left'>" + company + "</small>" : "") + "</span><small title='" + email + "'>" + (email || "-") + "</small></a>";
 		}).join("");
 		const currentPage = Number(data.eligible_page || 1);
 		const totalPages = Number(data.eligible_total_pages || 0);
@@ -1472,7 +1479,7 @@ class EmailCampaignStudio {
 		const firstResult = eligibleCount ? ((currentPage - 1) * pageLength) + 1 : 0;
 		const lastResult = Math.min(currentPage * pageLength, eligibleCount);
 		const pagination = eligibleCount
-			? "<div class='ecs-health-pagination'><span>" + __("Showing {0}–{1} of {2}", [firstResult, lastResult, eligibleCount]) + "</span><div><button type='button' class='btn btn-default btn-sm' data-health-page='" + (currentPage - 1) + "' " + (currentPage <= 1 ? "disabled" : "") + ">" + __("Previous") + "</button><strong>" + __("Page {0} of {1}", [currentPage, Math.max(totalPages, 1)]) + "</strong><button type='button' class='btn btn-default btn-sm' data-health-page='" + (currentPage + 1) + "' " + (currentPage >= totalPages ? "disabled" : "") + ">" + __("Next") + "</button></div></div>"
+			? "<div class='ecs-health-pagination'><span>" + __("Showing {0}-{1} of {2}", [firstResult, lastResult, eligibleCount]) + "</span><div><button type='button' class='btn btn-default btn-sm' data-health-page='" + (currentPage - 1) + "' " + (currentPage <= 1 ? "disabled" : "") + ">" + __("Previous") + "</button><strong>" + __("Page {0} of {1}", [currentPage, Math.max(totalPages, 1)]) + "</strong><button type='button' class='btn btn-default btn-sm' data-health-page='" + (currentPage + 1) + "' " + (currentPage >= totalPages ? "disabled" : "") + ">" + __("Next") + "</button></div></div>"
 			: "";
 		const recipients = "<section class='ecs-health-section'><div class='ecs-health-section-head'><h4>" + __("Eligible recipients") + "</h4><span>" + eligibleCount + " " + __("eligible") + "</span></div><div class='ecs-health-list'>" + (recipientRows || "<div class='ecs-health-empty'>" + (searchText ? __("No eligible recipients match this search.") : __("No eligible recipients are available.")) + "</div>") + "</div>" + pagination + "</section>";
 
@@ -1482,7 +1489,7 @@ class EmailCampaignStudio {
 			const company = escape(row.company_name || "");
 			const email = escape(row.email_id || "");
 			const reason = escape(row.reason || __("Excluded by audience rules"));
-			return "<a class='ecs-health-row' href='" + route + "'><span><strong>" + label + "</strong>" + (company ? "<small style='text-align:left'>" + company + "</small>" : "") + "<small style='text-align:left'>" + reason + "</small></span><small title='" + email + "'>" + (email || "—") + "</small></a>";
+			return "<a class='ecs-health-row' href='" + route + "'><span><strong>" + label + "</strong>" + (company ? "<small style='text-align:left'>" + company + "</small>" : "") + "<small style='text-align:left'>" + reason + "</small></span><small title='" + email + "'>" + (email || "-") + "</small></a>";
 		}).join("");
 		const currentExcludedPage = Number(data.excluded_page || 1);
 		const totalExcludedPages = Number(data.excluded_total_pages || 0);
@@ -1490,7 +1497,7 @@ class EmailCampaignStudio {
 		const firstExcludedResult = excludedCount ? ((currentExcludedPage - 1) * pageLength) + 1 : 0;
 		const lastExcludedResult = Math.min(currentExcludedPage * pageLength, excludedCount);
 		const excludedPagination = excludedCount
-			? "<div class='ecs-health-pagination'><span>" + __("Showing {0}–{1} of {2}", [firstExcludedResult, lastExcludedResult, excludedCount]) + "</span><div><button type='button' class='btn btn-default btn-sm' data-excluded-page='" + (currentExcludedPage - 1) + "' " + (currentExcludedPage <= 1 ? "disabled" : "") + ">" + __("Previous") + "</button><strong>" + __("Page {0} of {1}", [currentExcludedPage, Math.max(totalExcludedPages, 1)]) + "</strong><button type='button' class='btn btn-default btn-sm' data-excluded-page='" + (currentExcludedPage + 1) + "' " + (currentExcludedPage >= totalExcludedPages ? "disabled" : "") + ">" + __("Next") + "</button></div></div>"
+			? "<div class='ecs-health-pagination'><span>" + __("Showing {0}-{1} of {2}", [firstExcludedResult, lastExcludedResult, excludedCount]) + "</span><div><button type='button' class='btn btn-default btn-sm' data-excluded-page='" + (currentExcludedPage - 1) + "' " + (currentExcludedPage <= 1 ? "disabled" : "") + ">" + __("Previous") + "</button><strong>" + __("Page {0} of {1}", [currentExcludedPage, Math.max(totalExcludedPages, 1)]) + "</strong><button type='button' class='btn btn-default btn-sm' data-excluded-page='" + (currentExcludedPage + 1) + "' " + (currentExcludedPage >= totalExcludedPages ? "disabled" : "") + ">" + __("Next") + "</button></div></div>"
 			: "";
 		const excludedRecipients = (excludedCount || searchText)
 			? "<section class='ecs-health-section'><div class='ecs-health-section-head'><h4>" + __("Excluded recipients") + "</h4><span>" + excludedCount + " " + __("excluded") + "</span></div><div class='ecs-health-list'>" + (excludedRows || "<div class='ecs-health-empty'>" + __("No excluded recipients match this search.") + "</div>") + "</div>" + excludedPagination + "</section>"
@@ -1500,7 +1507,7 @@ class EmailCampaignStudio {
 			const route = "/app/" + this.audienceDoctype().toLowerCase() + "/" + encodeURIComponent(row.name);
 			const label = escape(row.lead_name || row.name);
 			const email = escape(row.email_id || "");
-			return "<a class='ecs-health-row' href='" + route + "'><strong>" + label + "</strong><small title='" + email + "'>" + (email || "—") + "</small></a>";
+			return "<a class='ecs-health-row' href='" + route + "'><strong>" + label + "</strong><small title='" + email + "'>" + (email || "-") + "</small></a>";
 		}).join("");
 		const topicMore = Number(data.topic_unsubscribed_more || 0);
 		const topicSection = topicCount
@@ -1566,7 +1573,7 @@ class EmailCampaignStudio {
 			[__("Topic"), topic || __("Not selected")],
 			[__("Sender"), account || __("Not selected")],
 			[__("Audience"), this.preview ? eligible + " " + __("eligible") : __("Not previewed")],
-			[__("Batches"), batches || "—"],
+			[__("Batches"), batches || "-"],
 			[__("Starts"), date && time ? date + " " + time : __("Not set")],
 		];
 		this.$root.find("#ecs-summary-rows").html(rows.map((row) => {

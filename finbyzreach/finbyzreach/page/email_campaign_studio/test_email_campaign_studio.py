@@ -632,7 +632,7 @@ class TestEmailCampaignStudio(UnitTestCase):
 		) as preflight:
 			result = create_campaign(payload="{}", launch="schedule")
 
-		preflight.assert_called_once_with(campaign, 1)
+		preflight.assert_called_once_with(campaign)
 		self.assertEqual(result["status"], "Queued for scheduling")
 		self.assertTrue(result["created"])
 		self.assertEqual(result["route"], ["Form", "Campaign", "Studio Launch"])
@@ -750,7 +750,7 @@ class TestEmailCampaignStudio(UnitTestCase):
 		)
 
 		self.assertEqual(result["status"], "Draft")
-		self.assertEqual(result["preview"]["eligible_count"], 0)
+		self.assertIsNone(result["preview"])
 		self.assertFalse(audience_context.call_args.kwargs["require_filters"])
 		values = get_doc.call_args.args[0]
 		self.assertIsNone(values["custom_email_template"])
