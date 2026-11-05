@@ -123,6 +123,20 @@ def _collect_token_fields(value):
 
 
 def _validate_reference_usage(schema, subject, preheader, reference_doctype, validate_dynamic_fields=True):
+	# Membership conditions are references too: validate before a template can
+	# reach a background sender, rather than failing on the first recipient.
+	visibilities = []
+	for section in schema.get("sections", []):
+		visibilities.append(section.get("visibility") or {})
+		for column in section.get("columns", []):
+			visibilities.extend(block.get("visibility") or {} for block in column.get("blocks", []))
+	for visibility in visibilities:
+		for condition in visibility.get("segment_conditions") or []:
+			segment = frappe.get_doc("Reach Segment", condition["segment"])
+			segment.check_permission("read")
+			if segment.get("archived") or segment.audience_doctype != reference_doctype:
+				frappe.throw(_("Visibility segments must be active and match the Reference DocType"))
+
 	fields = _collect_token_fields(schema) | token_fields(subject) | token_fields(preheader)
 	condition_fields = set()
 	for section in schema.get("sections", []):

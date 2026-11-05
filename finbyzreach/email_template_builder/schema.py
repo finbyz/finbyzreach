@@ -167,7 +167,14 @@ def _visibility(value):
 		if not REFERENCE_FIELD_PATH.fullmatch(fieldname) or operator not in CONDITION_OPERATORS:
 			continue
 		normalized.append({"fieldname": fieldname, "operator": operator, "value": str(condition.get("value") or "")[:500]})
-	return {"device": device, "match": match, "conditions": normalized}
+	segment_conditions = []
+	for condition in (value.get("segment_conditions") or [])[:5]:
+		if isinstance(condition, dict) and isinstance(condition.get("segment"), str) and condition["segment"].strip():
+			segment_conditions.append({"segment": condition["segment"].strip()[:140], "member": condition.get("member") is not False})
+	result = {"device": device, "match": match, "conditions": normalized}
+	if segment_conditions:
+		result["segment_conditions"] = segment_conditions
+	return result
 
 
 def _spacing(style):

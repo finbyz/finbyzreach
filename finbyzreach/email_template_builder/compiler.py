@@ -173,10 +173,16 @@ def _conditions(visibility, inner, wrapper="div"):
 	elif wrapper is not None:
 		inner = f"<{wrapper}{class_attr}>{inner}</{wrapper}>"
 	conditions = visibility.get("conditions") or []
-	if not conditions:
+	segment_conditions = visibility.get("segment_conditions") or []
+	if not conditions and not segment_conditions:
 		return inner
 	joiner = " and " if visibility.get("match", "all") == "all" else " or "
-	expression = joiner.join(f"({_condition_expression(condition)})" for condition in conditions)
+	expressions = [f"({_condition_expression(condition)})" for condition in conditions]
+	for condition in segment_conditions:
+		name = frappe.as_json(condition["segment"])
+		prefix = "" if condition.get("member", True) else "not "
+		expressions.append(f"({prefix}is_segment_member({name}, doc))")
+	expression = joiner.join(expressions)
 	return f"{{% if {expression} %}}{inner}{{% endif %}}"
 
 
