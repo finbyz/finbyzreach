@@ -83,6 +83,8 @@ SCHEDULER_RECIPIENT_INSERT_FLAG = "email_campaign_scheduler_recipient_insert"
 # allow a short undo window, recover abandoned work after the core retry window,
 # and stop only when failures are both numerous and systemic.
 DISPATCH_UNDO_WINDOW_SECONDS = 10
+DEFAULT_DISPATCH_LIMIT = 200
+DEFAULT_PENDING_QUEUE_LIMIT = 2000
 STALE_PROCESSING_AFTER_MINUTES = 15
 DISPATCH_BATCH_FAILURE_THRESHOLD_PERCENT = 0.33
 DISPATCH_BATCH_FAILURE_THRESHOLD_COUNT = 10
@@ -289,14 +291,14 @@ def validate_campaign(doc, require_ready=False, skip_queued_check=False):
 	apply_campaign_defaults(doc)
 	_reset_duplicated_broadcast_state(doc)
 	audience_doctype = doc.get("custom_audience_doctype") or "Lead"
-	if audience_doctype not in ("Lead", "Customer"):
-		frappe.throw(_("Audience type must be Lead or Customer"))
+	if audience_doctype not in ("Lead", "Contact", "Customer"):
+		frappe.throw(_("Audience type must be Lead, Contact or Customer"))
 	if audience_doctype == "Customer":
 		if doc.get("custom_contact_mode") not in ("Primary Contact", "All Linked Contacts"):
 			frappe.throw(_("Choose which Customer Contacts should receive the campaign"))
 		if doc.get("custom_personalization_doctype") not in ("Customer", "Contact"):
 			frappe.throw(_("Customer campaigns must personalize with Customer or Contact"))
-	elif doc.get("custom_personalization_doctype") not in (None, "", "Lead"):
+	elif doc.get("custom_personalization_doctype") not in (None, "", audience_doctype):
 		frappe.throw(_("Lead campaigns must use Lead personalization"))
 	_system_zone()
 	requested_status = doc.custom_broadcast_status or "Draft"
@@ -379,7 +381,7 @@ def validate_campaign(doc, require_ready=False, skip_queued_check=False):
 
 
 def validate_lead_filters(filters_json, require_filters=False, audience_doctype="Lead"):
-	if audience_doctype not in ("Lead", "Customer"):
+	if audience_doctype not in ("Lead", "Contact", "Customer"):
 		frappe.throw(_("Unsupported campaign audience"))
 	try:
 		filters = frappe.parse_json(filters_json or "[]")
@@ -443,7 +445,7 @@ def validate_lead_filter_groups(filters_json, require_filters=False, audience_do
 
 	A legacy flat filter list remains valid and is treated as one AND group.
 	"""
-	if audience_doctype not in ("Lead", "Customer"):
+	if audience_doctype not in ("Lead", "Contact", "Customer"):
 		frappe.throw(_("Unsupported campaign audience"))
 	try:
 		groups = frappe.parse_json(filters_json or "[]")
@@ -529,12 +531,17 @@ def _lead_names_from_filter_groups(filters_json, require_filters=False, audience
 	groups = frappe.parse_json(validate_lead_filter_groups(filters_json, require_filters=require_filters, audience_doctype=audience_doctype))
 	names = set()
 	for group in groups:
-		if len(group) == 1 and group[0][1] == "name" and group[0][2] == "in" and isinstance(group[0][3], list) and len(group[0][3]) > 0 and group[0][3][0] == "#STATIC_SEGMENT#":
-			segment_name = group[0][3][1] if len(group[0][3]) > 1 else ""
-			if segment_name:
-				segment = frappe.get_doc("Reach Segment", segment_name)
-				if segment.segment_type == "Static" and (segment.get("audience_doctype") or "Lead") == audience_doctype:
-					names.update(frappe.parse_json(segment.static_leads_json or "[]"))
+		if (len(group) == 1 and group[0][1:3] == ["name", "in"]
+			and isinstance(group[0][3], list) and len(group[0][3]) == 2
+			and group[0][3][0] in ("#STATIC_SEGMENT#", "#REACH_SEGMENT#")):
+			from finbyzreach.segment_service import member_names
+			segment = frappe.get_doc("Reach Segment", group[0][3][1])
+			segment.check_permission("read")
+			if segment.get("archived"):
+				frappe.throw(_("Archived segments cannot be used for mailings"))
+			if (segment.get("audience_doctype") or "Lead") != audience_doctype:
+				frappe.throw(_("Selected segment targets a different audience type"))
+			names.update(member_names(segment))
 		else:
 			names.update(_lead_names_from_filters(json.dumps(group), audience_doctype=audience_doctype))
 	return sorted(names)
@@ -685,15 +692,16 @@ def resolve_campaign_audience(campaign):
 	if campaign.get("custom_audience_doctype") == "Customer":
 		from finbyzreach.customer_campaign import resolve_customer_audience
 		return resolve_customer_audience(campaign)
+	audience_doctype = campaign.get("custom_audience_doctype") or "Lead"
 	include_leads = set(campaign.get("studio_include_leads") or [])
 	if not include_leads:
 		include_leads.update(
-			_lead_names_from_filter_groups(campaign.get("custom_lead_filters_json"), require_filters=True)
+			_lead_names_from_filter_groups(campaign.get("custom_lead_filters_json"), require_filters=True, audience_doctype=audience_doctype)
 		)
 	exclude_leads = set(campaign.get("studio_exclude_leads") or [])
 	if not exclude_leads and campaign.get("custom_exclude_filters_json"):
 		exclude_leads.update(
-			_lead_names_from_filter_groups(campaign.get("custom_exclude_filters_json"))
+			_lead_names_from_filter_groups(campaign.get("custom_exclude_filters_json"), audience_doctype=audience_doctype)
 		)
 	exclude_emails = set()
 	for group_name in validate_excluded_email_groups(
@@ -707,14 +715,14 @@ def resolve_campaign_audience(campaign):
 	for names in _chunks(sorted(include_leads)):
 		rows.extend(
 			frappe.get_list(
-				"Lead",
+				audience_doctype,
 				filters={"name": ["in", names]},
-				fields=["name", "email_id", "status", "unsubscribed", "disabled"],
+				fields=["name", "email_id", "status", "unsubscribed"] + (["disabled"] if audience_doctype == "Lead" else []),
 				limit=0,
 			)
 		)
 	rows_by_name = {row.name: row for row in rows}
-	linked_unsubscribed = _linked_unsubscribed_leads(include_leads)
+	linked_unsubscribed = _linked_unsubscribed_leads(include_leads) if audience_doctype == "Lead" else set()
 	normalized_by_lead = {
 		name: _normalized_email(rows_by_name.get(name).email_id if rows_by_name.get(name) else "")
 		for name in include_leads
@@ -734,7 +742,7 @@ def resolve_campaign_audience(campaign):
 	global_unsubscribed = _globally_unsubscribed_emails(
 		{email for email in normalized_by_lead.values() if email}
 	)
-	reference_unsubscribed = _reference_unsubscribed_pairs(include_leads)
+	reference_unsubscribed = _reference_unsubscribed_pairs(include_leads, audience_doctype)
 	topic_unsubscribed = set()
 	topic_unsubscribed_emails = {
 		row.email for row in preference_rows
@@ -941,7 +949,7 @@ def _recipient_values(campaign, row, batch_number=0, scheduled_at=None):
 		"end_date": getdate(scheduled_at or campaign.custom_start_on),
 		"email_campaign_for": audience_doctype,
 		"recipient": row.lead,
-		"custom_contact": row.get("contact"),
+		"custom_contact": row.get("contact") or (row.lead if audience_doctype == "Contact" else None),
 		"custom_delivery_status": delivery_status,
 		"custom_scheduled_at": scheduled_at,
 		"custom_batch_number": batch_number,
@@ -986,31 +994,16 @@ def _reschedule_recipient_batches(recipients, batches, retry=False):
 		query.run()
 
 def schedule_campaign(campaign_name):
+    from finbyzreach.campaign_preparation import process
     try:
-        _schedule_campaign_internal(campaign_name)
+        return process(campaign_name)
     except Exception:
         frappe.db.rollback()
-        frappe.log_error(
-            title=f"Campaign Scheduling Failed: {campaign_name}",
-            message=frappe.get_traceback(),
-        )
-        frappe.db.set_value(
-            "Campaign",
-            campaign_name,
-            "custom_queued",
-            0,
-            update_modified=False,
-        )
+        frappe.log_error(title=f"Campaign Scheduling Failed: {campaign_name}", message=frappe.get_traceback())
+        frappe.db.set_value("Campaign", campaign_name, "custom_queued", 0, update_modified=False)
         frappe.db.commit()
         raise
-    else:
-        frappe.db.set_value(
-            "Campaign",
-            campaign_name,
-            "custom_queued",
-            0,
-            update_modified=False,
-        )
+
 
 def validate_schedule_preflight(campaign, eligible_count=None):
 	"""Check predictable scheduling failures before Studio enqueues work.
@@ -1044,47 +1037,9 @@ def validate_schedule_preflight(campaign, eligible_count=None):
 
 
 def _schedule_campaign_internal(campaign_name):
-	campaign = frappe.get_doc("Campaign", campaign_name, for_update=True)
-	snapshot = validate_schedule_preflight(campaign)
-	resolved = resolve_campaign_audience(campaign)
-	eligible = [row for row in resolved if row.eligible]
-	if not eligible:
-		frappe.throw(_("No eligible recipients remain after exclusions"))
-	frappe.db.set_value("Campaign", campaign.name, "custom_broadcast_status", "Preparing Audience")
-	frappe.db.delete(
-		"Email Campaign",
-		{"campaign_name": campaign.name},
-	)
-	batches = calculate_delivery_batches(campaign, len(eligible))
-	batch_count = len(batches)
-	slots = [batch.scheduled_at for batch in batches]
-	cursor = 0
-	for batch in batches:
-		for row in eligible[cursor : cursor + batch.size]:
-			_insert_scheduled_recipient(
-				_recipient_values(
-					campaign,
-					row,
-					batch_number=batch.number,
-					scheduled_at=batch.scheduled_at,
-				)
-			)
-		cursor += batch.size
-	for row in (item for item in resolved if not item.eligible):
-		_insert_scheduled_recipient(_recipient_values(campaign, row))
-
-	values = {
-		**_snapshot_values(snapshot),
-		"custom_broadcast_status": "Scheduled",
-		"custom_candidate_count": len(resolved),
-		"custom_eligible_count": len(eligible),
-		"custom_excluded_count": len(resolved) - len(eligible),
-		"custom_batch_count": batch_count,
-		"custom_first_scheduled_at": slots[0],
-		"custom_last_scheduled_at": slots[-1],
-	}
-	frappe.db.set_value("Campaign", campaign.name, values)
-	return {"message": _("Campaign scheduled"), **values}
+    # Compatibility entry point for callers using the previous scheduler.
+    from finbyzreach.campaign_preparation import process
+    return process(campaign_name)
 
 
 @frappe.whitelist(methods=["POST"])
@@ -1092,8 +1047,8 @@ def pause_campaign(campaign_name):
 	campaign = frappe.get_doc("Campaign", campaign_name, for_update=True)
 	campaign.check_permission("write")
 	campaign.check_permission("email")
-	if campaign.custom_broadcast_status not in ("Scheduled", "Sending"):
-		frappe.throw(_("Only a scheduled or sending campaign can be paused"))
+	if campaign.custom_broadcast_status not in ("Preparing Audience", "Scheduled", "Sending"):
+		frappe.throw(_("Only a preparing, scheduled or sending campaign can be paused"))
 	campaign.db_set("custom_broadcast_status", "Paused")
 	return {"message": _("Campaign paused. Already queued emails may still be sent.")}
 
@@ -1105,6 +1060,12 @@ def resume_campaign(campaign_name):
 	campaign.check_permission("email")
 	if campaign.custom_broadcast_status != "Paused":
 		frappe.throw(_("Only a paused campaign can be resumed"))
+	from finbyzreach.campaign_preparation import STAGING
+	if frappe.db.table_exists(STAGING) and frappe.db.count(STAGING, {"campaign": campaign.name}):
+		campaign.db_set("custom_broadcast_status", "Preparing Audience")
+		frappe.enqueue("finbyzreach.email_marketing.schedule_campaign", campaign_name=campaign.name,
+			queue="long", enqueue_after_commit=True)
+		return {"message": _("Audience preparation resumed")}
 	planned = frappe.get_all(
 		"Email Campaign",
 		filters={
@@ -1138,7 +1099,7 @@ def cancel_campaign(campaign_name):
 	campaign = frappe.get_doc("Campaign", campaign_name, for_update=True)
 	campaign.check_permission("write")
 	campaign.check_permission("email")
-	if campaign.custom_broadcast_status not in ("Scheduled", "Sending", "Paused"):
+	if campaign.custom_broadcast_status not in ("Preparing Audience", "Scheduled", "Sending", "Paused"):
 		frappe.throw(_("This campaign cannot be cancelled"))
 	recipient = frappe.qb.DocType("Email Campaign")
 	(
@@ -1148,6 +1109,9 @@ def cancel_campaign(campaign_name):
 		.where(recipient.campaign_name == campaign.name)
 		.where(recipient.custom_delivery_status.isin(["Planned", "Processing"]))
 	).run()
+	from finbyzreach.campaign_preparation import STAGING
+	frappe.db.delete(STAGING, {"campaign": campaign.name})
+	frappe.db.set_value("Campaign", campaign.name, "custom_queued", 0, update_modified=False)
 	campaign.db_set("custom_broadcast_status", "Cancelled")
 	refresh_campaign_metrics(campaign.name)
 	queued = frappe.db.count(
@@ -1287,6 +1251,7 @@ def _log_event(
 			"marketing_email_campaign": recipient.campaign_name,
 			"marketing_campaign_recipient": recipient.name,
 			"lead": recipient.recipient if recipient.email_campaign_for == "Lead" else None,
+			"contact": recipient.recipient if recipient.email_campaign_for == "Contact" else recipient.get("custom_contact"),
 			"communication": communication,
 			"url": url,
 			"metadata_json": json.dumps(
@@ -1312,10 +1277,11 @@ def _current_recipient_exclusion(recipient, campaign):
 	if recipient.email_campaign_for == "Customer":
 		from finbyzreach.customer_campaign import current_customer_exclusion
 		return current_customer_exclusion(recipient, campaign)
+	audience_doctype = recipient.email_campaign_for or "Lead"
 	lead = frappe.db.get_value(
-		"Lead",
+		audience_doctype,
 		recipient.recipient,
-		["disabled", "unsubscribed", "status"],
+		["unsubscribed", "status"] + (["disabled"] if audience_doctype == "Lead" else []),
 		as_dict=True,
 	)
 	if not lead:
@@ -1326,12 +1292,12 @@ def _current_recipient_exclusion(recipient, campaign):
 		return _("Lead unsubscribed")
 	if lead.status == "Do Not Contact":
 		return _("Do Not Contact")
-	if recipient.recipient in _linked_unsubscribed_leads([recipient.recipient]):
+	if audience_doctype == "Lead" and recipient.recipient in _linked_unsubscribed_leads([recipient.recipient]):
 		return _("Linked Contact unsubscribed")
 	normalized_email = _normalized_email(recipient.custom_recipient_email)
 	if normalized_email in _globally_unsubscribed_emails([normalized_email]):
 		return _("Globally unsubscribed")
-	if (recipient.recipient, normalized_email) in _reference_unsubscribed_pairs([recipient.recipient]):
+	if (recipient.recipient, normalized_email) in _reference_unsubscribed_pairs([recipient.recipient], audience_doctype):
 		return _("Unsubscribed from Lead emails")
 	if not is_subscribed(normalized_email, campaign.custom_subscription_topic):
 		return _("No confirmed subscription to {0}").format(campaign.custom_subscription_topic)
@@ -1420,6 +1386,7 @@ def _dispatch_recipient(recipient, campaign):
 			communication.append("timeline_links", {"link_doctype": "Contact", "link_name": contact.name})
 		communication.save(ignore_permissions=True)
 	queue = frappe.sendmail(
+		send_priority=0,
 		recipients=[recipient.custom_recipient_email],
 		sender=_sender(campaign),
 		reply_to=campaign.custom_reply_to or None,
@@ -1490,10 +1457,15 @@ def _reset_stale_processing_recipients():
 
 
 def dispatch_due_marketing_batches():
-	# Respect Frappe's global email switches, but do not impose an additional
-	# campaign-level batch, rate, daily, or pending-queue cap. All due recipients
-	# are handed to Frappe Email Queue in this scheduler pass.
+	# Bound processing, not campaign size. A pass must finish before the next
+	# scheduler tick and leave capacity for ordinary CRM email.
 	if frappe.are_emails_muted() or cint(frappe.db.get_default("suspend_email_queue")):
+		return
+	limit = max(1, min(cint(frappe.conf.get("marketing_dispatch_limit")) or DEFAULT_DISPATCH_LIMIT, 1000))
+	queue_limit = max(limit, cint(frappe.conf.get("marketing_pending_queue_limit")) or DEFAULT_PENDING_QUEUE_LIMIT)
+	pending = frappe.db.count("Email Queue", {"status": ["in", ["Not Sent", "Partially Sent", "Sending"]]})
+	limit = min(limit, max(0, queue_limit - pending))
+	if not limit:
 		return
 	_reset_stale_processing_recipients()
 	now = now_datetime()
@@ -1518,11 +1490,11 @@ def dispatch_due_marketing_batches():
 		},
 		fields=["name", "campaign_name"],
 		order_by="custom_scheduled_at asc, custom_batch_number asc, name asc",
-		limit=0,
+		limit=limit,
 	)
 	affected_campaigns = set()
 	failures_by_campaign = Counter()
-	recipients_by_campaign = Counter(row.campaign_name for row in rows)
+	attempts_by_campaign = Counter()
 	halted_campaigns = set()
 	locked_campaigns = {}
 	for row in rows:
@@ -1532,7 +1504,7 @@ def dispatch_due_marketing_batches():
 		frappe.db.savepoint(savepoint)
 		try:
 			# This scheduler pass is one transaction. Lock each Campaign once while
-			# all due recipient rows are handed to Frappe Email Queue.
+			# this bounded group is handed to Frappe Email Queue.
 			campaign = locked_campaigns.get(row.campaign_name)
 			if campaign is None:
 				campaign = frappe.get_doc("Campaign", row.campaign_name, for_update=True)
@@ -1542,6 +1514,7 @@ def dispatch_due_marketing_batches():
 			recipient = frappe.get_doc("Email Campaign", row.name, for_update=True)
 			if recipient.custom_delivery_status != "Planned":
 				continue
+			attempts_by_campaign[row.campaign_name] += 1
 			exclusion_reason = _current_recipient_exclusion(recipient, campaign)
 			if exclusion_reason:
 				frappe.db.set_value(
@@ -1582,7 +1555,7 @@ def dispatch_due_marketing_batches():
 			)
 			failures_by_campaign[row.campaign_name] += 1
 			failure_count = failures_by_campaign[row.campaign_name]
-			batch_count = recipients_by_campaign[row.campaign_name]
+			batch_count = max(1, attempts_by_campaign[row.campaign_name])
 			if (
 				failure_count / batch_count
 				> DISPATCH_BATCH_FAILURE_THRESHOLD_PERCENT
@@ -1598,27 +1571,31 @@ def dispatch_due_marketing_batches():
 		affected_campaigns.add(row.campaign_name)
 	for campaign_name in affected_campaigns:
 		refresh_campaign_metrics(campaign_name)
+	if len(rows) == limit and pending + len(rows) < queue_limit:
+		# Continue in another transaction instead of waiting a full scheduler
+		# interval for each chunk of a large campaign.
+		frappe.enqueue("finbyzreach.email_marketing.dispatch_due_marketing_batches", queue="long",
+			enqueue_after_commit=True, job_id=f"reach-dispatch:{rows[-1].name}", deduplicate=True)
+
 
 
 def sync_marketing_email_statuses():
-	queued_rows = frappe.get_all(
-		"Email Campaign",
-		filters={
-			"custom_delivery_status": "Queued",
-			"custom_email_queue": ["is", "set"],
-		},
-		fields=[
-			"name",
-			"campaign_name",
-			"recipient",
-			"email_campaign_for",
-			"custom_email_queue",
-			"custom_communication",
-			"custom_opened",
-			"custom_delivery_status",
-		],
-		order_by="modified asc",
-		limit=500,
+	# Select outcomes that can advance, so 500 stalled queue entries cannot
+	# indefinitely hide completed recipients behind them.
+	recipient_table = frappe.qb.DocType("Email Campaign")
+	queue_table = frappe.qb.DocType("Email Queue")
+	queued_rows = (
+		frappe.qb.from_(recipient_table)
+		.left_join(queue_table).on(queue_table.name == recipient_table.custom_email_queue)
+		.select(*[recipient_table[field] for field in (
+			"name", "campaign_name", "recipient", "email_campaign_for", "custom_email_queue",
+			"custom_communication", "custom_opened", "custom_delivery_status",
+		)])
+		.where(recipient_table.custom_delivery_status == "Queued")
+		.where(recipient_table.custom_email_queue.isnotnull())
+		.where(queue_table.status.isin(["Sent", "Error"]) | queue_table.name.isnull())
+		.orderby(recipient_table.modified).orderby(recipient_table.name)
+		.limit(500).run(as_dict=True)
 	)
 	# Frappe records an open by updating Communication directly with db.set_value;
 	# that does not run document hooks.  Join only Communications already marked
@@ -2025,7 +2002,7 @@ def track_marketing_click(campaign_recipient=None, url=None):
 			communication=recipient.custom_communication,
 			url=url,
 		)
-		refresh_campaign_metrics(recipient.campaign_name)
+		mark_campaign_metrics_dirty(recipient.campaign_name)
 		frappe.db.commit()
 	frappe.local.response["type"] = "redirect"
 	frappe.local.response["location"] = url
@@ -2138,3 +2115,26 @@ def communication_after_insert(doc, method=None):
 	)
 	_log_event("Replied", recipient, communication=doc.name)
 	refresh_campaign_metrics(recipient.campaign_name)
+
+
+def mark_campaign_metrics_dirty(campaign_name):
+    # One set member per campaign coalesces a burst of tracking requests.
+    frappe.db.after_commit.add(lambda: frappe.cache.sadd(f"reach:dirty-metrics:{frappe.local.site}", campaign_name))
+
+
+def flush_dirty_campaign_metrics():
+    key = f"reach:dirty-metrics:{frappe.local.site}"
+    for _ in range(50):
+        name = frappe.cache.spop(key)
+        if not name:
+            break
+        if isinstance(name, bytes):
+            name = name.decode()
+        # Every popped item must be restored if the worker transaction rolls
+        # back, including items refreshed successfully before a later failure.
+        frappe.db.after_rollback.add(lambda name=name: frappe.cache.sadd(key, name))
+        try:
+            refresh_campaign_metrics(name)
+        except Exception:
+            frappe.cache.sadd(key, name)
+            raise
