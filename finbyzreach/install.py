@@ -344,6 +344,12 @@ AI_AGENTS = [{'agent_type': 'LangChain Chain',
 def after_install():
 	create_ai_agents()
 	setup_email_template_library()
+	from finbyzreach.patches.v1_0.add_segment_main_customer import execute as setup_main_customer
+	from finbyzreach.patches.v1_0.add_segment_user_permissions import execute as setup_segment_permissions
+	from finbyzreach.patches.v1_0.add_segment_delivery_indexes import execute as setup_segment_indexes
+	setup_main_customer()
+	setup_segment_permissions()
+	setup_segment_indexes()
 
 
 def setup_email_template_library():
