@@ -3,3 +3,8 @@
 finbyzreach.patches.v1_0.backfill_email_builder_template_doctype
 finbyzreach.patches.v1_0.add_outreach_selection_indexes
 finbyzreach.patches.v1_0.migrate_subscription_optouts
+finbyzreach.patches.v1_0.add_segment_delivery_indexes
+finbyzreach.patches.v1_0.add_segment_main_customer
+finbyzreach.patches.v1_0.add_segment_user_permissions
+finbyzreach.patches.v1_0.migrate_segment_snapshots
+finbyzreach.patches.v1_0.secure_segment_user_permissions
