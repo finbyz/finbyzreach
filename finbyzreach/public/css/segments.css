@@ -1,0 +1,123 @@
+/* Layout only: controls, typography and interaction states use the Desk theme. */
+.rs-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+    gap: var(--margin-lg);
+}
+
+.rs-layout > section {
+    min-width: 0;
+    padding: var(--padding-md);
+    background: var(--fg-color);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-md);
+}
+
+.rs-layout h4 {
+    margin: 0 0 var(--margin-md);
+    font-size: var(--text-base);
+}
+
+.rs-rule {
+    padding: var(--padding-md) 0;
+    border-bottom: 1px solid var(--border-color);
+    margin-bottom: var(--margin-md);
+}
+
+.rs-rule-head,
+.rs-toolbar,
+.rs-pagination,
+.rs-special-actions,
+.rs-match-control,
+.rs-special-rule {
+    display: flex;
+    gap: var(--margin-sm);
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.rs-rule-head,
+.rs-toolbar,
+.rs-match-control {
+    margin-bottom: var(--margin-md);
+}
+
+.rs-rule-head,
+.rs-special-rule {
+    justify-content: space-between;
+}
+
+.rs-match-control label {
+    margin: 0;
+}
+
+.rs-match,
+.rs-rule-match {
+    width: auto;
+    max-width: 100%;
+}
+
+.rs-special-actions {
+    margin: var(--margin-sm) 0 var(--margin-lg);
+}
+
+.rs-excluded-segments {
+    margin-top: var(--margin-md);
+}
+
+.rs-search {
+    flex: 1 1 160px;
+    min-width: 0;
+    max-width: 240px;
+}
+
+.rs-results {
+    overflow: auto;
+    min-height: 120px;
+    max-height: min(55vh, 480px);
+}
+
+.rs-results thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--fg-color);
+}
+
+.rs-results th,
+.rs-results td {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: middle;
+}
+
+.rs-results .table {
+    table-layout: fixed;
+    width: 100%;
+    margin-bottom: 0;
+}
+
+.rs-results .rs-name-column {
+    width: 280px;
+}
+
+.rs-results .rs-data-column {
+    width: 180px;
+}
+
+.rs-results .rs-action-column {
+    width: 100px;
+}
+
+.rs-results td > a {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.rs-pagination {
+    justify-content: flex-end;
+    margin-top: var(--margin-md);
+}

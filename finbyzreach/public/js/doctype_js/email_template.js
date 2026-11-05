@@ -26,35 +26,5 @@ frappe.ui.form.on("Email Template", {
 				}, __("Builder"));
 			}
 		}
-		if (!frm.is_new() && frm.doc.custom_enable_ai_suggestion) {
-			frm.add_custom_button(__("Summarize Template"), () => {
-				analyze_template(frm);
-			});
-		}
 	},
-	after_save(frm) {
-		if (frm.doc.custom_enable_ai_suggestion && !frm.doc.custom_ai_description) {
-			analyze_template(frm);
-		}
-	}
 });
-
-function analyze_template(frm) {
-	frappe.call({
-		method: "megasol_customisation.megasol_customisation.ai_engine.analyze_email_template",
-		args: {
-			template_name: frm.doc.name
-		},
-		freeze: true,
-		freeze_message: __("Analyzing template with AI..."),
-		callback: function(r) {
-			if (r.message && r.message.status === "success") {
-				frappe.show_alert({
-					message: r.message.message,
-					indicator: 'green'
-				});
-				frm.reload_doc();
-			}
-		}
-	});
-}
