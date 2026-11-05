@@ -1,0 +1,27 @@
+{
+ "doctype": "DocType",
+ "name": "Reach Campaign Preparation Row",
+ "module": "Finbyzreach",
+ "engine": "InnoDB",
+ "autoname": "hash",
+ "field_order": [
+  "campaign",
+  "payload"
+ ],
+ "fields": [
+  {
+   "fieldname": "campaign",
+   "fieldtype": "Link",
+   "label": "Campaign",
+   "reqd": 1,
+   "options": "Campaign"
+  },
+  {
+   "fieldname": "payload",
+   "fieldtype": "Long Text",
+   "label": "Payload",
+   "reqd": 1
+  }
+ ],
+ "permissions": []
+}

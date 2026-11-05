@@ -418,21 +418,27 @@ def get_details(scope="campaign", value=None, metric="opened", page=1):
     )
     lead_names = list({row.lead for row in rows if row.lead and row.audience_doctype == "Lead"})
     customer_names = list({row.lead for row in rows if row.lead and row.audience_doctype == "Customer"})
+    contact_key_names = list({row.lead for row in rows if row.lead and row.audience_doctype == "Contact"})
     lead_labels = {row.name: row.lead_name or row.name for row in frappe.get_list(
         "Lead", filters={"name": ["in", lead_names]}, fields=["name", "lead_name"], limit_page_length=0,
     )} if lead_names and frappe.has_permission("Lead", "read") else {}
     customer_labels = {row.name: row.customer_name or row.name for row in frappe.get_list(
         "Customer", filters={"name": ["in", customer_names]}, fields=["name", "customer_name"], limit_page_length=0,
     )} if customer_names and frappe.has_permission("Customer", "read") else {}
-    contact_names = list({row.contact for row in rows if row.contact})
+    contact_ref_names = list({row.contact for row in rows if row.contact})
     contact_labels = {row.name: row.full_name or row.name for row in frappe.get_list(
-        "Contact", filters={"name": ["in", contact_names]}, fields=["name", "full_name"], limit_page_length=0,
-    )} if contact_names and frappe.has_permission("Contact", "read") else {}
+        "Contact", filters={"name": ["in", contact_ref_names]}, fields=["name", "full_name"], limit_page_length=0,
+    )} if contact_ref_names and frappe.has_permission("Contact", "read") else {}
+    contact_key_labels = {row.name: row.full_name or row.name for row in frappe.get_list(
+        "Contact", filters={"name": ["in", contact_key_names]}, fields=["name", "full_name"], limit_page_length=0,
+    )} if contact_key_names and frappe.has_permission("Contact", "read") else {}
     for row in rows:
         if row.audience_doctype == "Customer":
             row["full_name"] = customer_labels.get(row.lead, row.lead or row.email)
             if row.contact:
                 row["full_name"] += " / " + contact_labels.get(row.contact, row.contact)
+        elif row.audience_doctype == "Contact":
+            row["full_name"] = contact_key_labels.get(row.lead, row.lead or row.email)
         else:
             row["full_name"] = lead_labels.get(row.lead, row.lead or row.email)
     return {"rows": rows, "total": total, "page": page, "page_size": PAGE_SIZE}

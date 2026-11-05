@@ -1,0 +1,38 @@
+{
+ "doctype": "DocType",
+ "name": "Reach Segment Member",
+ "module": "Finbyzreach",
+ "engine": "InnoDB",
+ "autoname": "hash",
+ "field_order": [
+  "segment",
+  "record_name",
+  "source"
+ ],
+ "fields": [
+  {
+   "fieldname": "segment",
+   "fieldtype": "Link",
+   "label": "Segment",
+   "options": "Reach Segment",
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "record_name",
+   "fieldtype": "Data",
+   "label": "Record Name",
+   "reqd": 1
+  },
+  {
+   "fieldname": "source",
+   "fieldtype": "Select",
+   "label": "Source",
+   "options": "Filtered\nManual",
+   "reqd": 1,
+   "default": "Filtered"
+  }
+ ],
+ "permissions": [],
+ "track_changes": 1
+}

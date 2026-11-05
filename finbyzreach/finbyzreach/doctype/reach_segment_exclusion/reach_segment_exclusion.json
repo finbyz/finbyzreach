@@ -1,0 +1,29 @@
+{
+ "doctype": "DocType",
+ "name": "Reach Segment Exclusion",
+ "module": "Finbyzreach",
+ "engine": "InnoDB",
+ "autoname": "hash",
+ "field_order": [
+  "segment",
+  "record_name"
+ ],
+ "fields": [
+  {
+   "fieldname": "segment",
+   "fieldtype": "Link",
+   "label": "Segment",
+   "options": "Reach Segment",
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "record_name",
+   "fieldtype": "Data",
+   "label": "Record Name",
+   "reqd": 1
+  }
+ ],
+ "permissions": [],
+ "track_changes": 1
+}

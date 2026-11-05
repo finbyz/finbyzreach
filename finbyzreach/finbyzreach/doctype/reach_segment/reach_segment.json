@@ -11,9 +11,19 @@
   "segment_type",
   "member_count",
   "filter_groups_json",
+  "static_leads_json",
   "exclude_filters_json",
   "exclude_email_groups_json",
-  "static_leads_json"
+  "description",
+  "folder",
+  "archived",
+  "columns_json",
+  "exclude_segments_json",
+  "filter_expression_json",
+  "members_initialized",
+  "excluded_count",
+  "last_definition_change",
+  "last_definition_changed_by"
  ],
  "fields": [
   {
@@ -29,10 +39,11 @@
    "fieldname": "audience_doctype",
    "fieldtype": "Select",
    "label": "Audience Type",
-   "options": "Lead\nCustomer",
+   "options": "Lead\nContact\nCustomer",
    "default": "Lead",
    "reqd": 1,
-   "in_list_view": 1
+   "in_list_view": 1,
+   "set_only_once": 1
   },
   {
    "default": "Active",
@@ -77,6 +88,72 @@
    "fieldtype": "Code",
    "label": "Exclude Email Groups",
    "options": "JSON",
+   "read_only": 1
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Small Text",
+   "label": "Description"
+  },
+  {
+   "fieldname": "folder",
+   "fieldtype": "Link",
+   "label": "Folder",
+   "options": "Reach Segment Folder",
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "archived",
+   "fieldtype": "Check",
+   "label": "Archived",
+   "default": "0",
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "columns_json",
+   "fieldtype": "Code",
+   "label": "Columns Json",
+   "options": "JSON",
+   "hidden": 1
+  },
+  {
+   "fieldname": "exclude_segments_json",
+   "fieldtype": "Code",
+   "label": "Exclude Segments Json",
+   "options": "JSON",
+   "hidden": 1
+  },
+  {
+   "fieldname": "filter_expression_json",
+   "fieldtype": "Code",
+   "label": "Filter Expression Json",
+   "options": "JSON",
+   "hidden": 1
+  },
+  {
+   "fieldname": "members_initialized",
+   "fieldtype": "Check",
+   "label": "Members Initialized",
+   "hidden": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "excluded_count",
+   "fieldtype": "Int",
+   "label": "Excluded Count",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_definition_change",
+   "fieldtype": "Datetime",
+   "label": "Last Definition Change",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_definition_changed_by",
+   "fieldtype": "Link",
+   "label": "Last Definition Changed By",
+   "options": "User",
    "read_only": 1
   }
  ],

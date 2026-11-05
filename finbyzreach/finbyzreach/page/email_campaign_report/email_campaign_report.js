@@ -380,7 +380,7 @@ class EmailCampaignReport {
 		});
 	}
 
-	rate(value) { return value === null || value === undefined ? "—" : `${Number(value).toFixed(1)}%`; }
+	rate(value) { return value === null || value === undefined ? "-" : `${Number(value).toFixed(1)}%`; }
 
 	selection() {
 		const scope = this.scope.get_value() === __("Email Template") ? "template" : "campaign";
@@ -437,10 +437,10 @@ class EmailCampaignReport {
 			const engagement = ["opened", "clicked", "unsubscribed", "replied"].includes(key);
 			const outcome = ["hard_bounce", "soft_bounce", "spam", "failed"].includes(key);
 			const denominator = engagement ? accepted : (outcome ? completed : eligible);
-			const percent = available && denominator ? `${(100 * Number(count) / denominator).toFixed(1)}%` : (available ? "0%" : "—");
+			const percent = available && denominator ? `${(100 * Number(count) / denominator).toFixed(1)}%` : (available ? "0%" : "-");
 			const note = notes[key] || (engagement ? __("Percent of accepted sends") : (outcome ? __("Percent of completed delivery attempts") : __("Percent of eligible recipients")));
 			return `<button type="button" class="ecr-card ecr-metric ${available ? "" : "ecr-unavailable"}" data-metric="${key}" title="${this.esc(note)}">
-				<span>${this.esc(label)}</span><strong>${available ? this.number(count) : "—"}</strong><small>${available ? percent : __("Unavailable")}</small>
+				<span>${this.esc(label)}</span><strong>${available ? this.number(count) : "-"}</strong><small>${available ? percent : __("Unavailable")}</small>
 			</button>`;
 		}).join(""));
 	}
@@ -492,13 +492,13 @@ class EmailCampaignReport {
 			const rows = data.rows || [];
 			const label = this.metrics.find((entry) => entry[0] === metric)[1];
 			body.html(rows.length ? rows.map((row) => {
-				const link = frappe.utils.get_form_link(row.audience_doctype === "Customer" ? "Customer" : "Lead", row.lead);
-				return `<tr><td><a href="${this.esc(link)}">${this.esc(row.full_name)}</a></td><td>${this.esc(row.email)}</td><td>${this.esc(row.campaign_name)}</td><td>${this.esc(label)}</td><td>${this.esc(row.action_time ? frappe.datetime.str_to_user(row.action_time) : "—")}</td></tr>`;
+				const link = frappe.utils.get_form_link(row.audience_doctype || "Lead", row.lead);
+				return `<tr><td><a href="${this.esc(link)}">${this.esc(row.full_name)}</a></td><td>${this.esc(row.email)}</td><td>${this.esc(row.campaign_name)}</td><td>${this.esc(label)}</td><td>${this.esc(row.action_time ? frappe.datetime.str_to_user(row.action_time) : "-")}</td></tr>`;
 			}).join("") : `<tr><td colspan="5" class="ecr-empty">${this.esc(this.report.notes?.[metric] || __("No recorded recipients for this action."))}</td></tr>`);
 			this.page.main.find(".ecr-detail-total").text(__("{0} results", [this.number(data.total)]));
 			const first = data.total ? (page - 1) * data.page_size + 1 : 0;
 			const last = Math.min(page * data.page_size, data.total);
-			this.page.main.find(".ecr-page-label").text(__("Showing {0}–{1} of {2}", [first, last, data.total]));
+			this.page.main.find(".ecr-page-label").text(__("Showing {0}-{1} of {2}", [first, last, data.total]));
 			this.page.main.find(".ecr-prev").prop("disabled", page <= 1);
 			this.page.main.find(".ecr-next").prop("disabled", last >= data.total);
 		} catch (error) {

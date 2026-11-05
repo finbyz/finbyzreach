@@ -1,0 +1,27 @@
+{
+ "doctype": "DocType",
+ "name": "Reach Segment Pending Record",
+ "module": "Finbyzreach",
+ "engine": "InnoDB",
+ "autoname": "hash",
+ "field_order": [
+  "record_doctype",
+  "record_name"
+ ],
+ "fields": [
+  {
+   "fieldname": "record_doctype",
+   "fieldtype": "Link",
+   "label": "Record Doctype",
+   "reqd": 1,
+   "options": "DocType"
+  },
+  {
+   "fieldname": "record_name",
+   "fieldtype": "Data",
+   "label": "Record Name",
+   "reqd": 1
+  }
+ ],
+ "permissions": []
+}
