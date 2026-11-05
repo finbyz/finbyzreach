@@ -18,13 +18,17 @@ add_to_apps_screen = [
 # ------------------
 
 # include js, css files in header of desk.html
-app_include_css = "/assets/finbyzreach/css/subscription_preferences.css?v=20261028.1"
+app_include_css = [
+    "/assets/finbyzreach/css/subscription_preferences.css?v=20261028.1",
+    "/assets/finbyzreach/css/segments.css?v=20261105.3",
+]
 after_request = ["finbyzreach.subscription_embed.set_subscription_embed_policy"]
 app_include_js = [
     "/assets/finbyzreach/js/subscription_preferences.js?v=20261028.1",
     "/assets/finbyzreach/js/email_builder_composer.js?v=20260716.1",
     "/assets/finbyzreach/js/email_template_library.js?v=20260930.4",
     "/assets/finbyzreach/js/email_template_quick_entry.js?v=20260930.3",
+    "/assets/finbyzreach/js/segment_membership.js?v=20261104.2",
 ]
 
 # include js, css files in header of web template
@@ -80,10 +84,10 @@ doctype_list_js = {
 # ----------
 
 # add methods and filters to jinja environment
-# add methods and filters to jinja environment
 jinja = {
 	"methods": [
 		"finbyzreach.email_template_builder.tokens.ebv",
+		"finbyzreach.segments.is_segment_member",
 	],
 	"filters": [
 		"finbyzreach.email_template_builder.tokens.email_builder_safe_url",
@@ -131,13 +135,20 @@ after_migrate = "finbyzreach.install.setup_email_template_library"
 # -----------
 # Permissions evaluated in scripted ways
 
-# permission_query_conditions = {
-# 	"Event": "frappe.desk.doctype.event.event.get_permission_query_conditions",
-# }
-#
-# has_permission = {
-# 	"Event": "frappe.desk.doctype.event.event.has_permission",
-# }
+permission_query_conditions = {
+    "Reach Segment": "finbyzreach.segment_permissions.query_conditions",
+    "Reach Segment Folder": "finbyzreach.segment_permissions.query_conditions",
+}
+
+has_permission = {
+    "Reach Segment": "finbyzreach.segment_permissions.has_permission",
+    "Reach Segment Folder": "finbyzreach.segment_permissions.folder_permission",
+}
+
+# Session Boot
+# ------------
+
+boot_session = ["finbyzreach.segment_permissions.filter_boot_permissions"]
 
 # DocType Class
 # ---------------
@@ -170,6 +181,37 @@ doc_events = {
     "File": {
         "after_insert": "finbyzreach.email_template_builder.realtime.on_file_after_insert"
     },
+    "Lead": {
+        "on_update": ["finbyzreach.segment_automation.capture_change"],
+    },
+    "Contact": {
+        "on_update": ["finbyzreach.segment_automation.capture_change"],
+        "validate": ["finbyzreach.segment_automation.validate_main_customer"],
+    },
+    "Customer": {
+        "on_update": ["finbyzreach.segment_automation.capture_change"],
+    },
+    "Automation Workflow": {
+        "on_update": ["finbyzreach.segment_automation.capture_publication"],
+    },
+    "Opportunity": {
+        "on_update": ["finbyzreach.segment_automation.capture_related_change"],
+    },
+    "Sales Order": {
+        "on_update": ["finbyzreach.segment_automation.capture_related_change"],
+    },
+    "Email Tracking Event": {
+        "after_insert": ["finbyzreach.segment_automation.capture_activity"],
+    },
+    "Contrast Engagement Event": {
+        "after_insert": ["finbyzreach.segment_automation.capture_activity"],
+    },
+    "Tracker Pageview": {
+        "after_insert": ["finbyzreach.segment_automation.capture_activity"],
+    },
+    "Tracker Conversion": {
+        "after_insert": ["finbyzreach.segment_automation.capture_activity"],
+    },
 }
 
 
@@ -180,10 +222,13 @@ scheduler_events = {
     "all": [
         "finbyzreach.email_marketing.dispatch_due_marketing_batches",
         "finbyzreach.email_marketing.sync_marketing_email_statuses",
+        "finbyzreach.campaign_preparation.recover_preparations",
+        "finbyzreach.segment_automation.enqueue_changes",
+        "finbyzreach.email_marketing.flush_dirty_campaign_metrics",
     ],
-    # "daily": [
-    # 	"finbyzreach.tasks.daily",
-    # ],
+    "daily": [
+        "finbyzreach.segment_automation.refresh_time_segments",
+    ],
     # "hourly": [
     # 	"finbyzreach.tasks.hourly"
     # ],
