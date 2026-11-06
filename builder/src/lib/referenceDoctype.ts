@@ -24,9 +24,9 @@ function countMergeTokens(value: unknown): number {
 
 export function countVisibilityConditions(schema: BuilderSchema): number {
   return schema.sections.reduce((total, section) => {
-    const sectionConditions = section.visibility?.conditions?.length ?? 0
+    const sectionConditions = (section.visibility?.conditions?.length ?? 0) + (section.visibility?.segment_conditions?.length ?? 0)
     const blockConditions = section.columns.reduce((columnTotal, column) => {
-      return columnTotal + column.blocks.reduce((blockTotal, block) => blockTotal + (block.visibility?.conditions?.length ?? 0), 0)
+      return columnTotal + column.blocks.reduce((blockTotal, block) => blockTotal + (block.visibility?.conditions?.length ?? 0) + (block.visibility?.segment_conditions?.length ?? 0), 0)
     }, 0)
     return total + sectionConditions + blockConditions
   }, 0)
@@ -64,12 +64,14 @@ export function removeReferenceDependentContent(document: BuilderDocument): Buil
   next.schema.sections.forEach((section) => {
     if (section.visibility) {
       section.visibility.conditions = []
+      if (section.visibility.segment_conditions) section.visibility.segment_conditions = []
       section.visibility.match = 'all'
     }
     section.columns.forEach((column) => {
       column.blocks.forEach((block) => {
         if (block.visibility) {
           block.visibility.conditions = []
+          if (block.visibility.segment_conditions) block.visibility.segment_conditions = []
           block.visibility.match = 'all'
         }
       })

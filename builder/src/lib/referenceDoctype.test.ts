@@ -4,6 +4,25 @@ import test from 'node:test'
 import { createBlock, createSection, emptyDocument } from './builder.ts'
 import { analyzeReferenceDoctypeUsage, removeReferenceDependentContent } from './referenceDoctype.ts'
 
+test('segment visibility is reference dependent and cleared at section and block level', () => {
+  const document = emptyDocument()
+  const section = createSection('1')
+  const block = createBlock('text')
+  section.visibility.segment_conditions = [{ segment: 'Lead segment', member: true }]
+  block.visibility.segment_conditions = [{ segment: 'Other lead segment', member: false }]
+  section.columns[0].blocks = [block]
+  document.schema.sections = [section]
+
+  const usage = analyzeReferenceDoctypeUsage(document)
+  assert.equal(usage.conditionCount, 2)
+  assert.equal(usage.hasReferenceDependentContent, true)
+  const cleaned = removeReferenceDependentContent(document)
+  assert.deepEqual(cleaned.schema.sections[0].visibility.segment_conditions, [])
+  assert.deepEqual(cleaned.schema.sections[0].columns[0].blocks[0].visibility.segment_conditions, [])
+  assert.equal(section.visibility.segment_conditions.length, 1)
+  assert.equal(block.visibility.segment_conditions.length, 1)
+})
+
 test('analyzeReferenceDoctypeUsage counts merge tokens and record conditions separately', () => {
   const document = emptyDocument()
   document.metadata.subject = 'Hello {{ lead_name }}'
