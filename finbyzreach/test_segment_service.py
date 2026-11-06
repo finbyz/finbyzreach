@@ -134,6 +134,31 @@ class SegmentSQLTest(TestCase):
         self.insert('C', doctype='Contact')
         segment = self.segment(audience_doctype='Contact', filter_groups_json='[[["Contact","city","=","Bern"]]]')
         self.assertEqual(service.member_names(segment), ['C'])
+
+    def test_related_any_and_all_distinguish_mixed_and_missing_relations(self):
+        for name in ('A', 'B', 'C'):
+            self.insert(name)
+        self.database.connection.execute('CREATE TABLE "tabOpportunity" (name TEXT, party_name TEXT, opportunity_from TEXT)')
+        self.database.connection.executemany('INSERT INTO "tabOpportunity" VALUES (?,?,?)', [
+            ('MATCH-A', 'A', 'Lead'), ('OTHER', 'A', 'Lead'), ('MATCH-B', 'B', 'Lead'),
+            ('MATCH-C', 'C', 'Customer')])
+        node = {'kind':'related', 'doctype':'Opportunity', 'filters':[[['Opportunity','name','in',['MATCH-A','MATCH-B','MATCH-C']]]]}
+        segment = self.segment(filter_expression_json=json.dumps(node))
+        with patch.object(frappe, 'has_permission', return_value=True), patch.object(frappe, 'get_meta', return_value=frappe._dict(fields=[])):
+            self.assertEqual(service.member_names(segment), ['A','B'])
+            node['quantifier'] = 'all'
+            segment.filter_expression_json = json.dumps(node)
+            self.assertEqual(service.member_names(segment), ['B'])
+
+    def test_related_all_ignores_inaccessible_relations(self):
+        self.insert('A')
+        self.database.connection.execute('CREATE TABLE "tabOpportunity" (name TEXT, party_name TEXT, opportunity_from TEXT)')
+        self.database.connection.executemany('INSERT INTO "tabOpportunity" VALUES (?,?,?)', [
+            ('MATCH', 'A', 'Lead'), ('HIDDEN', 'A', 'Lead')])
+        node = {'kind':'related','doctype':'Opportunity','quantifier':'all','filters':[[['Opportunity','name','=','MATCH']]]}
+        segment = self.segment(filter_expression_json=json.dumps(node))
+        with patch.object(frappe, 'has_permission', return_value=True), patch.object(frappe, 'get_meta', return_value=frappe._dict(fields=[])):
+            self.assertEqual(service.member_names(segment), ['A'])
     def test_thirty_thousand_members_use_bounded_cursor_pages(self):
         self.database.connection.executemany('INSERT INTO tabLead (name,email_id,city) VALUES (?,?,?)',
             ((f'L{i:05}',f'l{i}@example.com','Bern') for i in range(30000)))

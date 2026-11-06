@@ -51,6 +51,8 @@ class TestEmailCampaignPreflight(TestCase):
         with self.assertRaisesRegex(ValueError, "Invalid template"):
             studio.create_campaign(payload="{}", launch="schedule")
 
-        preflight.assert_called_once_with(campaign, 12)
+        preflight.assert_called_once_with(campaign)
+        resolved.assert_not_called()
+        preview.assert_not_called()
         campaign.db_set.assert_not_called()
         enqueue.assert_not_called()

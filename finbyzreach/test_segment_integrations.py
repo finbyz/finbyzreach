@@ -78,3 +78,28 @@ class SegmentIntegrationTest(TestCase):
             self.assertEqual(automation.sync_record('Lead', 'LEAD'), {'VALID'})
         insert.assert_called_once_with('VALID', ['LEAD'])
         emit.assert_called_once()
+
+    def test_workflow_publication_queues_once_for_each_new_active_version(self):
+        from finbyzreach import segment_automation as automation
+        doc = MagicMock(name='workflow')
+        doc.name = 'WORKFLOW'
+        doc.status = 'ACTIVE'
+        doc.active_version = 'V2'
+        doc.get_doc_before_save.return_value = frappe._dict(status='ACTIVE', active_version='V1')
+        with patch.object(frappe, 'enqueue') as enqueue:
+            automation.capture_publication(doc)
+            self.assertTrue(enqueue.call_args.kwargs['enqueue_after_commit'])
+            self.assertTrue(enqueue.call_args.kwargs['deduplicate'])
+            self.assertEqual(enqueue.call_args.kwargs['version'], 'V2')
+            enqueue.reset_mock()
+            doc.get_doc_before_save.return_value.active_version = 'V2'
+            automation.capture_publication(doc)
+            enqueue.assert_not_called()
+
+    def test_outdated_publication_job_cannot_enroll_records(self):
+        from finbyzreach import segment_automation as automation
+        workflow = frappe._dict(status='ACTIVE', active_version='V2')
+        with patch.object(frappe, 'get_doc', return_value=workflow), patch('finbyzai.workflow_builder.engine.enroll') as enroll, patch.object(frappe, 'get_all') as get_all:
+            automation.enroll_current_members('WORKFLOW', 'V1')
+        enroll.assert_not_called()
+        get_all.assert_not_called()

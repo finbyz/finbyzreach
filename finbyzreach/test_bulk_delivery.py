@@ -20,6 +20,36 @@ class BulkDeliveryTest(TestCase):
         frappe.local.session = frappe._dict(user='Administrator')
         self.campaign = frappe._dict(name='TEST-CAMPAIGN', custom_broadcast_status='Sending')
         self.campaign.check_permission = MagicMock()
+
+    def test_direct_contact_personalization_uses_contact_without_duplicate_timeline(self):
+        from contextlib import ExitStack
+        contact = frappe._dict(name='CONTACT-1', first_name='Ada')
+        communication = MagicMock()
+        communication.name = 'COMM-1'
+        recipient = frappe._dict(name='REC-1', email_campaign_for='Contact', recipient=contact.name,
+            custom_recipient_email='ada@example.invalid')
+        self.campaign.update(custom_snapshot_subject='Hello', custom_snapshot_html='<p>Hello</p>',
+            custom_template_mode='Visual', custom_enable_open_tracking=1)
+        with ExitStack() as context:
+            context.enter_context(patch.object(frappe, 'get_doc', side_effect=[contact, communication]))
+            context.enter_context(patch.object(mail, 'get_signed_params', return_value='signed'))
+            context.enter_context(patch.object(mail, 'get_url', return_value='https://example.invalid/view_email'))
+            context.enter_context(patch.object(mail, 'recipient_urls', return_value={
+                'unsubscribe_url':'https://example.invalid/unsubscribe',
+                'email_preference_center_url':'https://example.invalid/preferences'}))
+            render = context.enter_context(patch.object(mail, 'render_campaign_snapshot', return_value=frappe._dict(subject='Hello Ada', html='<p>Hello Ada</p>')))
+            context.enter_context(patch.object(mail, 'decorate_campaign_links', side_effect=lambda html,*args:html))
+            context.enter_context(patch.object(mail, '_sender', return_value='test@example.invalid'))
+            context.enter_context(patch.object(mail, 'make', return_value={'name':communication.name}))
+            context.enter_context(patch.object(mail, '_log_event'))
+            context.enter_context(patch.object(mail, 'now_datetime', return_value=datetime(2026,11,6)))
+            send = context.enter_context(patch.object(frappe, 'sendmail', return_value=frappe._dict(name='QUEUE-1')))
+            mail._dispatch_recipient(recipient, self.campaign)
+        self.assertIs(render.call_args.args[2], contact)
+        self.assertIs(render.call_args.kwargs['extra_context']['contact'], contact)
+        self.assertEqual(send.call_args.kwargs['reference_doctype'], 'Contact')
+        self.assertEqual(send.call_args.kwargs['send_priority'], 0)
+        communication.append.assert_called_once_with('timeline_links', {'link_doctype':'Campaign','link_name':self.campaign.name})
     def dispatch_context(self, recipients, fail=False):
         from contextlib import ExitStack
         context = ExitStack()

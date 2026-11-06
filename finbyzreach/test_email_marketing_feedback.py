@@ -2,6 +2,7 @@ from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
 import frappe
+from frappe.query_builder.builder import MariaDB
 
 from finbyzreach import email_marketing
 
@@ -13,11 +14,13 @@ class TestEmailMarketingFeedback(TestCase):
         db = email_marketing.frappe.db
         db.sql.return_value = []
 
-        email_marketing.sync_marketing_email_statuses()
+        with patch.object(frappe.local, 'db', db), patch.object(frappe.local, 'qb', MariaDB):
+            email_marketing.sync_marketing_email_statuses()
 
-        self.assertIn("email_campaign_for", get_all.call_args_list[0].kwargs["fields"])
-        self.assertEqual(db.sql.call_count, 2)
-        for call in db.sql.call_args_list:
+        get_all.assert_not_called()
+        self.assertEqual(db.sql.call_count, 3)
+        self.assertIn("email_campaign_for", db.sql.call_args_list[0].args[0])
+        for call in db.sql.call_args_list[1:]:
             self.assertIn("ec.email_campaign_for", call.args[0])
 
     @patch.object(email_marketing, "refresh_campaign_metrics")
