@@ -926,10 +926,10 @@ export const BuilderDialogs = memo(function BuilderDialogs() {
 
       {modal === 'reference-doctype-change' && pendingReferenceDoctypeChange && <Modal title="Change Reference DocType?" onClose={cancelReferenceDoctypeChange} width={560}>
         <div className="dialog-form reference-doctype-dialog">
-          <p>This template already uses the current Reference DocType. Changing it can make merge fields or record conditions invalid.</p>
+          <p>This template already uses the current Reference DocType. Changing it can make merge fields or visibility conditions invalid.</p>
           <div className="reference-change-summary">
             <span><strong>{pendingReferenceDoctypeChange.mergeTokenCount}</strong><small>dynamic field token{pendingReferenceDoctypeChange.mergeTokenCount === 1 ? '' : 's'}</small></span>
-            <span><strong>{pendingReferenceDoctypeChange.conditionCount}</strong><small>record condition{pendingReferenceDoctypeChange.conditionCount === 1 ? '' : 's'}</small></span>
+            <span><strong>{pendingReferenceDoctypeChange.conditionCount}</strong><small>visibility condition{pendingReferenceDoctypeChange.conditionCount === 1 ? '' : 's'}</small></span>
             {pendingReferenceDoctypeChange.hasPreviewDocument && <span><strong>1</strong><small>sample document will be cleared</small></span>}
           </div>
           <p className="reference-change-target"><span>{pendingReferenceDoctypeChange.previousValue || 'No DocType'}</span><i>→</i><span>{pendingReferenceDoctypeChange.nextValue || 'No DocType'}</span></p>

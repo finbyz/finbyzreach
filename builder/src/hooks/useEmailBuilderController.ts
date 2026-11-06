@@ -364,7 +364,7 @@ export function useEmailBuilderController() {
   const removeReferenceDependentFields = useCallback(() => {
     if (!pendingReferenceDoctypeChange) return
     applyReferenceDoctypeChange(pendingReferenceDoctypeChange.nextValue, true)
-    notify('Reference DocType changed. Dynamic fields and record conditions were removed.', 'success')
+    notify('Reference DocType changed. Dynamic fields and visibility conditions were removed.', 'success')
   }, [applyReferenceDoctypeChange, notify, pendingReferenceDoctypeChange])
 
   const updateMetadata = useCallback((key: keyof BuilderDocument['metadata'], value: BuilderDocument['metadata'][keyof BuilderDocument['metadata']]) => {
