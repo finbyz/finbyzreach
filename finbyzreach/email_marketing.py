@@ -1322,7 +1322,11 @@ def _dispatch_recipient(recipient, campaign):
 		return
 	audience_doctype = recipient.email_campaign_for or "Lead"
 	party = frappe.get_doc(audience_doctype, recipient.recipient)
-	contact = frappe.get_doc("Contact", recipient.custom_contact) if audience_doctype == "Customer" else None
+	contact = (
+		frappe.get_doc("Contact", recipient.custom_contact)
+		if audience_doctype == "Customer"
+		else party if audience_doctype == "Contact" else None
+	)
 	personalization_doctype = campaign.get("custom_personalization_doctype") or audience_doctype
 	template_doc = contact if personalization_doctype == "Contact" else party
 	preview_url = get_url(
@@ -1382,7 +1386,7 @@ def _dispatch_recipient(recipient, campaign):
 			"timeline_links",
 			{"link_doctype": "Campaign", "link_name": campaign.name},
 		)
-		if contact:
+		if contact and audience_doctype == "Customer":
 			communication.append("timeline_links", {"link_doctype": "Contact", "link_name": contact.name})
 		communication.save(ignore_permissions=True)
 	queue = frappe.sendmail(
