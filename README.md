@@ -7,7 +7,7 @@
 
 **Finbyzreach** supercharges your Frappe CRM by automating the most tedious parts of sales: researching prospects and writing highly personalized follow-up emails. Built on top of [FinByz AI](https://github.com/finbyz/finbyzai), Finbyzreach acts as an autonomous Sales Development Representative (SDR) operating directly within your ERPNext / Frappe environment.
 
-It intelligently detects stalled Opportunities, autonomously researches the target Company and Person using AI Agents (like Perplexity), analyzes past CRM activities, and drafts hyper-personalized outbound emails—all running seamlessly in the background.
+It intelligently detects stalled Opportunities, autonomously researches the target Company and Person using AI Agents (like Perplexity), analyzes past CRM activities, and drafts hyper-personalized outbound emails-all running seamlessly in the background.
 
 ## ✨ Key Features
 
