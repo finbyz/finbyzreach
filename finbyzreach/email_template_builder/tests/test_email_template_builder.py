@@ -327,12 +327,12 @@ class TestEmailTemplateBuilder(IntegrationTestCase):
 		self.assertIn('width="35.000%"', compiled["html"])
 		self.assertIn('width="45.000%"', compiled["html"])
 
-	def test_custom_column_widths_reject_invalid_totals_and_bounds(self):
+	def test_custom_column_widths_normalize_invalid_totals_and_bounds(self):
 		schema = _schema("1/2:1/2", "text")
 		schema["sections"][0]["column_widths"] = [20, 20]
-		self.assertRaises(frappe.ValidationError, validate_schema, schema)
+		self.assertEqual(validate_schema(schema)["sections"][0]["column_widths"], [50.0, 50.0])
 		schema["sections"][0]["column_widths"] = [2, 98]
-		self.assertRaises(frappe.ValidationError, validate_schema, schema)
+		self.assertEqual(validate_schema(schema)["sections"][0]["column_widths"], [50.0, 50.0])
 
 	def test_column_styles_and_button_actions_are_email_safe(self):
 		schema = _schema("1/2:1/2", "button")
@@ -445,12 +445,18 @@ class TestEmailTemplateBuilder(IntegrationTestCase):
 		self.assertIn("margin-left:auto", center_divider_html)
 		self.assertIn("margin-right:auto", center_divider_html)
 
-	def test_invalid_css_keywords_and_private_file_buttons_are_rejected(self):
+	def test_invalid_css_keywords_are_normalized_and_private_files_rejected(self):
 		for path, value in (("padding", {"top": "auto"}), ("font_size", "auto"), ("width", "none")):
 			with self.subTest(path=path):
 				schema = _schema("1", "text")
 				schema["sections"][0]["columns"][0]["blocks"][0]["style"] = {path: value}
-				self.assertRaises(frappe.ValidationError, validate_schema, schema)
+				style = validate_schema(schema)["sections"][0]["columns"][0]["blocks"][0]["style"]
+				if path == "padding":
+					self.assertEqual(style["padding"]["top"], "0px")
+				elif path == "font_size":
+					self.assertNotIn("font_size", style)
+				else:
+					self.assertEqual(style["width"], "0px")
 
 		button = _schema("1", "button")
 		button["sections"][0]["columns"][0]["blocks"][0]["content"].update({"action": "file", "href": "/private/files/secret.pdf"})
