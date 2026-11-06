@@ -121,3 +121,70 @@
     justify-content: flex-end;
     margin-top: var(--margin-md);
 }
+
+/* Reuse Email Template Library explorer styles; only segment-specific layout here. */
+.rs-library-breadcrumb {
+    padding: 16px 18px 0;
+}
+
+.rs-library-toolbar {
+    padding-top: 10px;
+    border-bottom: none;
+}
+
+.rs-library .rs-search {
+    max-width: none;
+}
+
+.rs-library-body {
+    min-height: 0;
+}
+
+.rs-library-section-title {
+    color: var(--text-color);
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.rs-library-pagination {
+    margin: 0;
+    padding: 12px 18px;
+    border-top: 1px solid var(--border-color);
+}
+
+.rs-library .etl5-folder-card:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+}
+
+.rs-library .etl5-folder-card:focus-within .etl5-add-child {
+    display: flex;
+}
+
+.rs-library-table-wrap {
+    overflow-x: auto;
+}
+
+.rs-library-table {
+    table-layout: fixed;
+    min-width: 600px;
+}
+
+.rs-library-table th:first-child {
+    width: 40%;
+}
+
+.rs-library-table th,
+.rs-library-table td,
+.rs-library-segment {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.rs-library-segment {
+    display: block;
+    max-width: 100%;
+    padding: 0;
+    text-align: left;
+}

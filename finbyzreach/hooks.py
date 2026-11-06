@@ -20,15 +20,16 @@ add_to_apps_screen = [
 # include js, css files in header of desk.html
 app_include_css = [
     "/assets/finbyzreach/css/subscription_preferences.css?v=20261028.1",
-    "/assets/finbyzreach/css/segments.css?v=20261105.3",
+    "/assets/finbyzreach/css/segments.css?v=20261106.2",
 ]
 after_request = ["finbyzreach.subscription_embed.set_subscription_embed_policy"]
 app_include_js = [
     "/assets/finbyzreach/js/subscription_preferences.js?v=20261028.1",
     "/assets/finbyzreach/js/email_builder_composer.js?v=20260716.1",
-    "/assets/finbyzreach/js/email_template_library.js?v=20260930.4",
+    "/assets/finbyzreach/js/email_template_library.js?v=20261106.1",
     "/assets/finbyzreach/js/email_template_quick_entry.js?v=20260930.3",
     "/assets/finbyzreach/js/segment_membership.js?v=20261104.2",
+    "/assets/finbyzreach/js/segment_library.js?v=20261106.3",
 ]
 
 # include js, css files in header of web template
@@ -101,7 +102,10 @@ jinja = {
 
 # before_install = "finbyzreach.install.before_install"
 after_install = "finbyzreach.install.after_install"
-after_migrate = "finbyzreach.install.setup_email_template_library"
+after_migrate = [
+    "finbyzreach.install.setup_email_template_library",
+    "finbyzreach.finbyzreach.doctype.reach_segment_folder.reach_segment_folder.setup_segment_folders",
+]
 
 # Uninstallation
 # ------------

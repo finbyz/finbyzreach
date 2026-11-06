@@ -8,3 +8,4 @@ finbyzreach.patches.v1_0.add_segment_main_customer
 finbyzreach.patches.v1_0.add_segment_user_permissions
 finbyzreach.patches.v1_0.migrate_segment_snapshots
 finbyzreach.patches.v1_0.secure_segment_user_permissions
+finbyzreach.patches.v1_0.migrate_segment_folder_tree

@@ -9,6 +9,10 @@ frappe.listview_settings["Reach Segment"] = {
             {fieldname:"last_definition_changed_by"}, {fieldname:"owner",label:__("Created by")},
             {fieldname:"creation",label:__("Created on")}
         ]);
+        list.page.add_inner_button(__("Browse Folders"), () => frappe.reach_segment_library.open());
+        if (frappe.model.can_create("Reach Segment Folder")) {
+            list.page.add_inner_button(__("New Folder"), () => frappe.reach_segment_library.new_folder());
+        }
         list.refresh();
     }
 };

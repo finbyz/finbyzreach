@@ -66,19 +66,34 @@ def enqueue_outbound_emails():
     current_time = now_datetime()
     end_time = add_to_date(current_time, minutes=10)
     
-    # Fetch emails scheduled within the next 10 minutes
-    emails = frappe.get_list(
-        "Communication Email",
-        filters={
-            "status": ["in",["Queued", "Failed"]],
-            "time": ["<=", end_time],
-        },
-        fields=["*"],
+    # Fetch emails scheduled within the next 10 minutes.
+    # frappe.get_list on a child doctype drops parent/parenttype even when asked
+    # for fields=["*"], so every row came back with parent = None and the
+    # frappe.get_doc below failed with "First non keyword argument must be a
+    # string or dict". Raw SQL always returns those columns.
+    emails = frappe.db.sql(
+        """
+            SELECT
+                name, idx, subject, content, status, `time`, sent_at,
+                error_message, parent, parenttype
+            FROM `tabCommunication Email`
+            WHERE status IN ('Queued', 'Failed')
+              AND `time` <= %(end_time)s
+        """,
+        {"end_time": end_time},
+        as_dict=True,
     )
 
     for email in emails:
         try:
-            outbound_email = frappe.get_doc(email.parenttype, email.parent)
+            if not email.parent:
+                frappe.log_error(
+                    f"Communication Email {email.name} has no parent - skipping.",
+                    "Enqueue Outbound Email"
+                )
+                continue
+
+            outbound_email = frappe.get_doc(email.parenttype or "Outbound Email", email.parent)
             if outbound_email.contact:
                 email_id = frappe.get_value("Contact", outbound_email.contact, "email_id")
                 email.update({"email_id" : email_id})

@@ -2464,6 +2464,7 @@ frappe.provide("frappe.email_template_library");
 	
 
 	Object.assign(frappe.email_template_library, {
+		ensure_styles,
 		choose_master,
 		create_from_master,
 		create_master_from_email,

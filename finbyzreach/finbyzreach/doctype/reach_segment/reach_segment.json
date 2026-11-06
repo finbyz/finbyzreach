@@ -100,7 +100,8 @@
    "fieldtype": "Link",
    "label": "Folder",
    "options": "Reach Segment Folder",
-   "in_standard_filter": 1
+   "in_standard_filter": 1,
+   "search_index": 1
   },
   {
    "fieldname": "archived",

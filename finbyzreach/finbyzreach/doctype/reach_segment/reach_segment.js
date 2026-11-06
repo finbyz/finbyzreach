@@ -9,11 +9,11 @@ class ReachSegmentBuilder {
         this.page = 0;
         this.sequence = 0;
         this.ready = false;
-        this.build();
+        this.initialized = this.build();
     }
     get doctype() { return this.frm.doc.audience_doctype || "Lead"; }
     get canWrite() { return Boolean(this.frm.perm?.some(p => p.write)); }
-    build() {
+    async build() {
         const escape = frappe.utils.escape_html;
         this.frm.toggle_display("static_leads_json", false);
         this.frm.toggle_display("exclude_filters_json", false);
@@ -53,28 +53,40 @@ class ReachSegmentBuilder {
         this.$root.find(".rs-next").on("click", () => { this.page++; this.load(false); });
         this.$root.find(".rs-results").on("click", "[data-exclude]", e => this.mutate([$(e.currentTarget).attr("data-exclude")], "exclude"));
         this.$root.find(".rs-results").on("click", "[data-restore]", e => this.mutate([$(e.currentTarget).attr("data-restore")], "restore"));
-        frappe.model.with_doctype(this.doctype, () => {
-            const expression = frappe.utils.parse_json(this.frm.doc.filter_expression_json || "null");
-            if (expression?.conditions && expression.conditions.every(g => g.kind || g.conditions?.every(c => Array.isArray(c)))) {
-                this.$root.find(".rs-match").val(expression.operator);
-                expression.conditions.forEach(g => g.kind ? this.addSpecial(g) : this.addGroup(g.conditions, false, g.operator));
-            } else {
-                this.normalize(this.frm.doc.filter_groups_json).forEach(g => this.addGroup(g, false));
-            }
-            if (!this.groups.length) this.addGroup([], false);
-            this.normalize(this.frm.doc.exclude_filters_json).forEach(g => this.addGroup(g, true));
-            this.ready = true;
-            this.load(true);
-        });
+        await frappe.model.with_doctype(this.doctype);
+        if (this.disposed) return;
+        const pending = [];
+        const expression = frappe.utils.parse_json(this.frm.doc.filter_expression_json || "null");
+        if (expression?.conditions && expression.conditions.every(g => g.kind || g.conditions?.every(c => Array.isArray(c)))) {
+            this.$root.find(".rs-match").val(expression.operator);
+            expression.conditions.forEach(g => g.kind ? this.addSpecial(g) : pending.push(this.addGroup(g.conditions, false, g.operator)));
+        } else {
+            this.normalize(this.frm.doc.filter_groups_json).forEach(g => pending.push(this.addGroup(g, false)));
+        }
+        if (!this.groups.length) pending.push(this.addGroup([], false));
+        this.normalize(this.frm.doc.exclude_filters_json).forEach(g => pending.push(this.addGroup(g, true)));
         this.segmentExclusionControl = frappe.ui.form.make_control({
             parent: this.$root.find(".rs-excluded-segments"), render_input: true,
             df: {fieldname: "segments", fieldtype: "MultiSelectList", label: __("Exclude segments"),
                 get_data: txt => frappe.db.get_link_options("Reach Segment", txt, {audience_doctype: this.doctype, name: ["!=", this.frm.doc.name]}),
-                onchange: () => { if (this.ready) { this.frm.doc.exclude_segments_json = JSON.stringify(this.segmentExclusionControl.get_value()); this.changed(); } }}
+                onchange: () => this.changed() }
         });
-        this.segmentExclusionControl.set_value(frappe.utils.parse_json(this.frm.doc.exclude_segments_json || "[]"));
+        pending.push(this.segmentExclusionControl.set_value(frappe.utils.parse_json(this.frm.doc.exclude_segments_json || "[]")));
+        await Promise.all(pending);
+        if (this.disposed) return;
+        // Loading saved controls is not a user edit. Remember their canonical
+        // values so delayed/repeated native callbacks cannot dirty the form.
+        this.definitionSignature = JSON.stringify(this.definition());
+        this.ready = true;
         if (!this.canWrite) this.$root.find(".rs-filters :input,.rs-add,.rs-add-exclude").prop("disabled", true);
         this.actions();
+        this.load(true);
+    }
+    dispose() {
+        this.disposed = true;
+        this.ready = false;
+        ++this.sequence;
+        clearTimeout(this.timer);
     }
     normalize(value) {
         const groups = frappe.utils.parse_json(value || "[]");
@@ -87,11 +99,12 @@ class ReachSegmentBuilder {
         const item = {match, $group};
         item.filter = new frappe.ui.FilterGroup({parent: $group.find(".rs-rule-body"), doctype: this.doctype, on_change: () => this.changed()});
         item.filter.update_filter_button = () => {};
-        if (filters.length) item.filter.add_filters(filters).then(() => item.filter.toggle_empty_filters(false));
+        const initialized = filters.length ? item.filter.add_filters(filters).then(() => item.filter.toggle_empty_filters(false)) : Promise.resolve();
         $group.find(".rs-rule-match").val(match).prop("disabled", excluded || !this.canWrite).on("change", e => { item.match = e.target.value; this.changed(); });
         $group.find(".rs-rule-head > button").prop("disabled", !this.canWrite).on("click", () => { items.splice(items.indexOf(item), 1); $group.remove(); this.changed(); });
         items.push(item);
         this.changed();
+        return initialized;
     }
     addSpecial(condition) {
         this.specials.push(condition);
@@ -120,18 +133,28 @@ class ReachSegmentBuilder {
             });
         });
     }
-    serialize() {
+    definition() {
         const groups = this.groups.map(i => ({operator: i.match, conditions: i.filter.get_filters()})).filter(i => i.conditions.length);
         const legacy = groups.map(i => i.conditions);
         groups.push(...this.specials);
-        this.frm.doc.filter_groups_json = JSON.stringify(legacy);
         const custom = this.specials.length || this.$root.find(".rs-match").val() === "AND" || groups.some(g => g.operator === "OR");
-        this.frm.doc.filter_expression_json = custom && groups.length ? JSON.stringify({operator: this.$root.find(".rs-match").val(), conditions: groups}) : "";
-        this.frm.doc.exclude_filters_json = JSON.stringify(this.exclusions.map(i => i.filter.get_filters()).filter(g => g.length));
+        return {
+            filter_groups_json: JSON.stringify(legacy),
+            filter_expression_json: custom && groups.length ? JSON.stringify({operator: this.$root.find(".rs-match").val(), conditions: groups}) : "",
+            exclude_filters_json: JSON.stringify(this.exclusions.map(i => i.filter.get_filters()).filter(g => g.length)),
+            exclude_segments_json: JSON.stringify(this.segmentExclusionControl.get_value() || []),
+        };
+    }
+    serialize() {
+        if (this.ready && !this.disposed) Object.assign(this.frm.doc, this.definition());
     }
     changed() {
-        if (!this.ready || !this.canWrite) return;
-        this.serialize();
+        if (!this.ready || this.disposed || !this.canWrite) return;
+        const definition = this.definition();
+        const signature = JSON.stringify(definition);
+        if (signature === this.definitionSignature) return;
+        this.definitionSignature = signature;
+        Object.assign(this.frm.doc, definition);
         this.frm.dirty();
         this.schedulePreview();
     }
@@ -140,6 +163,7 @@ class ReachSegmentBuilder {
         this.timer = setTimeout(() => this.load(true), 400);
     }
     async load(reset) {
+        if (!this.ready || this.disposed) return;
         const sequence = ++this.sequence;
         if (reset) { this.page = 0; this.cursors = [null]; }
         const args = {segment_name: this.frm.is_new() ? null : this.frm.doc.name, after: this.cursors[this.page], page_length: 50, search: this.$root.find(".rs-search").val(), include_count: reset ? 1 : 0};
@@ -219,7 +243,13 @@ class ReachSegmentBuilder {
     }
 }
 frappe.ui.form.on("Reach Segment", {
-    refresh(frm) { frm.builder = new ReachSegmentBuilder(frm); },
+    refresh(frm) {
+        frm.builder?.dispose();
+        frm.builder = new ReachSegmentBuilder(frm);
+    },
     audience_doctype(frm) { if (frm.is_new()) { frm.doc.filter_groups_json = "[]"; frm.doc.filter_expression_json = ""; frm.trigger("refresh"); } },
-    validate(frm) { frm.builder?.serialize(); }
+    async validate(frm) {
+        await frm.builder?.initialized;
+        frm.builder?.serialize();
+    }
 });

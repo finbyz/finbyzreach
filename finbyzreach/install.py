@@ -347,9 +347,11 @@ def after_install():
 	from finbyzreach.patches.v1_0.add_segment_main_customer import execute as setup_main_customer
 	from finbyzreach.patches.v1_0.add_segment_user_permissions import execute as setup_segment_permissions
 	from finbyzreach.patches.v1_0.add_segment_delivery_indexes import execute as setup_segment_indexes
+	from finbyzreach.finbyzreach.doctype.reach_segment_folder.reach_segment_folder import setup_segment_folders
 	setup_main_customer()
 	setup_segment_permissions()
 	setup_segment_indexes()
+	setup_segment_folders()
 
 
 def setup_email_template_library():
