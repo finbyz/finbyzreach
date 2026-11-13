@@ -41,11 +41,13 @@ class SegmentSQLTest(TestCase):
         for doctype in ('Lead', 'Contact', 'Customer'):
             self.database.connection.execute(f'CREATE TABLE "tab{doctype}" (name TEXT PRIMARY KEY, email_id TEXT, city TEXT, unsubscribed INTEGER DEFAULT 0)')
         for doctype in (service.MEMBER, service.EXCLUSION):
-            self.database.connection.execute(f'CREATE TABLE "tab{doctype}" (name TEXT PRIMARY KEY, segment TEXT, record_name TEXT, source TEXT, creation TEXT, modified TEXT, owner TEXT, modified_by TEXT, UNIQUE(segment,record_name))')
+            self.database.connection.execute(f'CREATE TABLE "tab{doctype}" (name TEXT PRIMARY KEY, segment TEXT, record_name TEXT, source TEXT, is_current INTEGER DEFAULT 1, creation TEXT, modified TEXT, owner TEXT, modified_by TEXT, UNIQUE(segment,record_name))')
         self.database.connection.execute('CREATE TABLE "tabEmail Group Member" (email_group TEXT, email TEXT)')
+        self.database.connection.execute('CREATE TABLE "tabReach Segment Snapshot Row" (name TEXT PRIMARY KEY, segment TEXT, generation TEXT, record_name TEXT, creation TEXT, modified TEXT, owner TEXT, modified_by TEXT)')
         self.docs = {}
         self.patches = [
             patch.object(service, 'now_datetime', return_value=datetime(2026,11,4)),
+            patch('finbyzreach.segment_snapshots.now_datetime', return_value=datetime(2026,11,4)),
             patch('finbyzreach.email_marketing.validate_lead_filter_groups', side_effect=self.validate_groups),
             patch.object(MariaDB, 'get_query', side_effect=self.query),
             patch.object(frappe, 'get_doc', side_effect=lambda dt, name, **kw: self.docs[name]),
