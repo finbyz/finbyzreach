@@ -27,6 +27,8 @@ def referenced_segments(graph):
 
 
 def emit_entry(segment, record_name, occurrence):
+    from finbyzreach.segment_history import record_event
+    record_event(segment, record_name, 'Entered', occurrence)
     from finbyzai.workflow_builder.configuration import automation_enabled
     if not automation_enabled():
         return
@@ -41,8 +43,10 @@ def sync_record(doctype, name):
     table = frappe.qb.DocType(doctype)
     affected = set()
     for segment_name in frappe.get_all('Reach Segment', filters={
-        'audience_doctype': doctype, 'segment_type': 'Active', 'archived': 0}, pluck='name'):
+        'audience_doctype': doctype, 'archived': 0}, pluck='name',order_by='name asc'):
         segment = frappe.get_doc('Reach Segment', segment_name, for_update=True)
+        if segment.get('snapshot_pending_generation'):
+            continue
         try:
             matches = bool(member_query(segment).select(table.name).where(table.name == name).limit(1).run())
         except (frappe.ValidationError, frappe.DoesNotExistError):
@@ -52,20 +56,24 @@ def sync_record(doctype, name):
             frappe.logger('finbyzreach').warning('Invalid Reach Segment definition during change processing: %s', segment.name)
             continue
         affected.add(segment.name)
-        previous = frappe.db.get_value(MEMBER, {'segment': segment.name, 'record_name': name}, ['name', 'source'], as_dict=True)
-        if matches and not previous:
-            _insert_members(segment.name, [name])
+        previous = frappe.db.get_value(MEMBER, {'segment': segment.name, 'record_name': name}, ['name', 'source','is_current'], as_dict=True)
+        if matches and (not previous or not previous.get('is_current', 1)):
+            if not previous:
+                _insert_members(segment.name, [name])
+            else:
+                frappe.db.set_value(MEMBER, previous.name, 'is_current', 1, update_modified=False)
             emit_entry(segment, name, f'segment:{segment.name}:{name}:{frappe.generate_hash(length=16)}')
-        elif not matches and previous and previous.source == 'Filtered':
-            frappe.db.delete(MEMBER, {'name': previous.name})
+        elif not matches and previous:
+            mark_left(segment, previous, name)
 
     return affected
 
 
-def capture_change(doc, method=None):
-    if doc.doctype not in ('Lead', 'Contact', 'Customer') or not frappe.db.table_exists('Reach Segment Pending Record'):
+def capture_change(doc, method=None, enqueue=True):
+    from finbyzreach.segment_service import AUDIENCE_TYPES
+    if doc.doctype not in AUDIENCE_TYPES or not frappe.db.table_exists('Reach Segment Pending Record'):
         return
-    if not frappe.db.exists('Reach Segment', {'audience_doctype': doc.doctype, 'segment_type': 'Active', 'archived': 0}):
+    if not frappe.db.exists('Reach Segment', {'audience_doctype': doc.doctype, 'archived': 0}):
         return
     from hashlib import sha256
     from frappe.utils import now_datetime
@@ -75,7 +83,38 @@ def capture_change(doc, method=None):
     frappe.db.bulk_insert('Reach Segment Pending Record',
         ['name','creation','modified','owner','modified_by','record_doctype','record_name'],
         [(key,now,now,user,user,doc.doctype,doc.name)], ignore_duplicates=True)
+    if enqueue:
+        enqueue_changes()
+
+
+def capture_customer_change(doc, method=None):
+    """Main-customer fields affect Contacts and the Customer's source Lead."""
+    from finbyzreach.segment_service import AUDIENCE_TYPES
+    if not frappe.db.table_exists('Reach Segment'):
+        return
+    for value in (doc, doc.get_doc_before_save()):
+        if value:
+            queue_identity('Lead',value.get('lead_name'))
+    # Stream contacts; enqueue only a cursor job from the Customer save request.
+    for doctype in ('Contact','Opportunity','Sales Order'):
+        frappe.enqueue('finbyzreach.segment_automation.queue_customer_contacts',customer=doc.name,doctype=doctype,
+                       queue='short',enqueue_after_commit=True)
+
+
+def queue_customer_contacts(customer, after=None, doctype='Contact'):
+    if doctype not in ('Contact','Opportunity','Sales Order'):
+        frappe.throw('Unsupported customer dependency')
+    filters = ({'custom_reach_main_customer':customer} if doctype == 'Contact' else
+               {'party_name':customer,'opportunity_from':'Customer'} if doctype == 'Opportunity' else {'customer':customer})
+    if after:
+        filters['name'] = ['>',after]
+    names = frappe.get_all(doctype,filters=filters,pluck='name',order_by='name asc',limit_page_length=200)
+    for name in names:
+        capture_change(frappe._dict(doctype=doctype,name=name),enqueue=False)
     enqueue_changes()
+    if len(names) == 200:
+        frappe.enqueue('finbyzreach.segment_automation.queue_customer_contacts',customer=customer,
+                       after=names[-1],doctype=doctype,queue='short',enqueue_after_commit=True)
 
 
 def enqueue_changes():
@@ -104,7 +143,8 @@ def drain_changes():
         from finbyzreach.segment_service import count_members
         for name in affected:
             segment = frappe.get_doc('Reach Segment', name)
-            frappe.db.set_value('Reach Segment', name, 'member_count', count_members(segment), update_modified=False)
+            update_counts(segment)
+        schedule_dependents(affected)
         enqueue_changes()
     finally:
         frappe.set_user(user)
@@ -162,11 +202,14 @@ def enroll_current_members(workflow_name, version, segment_name=None, after=None
 def reconcile_segment(segment_name, after=None):
     from finbyzreach.segment_service import member_names, member_query, MEMBER, _insert_members
     segment = frappe.get_doc('Reach Segment', segment_name, for_update=True)
-    if segment.get('archived') or segment.segment_type != 'Active':
+    if segment.get('archived') or segment.get('snapshot_pending_generation'):
         return
     names = member_names(segment, after=after, limit=200)
-    previous = set(frappe.get_all(MEMBER, filters={'segment':segment.name,'record_name':['in',names]}, pluck='record_name')) if names else set()
+    previous = set(frappe.get_all(MEMBER, filters={'segment':segment.name,'is_current':1,'record_name':['in',names]}, pluck='record_name')) if names else set()
     _insert_members(segment.name, names)
+    if names:
+        table = frappe.qb.DocType(MEMBER)
+        frappe.qb.update(table).set(table.is_current,1).where(table.segment == segment.name).where(table.record_name.isin(names)).run()
     for name in set(names)-previous:
         emit_entry(segment, name, f'segment:{frappe.generate_hash(length=32)}')
     if len(names) == 200:
@@ -180,25 +223,28 @@ def reconcile_segment(segment_name, after=None):
 def clean_segment_members(segment_name, after=None):
     from finbyzreach.segment_service import MEMBER, member_query
     segment = frappe.get_doc('Reach Segment', segment_name, for_update=True)
-    if segment.get('archived') or segment.segment_type != 'Active':
+    if segment.get('archived') or segment.get('snapshot_pending_generation'):
         return
-    filters = {'segment':segment.name,'source':'Filtered'}
+    filters = {'segment':segment.name}
     if after:
         filters['name'] = ['>',after]
-    rows = frappe.get_all(MEMBER, filters=filters, fields=['name','record_name'], order_by='name asc', limit_page_length=200)
+    rows = frappe.get_all(MEMBER, filters=filters, fields=['name','record_name','source','is_current'], order_by='name asc', limit_page_length=200)
     if rows:
         table = frappe.qb.DocType(segment.audience_doctype)
         current = {row[0] for row in member_query(segment).select(table.name)
                    .where(table.name.isin([row.record_name for row in rows])).run()}
-        stale = [row.name for row in rows if row.record_name not in current]
-        if stale:
-            frappe.db.delete(MEMBER, {'name':['in',stale]})
+        for row in rows:
+            if row.record_name not in current:
+                mark_left(segment,row,row.record_name)
     if len(rows) == 200:
         frappe.enqueue('finbyzreach.segment_automation.clean_segment_members', segment_name=segment.name,
                        after=rows[-1].name, queue='long', enqueue_after_commit=True)
     else:
-        from finbyzreach.segment_service import count_members
-        frappe.db.set_value('Reach Segment', segment.name, 'member_count', count_members(segment), update_modified=False)
+        update_counts(segment)
+        from finbyzreach.segment_history import sample_size
+        sample_size(segment)
+        from finbyzreach.segment_snapshots import clean_old_rows
+        clean_old_rows(segment.name)
 
 
 def refresh_time_segments():
@@ -214,7 +260,8 @@ def validate_main_customer(doc, method=None):
 
 
 def queue_identity(doctype, name):
-    if doctype not in ('Lead','Contact','Customer') or not name:
+    from finbyzreach.segment_service import AUDIENCE_TYPES
+    if doctype not in AUDIENCE_TYPES or not name:
         return
     capture_change(frappe._dict(doctype=doctype,name=name))
 
@@ -231,6 +278,61 @@ def capture_related_change(doc, method=None):
         queue_identity('Contact',value.get('contact_person'))
 
 
+def mark_left(segment, previous, record_name):
+    from finbyzreach.segment_service import MEMBER
+    if previous.get('is_current',1):
+        from finbyzreach.segment_history import record_event
+        record_event(segment,record_name,'Left',frappe.generate_hash(length=32))
+    if previous.source == 'Filtered':
+        frappe.db.delete(MEMBER,{'name':previous.name})
+    else:
+        frappe.db.set_value(MEMBER,previous.name,'is_current',0,update_modified=False)
+
+
+def update_counts(segment):
+    from finbyzreach.segment_service import member_query, count_members
+    from frappe.query_builder.functions import Count
+    table = frappe.qb.DocType(segment.audience_doctype)
+    included = count_members(segment)
+    candidates = member_query(segment,apply_exclusions=False).select(Count(table.name)).run()[0][0]
+    segment.member_count = included
+    segment.excluded_count = max(0,candidates-included)
+    frappe.db.set_value('Reach Segment',segment.name,{'member_count':included,'excluded_count':segment.excluded_count},update_modified=False)
+
+
+def segment_references(row):
+    names = set(frappe.parse_json(row.get('exclude_segments_json') or '[]'))
+    def visit(node):
+        if isinstance(node, dict):
+            if node.get('kind') == 'segment' and node.get('segment'):
+                names.add(node['segment'])
+            for child in node.get('conditions') or []:
+                visit(child)
+    visit(frappe.parse_json(row.get('filter_expression_json') or 'null'))
+    return names
+
+
+def schedule_reconciliation(segment_name):
+    frappe.enqueue('finbyzreach.segment_automation.reconcile_segment',segment_name=segment_name,
+                   queue='long',enqueue_after_commit=True)
+    schedule_dependents({segment_name})
+
+
+def schedule_dependents(changed):
+    """Definitions form an acyclic graph; visit each dependent only once."""
+    rows = frappe.get_all('Reach Segment',filters={'archived':0},
+        fields=['name','exclude_segments_json','filter_expression_json'])
+    seen = set(changed)
+    frontier = set(changed)
+    while frontier:
+        next_frontier = {row.name for row in rows if row.name not in seen and segment_references(row) & frontier}
+        for name in sorted(next_frontier):
+            frappe.enqueue('finbyzreach.segment_automation.reconcile_segment',segment_name=name,
+                           queue='long',enqueue_after_commit=True)
+        seen.update(next_frontier)
+        frontier = next_frontier
+
+
 def capture_activity(doc, method=None):
     queue_identity('Lead',doc.get('lead') or doc.get('linked_lead'))
     queue_identity('Contact',doc.get('contact') or doc.get('linked_contact'))
@@ -241,12 +343,29 @@ def capture_activity(doc, method=None):
             queue_identity(reference.email_campaign_for,reference.recipient)
     visitor = doc.get('visitor_id')
     if visitor:
-        for doctype in ('Lead','Contact','Customer'):
-            meta = frappe.get_meta(doctype)
-            if not meta.has_field('custom_website_tracking_visitor_id'):
-                continue
-            conditions = [['custom_website_tracking_visitor_id','=',visitor]]
-            if meta.has_field('custom_website_tracking_visitor_ids'):
-                conditions.append(['custom_website_tracking_visitor_ids','like','%'+frappe.as_json(visitor)+'%'])
-            for name in frappe.get_all(doctype,or_filters=conditions,pluck='name',limit_page_length=0):
-                queue_identity(doctype,name)
+        from finbyzreach.segment_service import AUDIENCE_TYPES
+        for doctype in AUDIENCE_TYPES:
+            if frappe.get_meta(doctype).has_field('custom_website_tracking_visitor_id'):
+                frappe.enqueue('finbyzreach.segment_automation.queue_visitor_records',
+                    doctype=doctype,visitor=visitor,queue='short',enqueue_after_commit=True)
+
+
+def queue_visitor_records(doctype, visitor, after=None):
+    """Keep tracking inserts independent of the number of matching CRM records."""
+    from finbyzreach.segment_service import AUDIENCE_TYPES
+    if doctype not in AUDIENCE_TYPES:
+        frappe.throw('Unsupported visitor audience')
+    meta = frappe.get_meta(doctype)
+    if not meta.has_field('custom_website_tracking_visitor_id'):
+        return
+    conditions = [['custom_website_tracking_visitor_id','=',visitor]]
+    if meta.has_field('custom_website_tracking_visitor_ids'):
+        conditions.append(['custom_website_tracking_visitor_ids','like','%'+frappe.as_json(visitor)+'%'])
+    names = frappe.get_all(doctype,filters={'name':['>',after]} if after else {},
+        or_filters=conditions,pluck='name',order_by='name asc',limit_page_length=200)
+    for name in names:
+        capture_change(frappe._dict(doctype=doctype,name=name),enqueue=False)
+    enqueue_changes()
+    if len(names) == 200:
+        frappe.enqueue('finbyzreach.segment_automation.queue_visitor_records',
+            doctype=doctype,visitor=visitor,after=names[-1],queue='short',enqueue_after_commit=True)
