@@ -381,7 +381,8 @@ def validate_campaign(doc, require_ready=False, skip_queued_check=False):
 
 
 def validate_lead_filters(filters_json, require_filters=False, audience_doctype="Lead"):
-	if audience_doctype not in ("Lead", "Contact", "Customer"):
+	from finbyzreach.segment_service import AUDIENCE_TYPES
+	if audience_doctype not in AUDIENCE_TYPES:
 		frappe.throw(_("Unsupported campaign audience"))
 	try:
 		filters = frappe.parse_json(filters_json or "[]")
@@ -445,7 +446,8 @@ def validate_lead_filter_groups(filters_json, require_filters=False, audience_do
 
 	A legacy flat filter list remains valid and is treated as one AND group.
 	"""
-	if audience_doctype not in ("Lead", "Contact", "Customer"):
+	from finbyzreach.segment_service import AUDIENCE_TYPES
+	if audience_doctype not in AUDIENCE_TYPES:
 		frappe.throw(_("Unsupported campaign audience"))
 	try:
 		groups = frappe.parse_json(filters_json or "[]")
@@ -537,6 +539,8 @@ def _lead_names_from_filter_groups(filters_json, require_filters=False, audience
 			from finbyzreach.segment_service import member_names
 			segment = frappe.get_doc("Reach Segment", group[0][3][1])
 			segment.check_permission("read")
+			from finbyzreach.segments import require_ready
+			require_ready(segment)
 			if segment.get("archived"):
 				frappe.throw(_("Archived segments cannot be used for mailings"))
 			if (segment.get("audience_doctype") or "Lead") != audience_doctype:

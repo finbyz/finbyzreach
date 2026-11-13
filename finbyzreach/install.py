@@ -345,13 +345,15 @@ def after_install():
 	create_ai_agents()
 	setup_email_template_library()
 	from finbyzreach.patches.v1_0.add_segment_main_customer import execute as setup_main_customer
-	from finbyzreach.patches.v1_0.add_segment_user_permissions import execute as setup_segment_permissions
 	from finbyzreach.patches.v1_0.add_segment_delivery_indexes import execute as setup_segment_indexes
 	from finbyzreach.finbyzreach.doctype.reach_segment_folder.reach_segment_folder import setup_segment_folders
 	setup_main_customer()
-	setup_segment_permissions()
 	setup_segment_indexes()
 	setup_segment_folders()
+	from finbyzreach.patches.v1_0.complete_segment_membership import execute as setup_membership
+	setup_membership()
+	from finbyzreach.patches.v1_0.add_list_folder_sidebar import execute as setup_folder_sidebar
+	setup_folder_sidebar()
 
 
 def setup_email_template_library():

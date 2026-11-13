@@ -20,7 +20,8 @@ add_to_apps_screen = [
 # include js, css files in header of desk.html
 app_include_css = [
     "/assets/finbyzreach/css/subscription_preferences.css?v=20261028.1",
-    "/assets/finbyzreach/css/segments.css?v=20261106.2",
+    "/assets/finbyzreach/css/segments.css?v=20261113.1",
+    "/assets/finbyzreach/css/folder_sidebar.css?v=20261113.10",
 ]
 after_request = ["finbyzreach.subscription_embed.set_subscription_embed_policy"]
 app_include_js = [
@@ -28,8 +29,9 @@ app_include_js = [
     "/assets/finbyzreach/js/email_builder_composer.js?v=20260716.1",
     "/assets/finbyzreach/js/email_template_library.js?v=20261106.1",
     "/assets/finbyzreach/js/email_template_quick_entry.js?v=20260930.3",
-    "/assets/finbyzreach/js/segment_membership.js?v=20261104.2",
-    "/assets/finbyzreach/js/segment_library.js?v=20261106.3",
+    "/assets/finbyzreach/js/segment_membership.js?v=20261113.1",
+    "/assets/finbyzreach/js/segment_library.js?v=20261113.1",
+    "/assets/finbyzreach/js/folder_sidebar.js?v=20261113.7",
 ]
 
 # include js, css files in header of web template
@@ -58,7 +60,11 @@ doctype_js = {
 doctype_list_js = {
     "Email Template": "public/js/doctype_list_js/email_template_list.js",
     "Email Template Master": "public/js/doctype_list_js/email_template_master_list.js",
-    "Lead": "public/js/doctype_list_js/lead_list.js",
+    "Lead": "public/js/segment_list.js",
+    "Contact": "public/js/segment_list.js",
+    "Customer": "public/js/segment_list.js",
+    "Opportunity": "public/js/segment_list.js",
+    "Sales Order": "public/js/segment_list.js",
     "Campaign": "public/js/doctype_list_js/campaign_list.js",
 }
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
@@ -139,20 +145,7 @@ after_migrate = [
 # -----------
 # Permissions evaluated in scripted ways
 
-permission_query_conditions = {
-    "Reach Segment": "finbyzreach.segment_permissions.query_conditions",
-    "Reach Segment Folder": "finbyzreach.segment_permissions.query_conditions",
-}
-
-has_permission = {
-    "Reach Segment": "finbyzreach.segment_permissions.has_permission",
-    "Reach Segment Folder": "finbyzreach.segment_permissions.folder_permission",
-}
-
-# Session Boot
-# ------------
-
-boot_session = ["finbyzreach.segment_permissions.filter_boot_permissions"]
+# Segment and folder access uses Frappe's native DocType and role permissions.
 
 # DocType Class
 # ---------------
@@ -187,22 +180,29 @@ doc_events = {
     },
     "Lead": {
         "on_update": ["finbyzreach.segment_automation.capture_change"],
+        "after_delete": ["finbyzreach.segment_automation.capture_change"],
     },
     "Contact": {
         "on_update": ["finbyzreach.segment_automation.capture_change"],
+        "after_delete": ["finbyzreach.segment_automation.capture_change"],
         "validate": ["finbyzreach.segment_automation.validate_main_customer"],
     },
     "Customer": {
-        "on_update": ["finbyzreach.segment_automation.capture_change"],
+        "on_update": ["finbyzreach.segment_automation.capture_change", "finbyzreach.segment_automation.capture_customer_change"],
+        "after_delete": ["finbyzreach.segment_automation.capture_change", "finbyzreach.segment_automation.capture_customer_change"],
     },
     "Automation Workflow": {
         "on_update": ["finbyzreach.segment_automation.capture_publication"],
     },
     "Opportunity": {
-        "on_update": ["finbyzreach.segment_automation.capture_related_change"],
+        "on_update": ["finbyzreach.segment_automation.capture_change", "finbyzreach.segment_automation.capture_related_change"],
+        "after_delete": ["finbyzreach.segment_automation.capture_change", "finbyzreach.segment_automation.capture_related_change"],
+        "on_cancel": ["finbyzreach.segment_automation.capture_change", "finbyzreach.segment_automation.capture_related_change"],
     },
     "Sales Order": {
-        "on_update": ["finbyzreach.segment_automation.capture_related_change"],
+        "on_update": ["finbyzreach.segment_automation.capture_change", "finbyzreach.segment_automation.capture_related_change"],
+        "after_delete": ["finbyzreach.segment_automation.capture_change", "finbyzreach.segment_automation.capture_related_change"],
+        "on_cancel": ["finbyzreach.segment_automation.capture_change", "finbyzreach.segment_automation.capture_related_change"],
     },
     "Email Tracking Event": {
         "after_insert": ["finbyzreach.segment_automation.capture_activity"],
@@ -228,10 +228,12 @@ scheduler_events = {
         "finbyzreach.email_marketing.sync_marketing_email_statuses",
         "finbyzreach.campaign_preparation.recover_preparations",
         "finbyzreach.segment_automation.enqueue_changes",
+        "finbyzreach.segment_snapshots.recover",
         "finbyzreach.email_marketing.flush_dirty_campaign_metrics",
     ],
     "daily": [
         "finbyzreach.segment_automation.refresh_time_segments",
+        "finbyzreach.segment_history.sample_all",
     ],
     # "hourly": [
     # 	"finbyzreach.tasks.hourly"
