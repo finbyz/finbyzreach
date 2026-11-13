@@ -9,3 +9,6 @@ finbyzreach.patches.v1_0.add_segment_user_permissions
 finbyzreach.patches.v1_0.migrate_segment_snapshots
 finbyzreach.patches.v1_0.secure_segment_user_permissions
 finbyzreach.patches.v1_0.migrate_segment_folder_tree
+finbyzreach.patches.v1_0.remove_segment_user_permissions
+finbyzreach.patches.v1_0.complete_segment_membership
+finbyzreach.patches.v1_0.add_list_folder_sidebar
