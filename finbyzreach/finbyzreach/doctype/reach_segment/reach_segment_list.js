@@ -3,16 +3,13 @@ frappe.listview_settings["Reach Segment"] = {
     add_fields: ["member_count", "segment_type", "audience_doctype", "folder", "last_definition_change", "last_definition_changed_by", "owner", "creation"],
     hide_name_column: true,
     async onload(list) {
+        frappe.reach_folder_sidebar.setup(list);
         await list.setup_columns([
-            {fieldname:"name",label:__("Name")}, {fieldname:"member_count"}, {fieldname:"segment_type"},
+            {fieldname:"name",label:__("Name"),width:240}, {fieldname:"member_count"}, {fieldname:"segment_type"},
             {fieldname:"audience_doctype"}, {fieldname:"last_definition_change"},
             {fieldname:"last_definition_changed_by"}, {fieldname:"owner",label:__("Created by")},
             {fieldname:"creation",label:__("Created on")}
         ]);
-        list.page.add_inner_button(__("Browse Folders"), () => frappe.reach_segment_library.open());
-        if (frappe.model.can_create("Reach Segment Folder")) {
-            list.page.add_inner_button(__("New Folder"), () => frappe.reach_segment_library.new_folder());
-        }
         list.refresh();
     }
 };

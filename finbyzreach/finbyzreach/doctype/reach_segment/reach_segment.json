@@ -23,7 +23,12 @@
   "members_initialized",
   "excluded_count",
   "last_definition_change",
-  "last_definition_changed_by"
+  "last_definition_changed_by",
+  "snapshot_status",
+  "snapshot_generation",
+  "snapshot_pending_generation",
+  "snapshot_definition",
+  "snapshot_error"
  ],
  "fields": [
   {
@@ -39,7 +44,7 @@
    "fieldname": "audience_doctype",
    "fieldtype": "Select",
    "label": "Audience Type",
-   "options": "Lead\nContact\nCustomer",
+   "options": "Lead\nContact\nCustomer\nOpportunity\nSales Order",
    "default": "Lead",
    "reqd": 1,
    "in_list_view": 1,
@@ -156,6 +161,43 @@
    "label": "Last Definition Changed By",
    "options": "User",
    "read_only": 1
+  },
+  {
+   "fieldname": "snapshot_status",
+   "fieldtype": "Select",
+   "label": "Membership preparation",
+   "options": "Ready\nQueued\nBuilding\nFailed",
+   "default": "Ready",
+   "read_only": 1
+  },
+  {
+   "fieldname": "snapshot_generation",
+   "fieldtype": "Data",
+   "label": "Snapshot Generation",
+   "hidden": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "snapshot_pending_generation",
+   "fieldtype": "Data",
+   "label": "Snapshot Pending Generation",
+   "hidden": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "snapshot_definition",
+   "fieldtype": "Code",
+   "label": "Snapshot Definition",
+   "options": "JSON",
+   "hidden": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "snapshot_error",
+   "fieldtype": "Small Text",
+   "label": "Snapshot Error",
+   "read_only": 1,
+   "depends_on": "eval:doc.snapshot_status=='Failed'"
   }
  ],
  "links": [],
