@@ -923,6 +923,19 @@
    "translatable": 0,
    "unique": 0,
    "width": null
+  },
+  {
+   "dt": "Email Template",
+   "fieldname": "custom_folder",
+   "fieldtype": "Link",
+   "label": "Folder",
+   "options": "Email Folder",
+   "insert_after": "subject",
+   "module": "Email Template Builder",
+   "in_standard_filter": 1,
+   "in_list_view": 1,
+   "search_index": 1,
+   "name": "Email Template-custom_folder"
   }
  ],
  "custom_perms": [],
