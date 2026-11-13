@@ -1,0 +1,35 @@
+{
+ "doctype": "DocType",
+ "name": "Reach Segment Snapshot Row",
+ "module": "Finbyzreach",
+ "engine": "InnoDB",
+ "autoname": "hash",
+ "field_order": [
+  "segment",
+  "generation",
+  "record_name"
+ ],
+ "fields": [
+  {
+   "fieldname": "segment",
+   "fieldtype": "Link",
+   "label": "Segment",
+   "options": "Reach Segment",
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "generation",
+   "fieldtype": "Data",
+   "label": "Generation",
+   "reqd": 1
+  },
+  {
+   "fieldname": "record_name",
+   "fieldtype": "Data",
+   "label": "Record Name",
+   "reqd": 1
+  }
+ ],
+ "permissions": []
+}
