@@ -1,0 +1,49 @@
+{
+ "doctype": "DocType",
+ "name": "Reach Segment Membership Event",
+ "module": "Finbyzreach",
+ "engine": "InnoDB",
+ "autoname": "hash",
+ "field_order": [
+  "segment",
+  "record_name",
+  "event",
+  "actor",
+  "event_time"
+ ],
+ "fields": [
+  {
+   "fieldname": "segment",
+   "fieldtype": "Link",
+   "label": "Segment",
+   "options": "Reach Segment",
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "record_name",
+   "fieldtype": "Data",
+   "label": "Record Name"
+  },
+  {
+   "fieldname": "event",
+   "fieldtype": "Select",
+   "label": "Event",
+   "options": "Entered\nLeft\nExcluded\nRestored",
+   "reqd": 1
+  },
+  {
+   "fieldname": "actor",
+   "fieldtype": "Link",
+   "label": "Actor",
+   "options": "User"
+  },
+  {
+   "fieldname": "event_time",
+   "fieldtype": "Datetime",
+   "label": "Event Time",
+   "reqd": 1
+  }
+ ],
+ "permissions": []
+}
