@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-function form({ legacy = false } = {}) {
+function form({ legacy = false, expression = null } = {}) {
     const pending = [];
     const hooks = {};
     class Element {
@@ -56,7 +56,7 @@ function form({ legacy = false } = {}) {
     const filters = [['Contact','email_id','is','set']];
     const doc = {name:'Contact Segment',audience_doctype:'Contact',segment_type:'Static',
         filter_groups_json:JSON.stringify(legacy ? filters : [filters]),
-        filter_expression_json:'',exclude_filters_json:'[]',exclude_segments_json:'["Other Segment"]'};
+        filter_expression_json:expression ? JSON.stringify(expression) : '',exclude_filters_json:'[]',exclude_segments_json:'["Other Segment"]'};
     let dirtyCalls = 0;
     const frm = {doc,perm:[{write:1}],toggle_display() {},get_field: () => ({$wrapper:root}),
         is_new: () => false,is_dirty: () => Boolean(doc.__unsaved),dirty() { dirtyCalls++; doc.__unsaved = 1; }};
@@ -137,4 +137,50 @@ test('saving waits for filter hydration and does not serialize empty controls', 
     await saving;
     assert.deepEqual(JSON.parse(state.frm.doc.filter_groups_json),[[['Contact','email_id','is','set']]]);
     assert.equal(state.dirtyCalls(),0);
+});
+
+
+test('mixed segment predicates inside groups survive hydration and saving', async () => {
+    const expression = {operator:'OR',conditions:[
+        {operator:'AND',conditions:[['Contact','city','=','Bern'],{kind:'segment',segment:'A',operator:'in'}]},
+        {operator:'AND',conditions:[['Contact','city','=','Zurich'],{kind:'segment',segment:'B',operator:'not in'}]},
+    ]};
+    const state = form({expression});
+    await state.hydrate();
+    assert.equal(state.dirtyCalls(),0);
+    await state.hooks.validate(state.frm);
+    assert.deepEqual(JSON.parse(state.frm.doc.filter_expression_json),expression);
+});
+
+test('deeply nested activity and related groups are not replaced by legacy filters', async () => {
+    const expression = {operator:'AND',conditions:[{operator:'OR',conditions:[
+        {operator:'AND',conditions:[['Contact','email_id','is','set'],{kind:'activity',event:'Opened',days:30}]},
+        {kind:'related',doctype:'Customer',quantifier:'any',filters:[[['Customer','name','=','CUST']]]},
+    ]}]};
+    const state = form({expression});
+    await state.hydrate();
+    await state.hooks.validate(state.frm);
+    assert.deepEqual(JSON.parse(state.frm.doc.filter_expression_json),expression);
+    assert.equal(state.dirtyCalls(),0);
+});
+
+
+test('editing a nested field retains the sibling related condition', async () => {
+    const expression = {operator:'AND',conditions:[{operator:'OR',conditions:[
+        {operator:'AND',conditions:[['Contact','email_id','is','set'],{kind:'activity',event:'Opened',days:30}]},
+        {kind:'related',doctype:'Customer',quantifier:'any',filters:[[['Customer','name','=','CUST']]]},
+    ]}]};
+    const state = form({expression});
+    await state.hydrate();
+    const field = state.frm.builder.groups[0].children[0].filter;
+    field.filters[0][3] = 'not set';
+    field.options.on_change();
+    const actual = JSON.parse(state.frm.doc.filter_expression_json);
+    const orGroup = actual.conditions[0];
+    assert.equal(orGroup.operator,'OR');
+    assert.equal(orGroup.conditions.find(node=>node.kind==='related').doctype,'Customer');
+    const andGroup = orGroup.conditions.find(node=>node.operator==='AND');
+    assert.equal(andGroup.conditions[0][3],'not set');
+    assert.equal(andGroup.conditions[1].event,'Opened');
+    assert.equal(state.dirtyCalls(),1);
 });

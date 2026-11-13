@@ -1,0 +1,115 @@
+const {test} = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+
+function setup(doctype='Reach Segment', {create=true, folders=true, read=true}={}) {
+    const calls=[],html=new Map();
+    let filters=[[doctype,'name','like','%search%'],[doctype,'owner','=','someone@example.invalid']];
+    const root={closest(){return this;},addClass(){return this;},prependTo(){return this;},html(value){html.set('root',value);return this;},on(){return this;},find(key){return {html(value){html.set(key,value);return this;}};}};
+    const frappe={reach_folder_sidebar:{},provide(){},utils:{escape_html:value=>String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;'),icon:()=>''},model:{can_read:dt=>dt===doctype?read:folders,can_create:()=>create},
+        call:async options=>{calls.push(JSON.parse(JSON.stringify(options)));return {message: options.method.endsWith('get_count')?3:[]};},
+        prompt(fields,action){frappe.promptFields=fields;frappe.promptAction=action;},show_alert(){},set_route(){}};
+    const list={doctype,page:{main:root,add_menu_item(){}},settings:{refresh(){list.nativeRefreshes=(list.nativeRefreshes||0)+1;}},start:100,on_filter_change(){this.filterChanges=(this.filterChanges||0)+1;},
+        filter_area:{get:()=>filters,async clear(){filters=[];},async set(next){filters=JSON.parse(JSON.stringify(next));}},
+        async refresh(){this.settings.refresh(this);}};
+    vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../finbyzreach/public/js/folder_sidebar.js'),'utf8'),{frappe,__:text=>text,$:()=>root});
+    frappe.reach_folder_sidebar.setup(list);
+    return {frappe,list,sidebar:list.folder_sidebar,calls,html};
+}
+
+test('all three native lists use their own folder models with bounded children',async()=>{
+    for(const [doctype,folder,field] of [['Reach Segment','Reach Segment Folder','folder'],['Email Template Master','Email Template Folder','folder'],['Email Template','Email Folder','custom_folder']]){
+        const {sidebar,calls}=setup(doctype);
+        await sidebar.reload();
+        assert.equal(sidebar.config.folder,folder);
+        assert.equal(sidebar.config.field,field);
+        const query=calls.find(call=>call.args.doctype===folder);
+        assert.equal(query.method,'frappe.client.get_list');
+        assert.equal(query.type,'GET');
+        assert.equal(query.args.limit_page_length,51);
+    }
+});
+
+test('folder selection preserves search and other filters; unfiled includes legacy root links',async()=>{
+    const {sidebar,list}=setup();
+    await sidebar.select('folder:Events');
+    let filters=list.filter_area.get();
+    assert.equal(filters.length,3);
+    assert.deepEqual(filters[0],['Reach Segment','name','like','%search%']);
+    assert.deepEqual(filters[2],['Reach Segment','folder','=','Events']);
+    await sidebar.select('@without');
+    assert.deepEqual(list.filter_area.get()[2],['Reach Segment','folder','in',['','All Reach Segment Folders']]);
+    assert.equal(sidebar.selected(),'@without');
+    await sidebar.select('@all');
+    assert.equal(list.filter_area.get().length,2);
+    assert.equal(list.start,0);
+});
+
+test('expanding and loading more uses independent bounded keyset cursors',async()=>{
+    const {sidebar,frappe,calls}=setup();
+    await sidebar.reload();
+    frappe.call=async options=>{calls.push(JSON.parse(JSON.stringify(options)));return {message:options.args.doctype==='Reach Segment Folder'?
+        (options.args.filters.length===1?Array.from({length:51},(_,i)=>({name:`F${String(i).padStart(3,'0')}`,folder_name:`Folder ${i}`})):[{name:'F050',folder_name:'Folder 50'}]):options.method.endsWith('get_count')?51:[]};};
+    await sidebar.toggle('Parent');
+    assert.equal(sidebar.branches.get('Parent').rows.length,50);
+    assert.equal(sidebar.branches.get('Parent').more,true);
+    await sidebar.load('Parent',true);
+    assert.equal(sidebar.branches.get('Parent').rows.length,51);
+    const query=calls.filter(call=>call.args.doctype==='Reach Segment Folder').at(-1);
+    assert.deepEqual(query.args.filters,[['parent_reach_segment_folder','=','Parent'],['name','>','F049']]);
+    assert.equal(sidebar.branches.get('Parent').more,false);
+});
+
+test('folder labels are escaped and folder names cannot collide with navigation keys',async()=>{
+    const {sidebar}=setup();
+    await sidebar.select('folder:@all');
+    assert.equal(sidebar.selected(),'folder:@all');
+    const html=sidebar.row('@all','<img src=x onerror="bad">',0,true);
+    assert.ok(html.includes('data-select="folder:@all"'));
+    assert.ok(html.includes('&lt;img'));
+    assert.ok(!html.includes('<img'));
+});
+
+test('native read-only folder access hides create while preserving navigation',async()=>{
+    const {sidebar,html,frappe,list}=setup('Email Template',{create:false});
+    await sidebar.reload();
+    assert.ok(!html.get('.reach-folder-footer').includes('data-action="new"'));
+    assert.ok(html.get('.reach-folder-nav').includes('Without Folder'));
+    const first=list.folder_sidebar;
+    frappe.reach_folder_sidebar.setup(list);
+    assert.equal(list.folder_sidebar,first);
+    await list.refresh();
+    assert.equal(list.nativeRefreshes,1);
+});
+
+test('new Email Template folder uses native insert in the selected parent',async()=>{
+    const {sidebar,frappe,calls}=setup('Email Template');
+    await sidebar.select('folder:Newsletter');
+    sidebar.new_folder();
+    assert.equal(frappe.promptFields[1].default,'Newsletter');
+    await frappe.promptAction({folder_name:'  November  ',parent:'Newsletter'});
+    const insert=calls.find(call=>call.method==='frappe.client.insert');
+    assert.deepEqual(insert.args.doc,{doctype:'Email Folder',folder_name:'November',parent_email_folder:'Newsletter'});
+});
+
+test('folder counts are permission-aware grouped queries rather than one query per folder',async()=>{
+    const {sidebar,calls}=setup();
+    await sidebar.reload();
+    sidebar.branches.set(sidebar.config.root,{rows:[{name:'Events',folder_name:'Events'},{name:'Partners',folder_name:'Partners'}]});
+    const before=calls.length;
+    await sidebar.refresh();
+    assert.equal(calls.length-before,3);
+    const grouped=calls.at(-1);
+    assert.equal(grouped.method,'frappe.client.get_list');
+    assert.equal(grouped.args.group_by,'folder');
+    assert.deepEqual(grouped.args.fields,['folder',{COUNT:'name',as:'folder_count'}]);
+    assert.deepEqual(grouped.args.filters.at(-1),['Reach Segment','folder','in',['Events','Partners']]);
+});
+
+test('no-read access does not mount a sidebar or send queries',()=>{
+    const {sidebar,calls}=setup('Reach Segment',{read:false});
+    assert.equal(sidebar,undefined);
+    assert.equal(calls.length,0);
+});
