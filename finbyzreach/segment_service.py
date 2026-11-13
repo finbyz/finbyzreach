@@ -338,7 +338,7 @@ def validate_segment(segment):
     elif segment.segment_type == 'Static':
         initialize_static(segment)
         filters_changed = not before or any(before.get(key) != segment.get(key) for key in ('filter_groups_json', 'filter_expression_json'))
-        if filters_changed and (frappe.parse_json(segment.filter_groups_json) or segment.get('filter_expression_json')):
+        if filters_changed:
             refresh_static(segment)
     if segment.get('archived'):
         if before and not before.get('archived'):

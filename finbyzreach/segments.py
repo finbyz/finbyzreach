@@ -136,12 +136,13 @@ def refresh_static_segment_leads(segment_name):
 	return {"name": doc.name, "member_count": doc.member_count}
 
 @frappe.whitelist(methods=["GET"])
-def preview_segment_audience(segment_name):
+def preview_segment_audience(segment_name, limit=None):
 	frappe.has_permission("Reach Segment", "read", throw=True)
 	doc = frappe.get_doc("Reach Segment", segment_name)
 	doc.check_permission("read")
 	from finbyzreach.segment_service import member_names
-	return member_names(doc)
+	from frappe.utils import cint
+	return member_names(doc, limit=min(cint(limit) or 200, 1000))
 
 
 def _segment(name, permission='read', lock=False):
@@ -155,7 +156,7 @@ def _segment(name, permission='read', lock=False):
 def preview_segment_page(segment_name=None, definition=None, after=None, page_length=50, search=None, include_count=1):
     """SQL pagination: never return/download the complete audience for a page."""
     from frappe.utils import cint
-    from finbyzreach.segment_service import member_query, parsed_list, count_members
+    from finbyzreach.segment_service import member_query, parsed_list
     if definition:
         frappe.has_permission('Reach Segment', 'create' if not segment_name else 'write', throw=True)
         base = _segment(segment_name, 'write') if segment_name else None
@@ -204,7 +205,7 @@ def preview_segment_page(segment_name=None, definition=None, after=None, page_le
     if cint(include_count):
         from frappe.query_builder.functions import Count
         candidate_count = cint(member_query(doc, apply_exclusions=False).select(Count(table.name)).run()[0][0])
-        excluded_count = max(0, candidate_count-count_members(doc))
+        excluded_count = max(0, candidate_count - total)
     return dict(rows=rows, columns=columns, count=total, excluded_count=excluded_count, has_more=has_more, next_cursor=names[-1] if has_more else None,
                 audience_doctype=doctype)
 

@@ -65,6 +65,8 @@ def sync_record(doctype, name):
 def capture_change(doc, method=None):
     if doc.doctype not in ('Lead', 'Contact', 'Customer') or not frappe.db.table_exists('Reach Segment Pending Record'):
         return
+    if not frappe.db.exists('Reach Segment', {'audience_doctype': doc.doctype, 'segment_type': 'Active', 'archived': 0}):
+        return
     from hashlib import sha256
     from frappe.utils import now_datetime
     key = sha256(f'{doc.doctype}\0{doc.name}'.encode()).hexdigest()
