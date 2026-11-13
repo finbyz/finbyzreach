@@ -32,7 +32,7 @@ def get_context(context):
 		campaign_recipient = frappe.form_dict.get("campaign_recipient")
 		recipient, email = signed_recipient(campaign_recipient, raw)
 		party_doctype = recipient.get("email_campaign_for") or "Lead"
-		if party_doctype not in ("Lead", "Customer"):
+		if party_doctype not in ("Lead", "Contact", "Customer"):
 			raise frappe.ValidationError
 		party = frappe.get_doc(party_doctype, recipient.recipient)
 		preferred_doc = party
