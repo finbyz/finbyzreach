@@ -7,7 +7,8 @@
  "field_order": [
   "segment",
   "record_name",
-  "source"
+  "source",
+  "is_current"
  ],
  "fields": [
   {
@@ -31,6 +32,13 @@
    "options": "Filtered\nManual",
    "reqd": 1,
    "default": "Filtered"
+  },
+  {
+   "fieldname": "is_current",
+   "fieldtype": "Check",
+   "label": "Is Current",
+   "default": "1",
+   "read_only": 1
   }
  ],
  "permissions": [],
