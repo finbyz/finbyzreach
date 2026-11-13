@@ -72,7 +72,9 @@
     max-width: 240px;
 }
 
-.rs-results {
+.rs-results,
+.rs-excluded-results,
+.rs-history-results {
     overflow: auto;
     min-height: 120px;
     max-height: min(55vh, 480px);
