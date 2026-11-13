@@ -1,0 +1,40 @@
+{
+ "doctype": "DocType",
+ "name": "Reach Segment Size Sample",
+ "module": "Finbyzreach",
+ "engine": "InnoDB",
+ "autoname": "hash",
+ "field_order": [
+  "segment",
+  "sample_date",
+  "member_count",
+  "excluded_count"
+ ],
+ "fields": [
+  {
+   "fieldname": "segment",
+   "fieldtype": "Link",
+   "label": "Segment",
+   "options": "Reach Segment",
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "sample_date",
+   "fieldtype": "Date",
+   "label": "Sample Date",
+   "reqd": 1
+  },
+  {
+   "fieldname": "member_count",
+   "fieldtype": "Int",
+   "label": "Member Count"
+  },
+  {
+   "fieldname": "excluded_count",
+   "fieldtype": "Int",
+   "label": "Excluded Count"
+  }
+ ],
+ "permissions": []
+}
