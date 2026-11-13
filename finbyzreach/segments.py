@@ -57,8 +57,9 @@ def create_segment(segment_name, segment_type, filter_groups, exclude_filters="[
 		frappe.throw(_("Segment name is required"))
 	if segment_type not in ("Active", "Static"):
 		frappe.throw(_("Segment type must be Active or Static"))
-	if audience_doctype not in ("Lead", "Contact", "Customer"):
-		frappe.throw(_("Audience type must be Lead, Contact or Customer"))
+	from finbyzreach.segment_service import AUDIENCE_TYPES
+	if audience_doctype not in AUDIENCE_TYPES:
+		frappe.throw(_("Unsupported segment audience type"))
 	if frappe.db.exists("Reach Segment", segment_name):
 		frappe.throw(_("A segment named {0} already exists").format(frappe.bold(segment_name)))
 
@@ -130,7 +131,10 @@ def refresh_static_segment_leads(segment_name):
 		frappe.throw(_("Only Static segments can have their members refreshed from filters."))
 		
 	from finbyzreach.segment_service import refresh_static
-	refresh_static(doc)
+	require_ready(doc)
+	if doc.archived:
+		frappe.throw(_("Restore the segment before refreshing its members"))
+	doc.flags.reach_force_refresh = True
 	doc.save()
 
 	return {"name": doc.name, "member_count": doc.member_count}
@@ -142,7 +146,7 @@ def preview_segment_audience(segment_name, limit=None):
 	doc.check_permission("read")
 	from finbyzreach.segment_service import member_names
 	from frappe.utils import cint
-	return member_names(doc, limit=min(cint(limit) or 200, 1000))
+	return member_names(doc, limit=max(1, min(cint(limit) or 200, 1000)))
 
 
 def _segment(name, permission='read', lock=False):
@@ -150,6 +154,50 @@ def _segment(name, permission='read', lock=False):
     doc.check_permission(permission)
     frappe.has_permission(doc.audience_doctype or 'Lead', 'read', throw=True)
     return doc
+
+
+def effective_columns(doc, selected=None):
+    """One permission-aware selection for preview and exported files."""
+    from frappe.model import get_permitted_fields
+    from finbyzreach.segment_service import parsed_list
+    doctype = doc.audience_doctype
+    label = {'Lead':'lead_name', 'Contact':'full_name', 'Customer':'customer_name',
+             'Opportunity':'title', 'Sales Order':'customer_name'}[doctype]
+    email = 'contact_email' if doctype in ('Opportunity','Sales Order') else 'email_id'
+    columns = parsed_list(selected if selected is not None else doc.get('columns_json')) or ['name', label, email]
+    allowed = set(get_permitted_fields(doctype)) | {'name'}
+    if selected is not None and any(not isinstance(field, str) or field not in allowed for field in columns):
+        frappe.throw(_('One or more export columns are not permitted'))
+    result = list(dict.fromkeys(field for field in columns if isinstance(field, str) and field in allowed))[:20]
+    if selected is None and 'name' not in result:
+        result.insert(0, 'name')
+    return result
+
+
+def require_ready(doc):
+    if doc.get('snapshot_pending_generation') or doc.get('snapshot_status') == 'Failed':
+        frappe.throw(_('Segment membership is still being prepared. Wait for it to finish or retry preparation.'))
+
+
+@frappe.whitelist(methods=['GET'])
+def segment_columns(segment_name):
+    from frappe.model import get_permitted_fields
+    doc = _segment(segment_name)
+    meta = frappe.get_meta(doc.audience_doctype)
+    allowed = get_permitted_fields(doc.audience_doctype)
+    fields = [{'value':field,'description':meta.get_field(field).label if meta.get_field(field) else field}
+              for field in allowed if field == 'name' or (meta.get_field(field) and meta.get_field(field).fieldtype not in ('Table','Table MultiSelect'))]
+    return dict(columns=effective_columns(doc),fields=fields)
+
+
+@frappe.whitelist(methods=['POST'])
+def retry_segment_snapshot(segment_name):
+    doc = _segment(segment_name,'write',lock=True)
+    if doc.archived or not doc.snapshot_pending_generation:
+        frappe.throw(_('There is no pending membership preparation to retry'))
+    frappe.db.set_value('Reach Segment',doc.name,{'snapshot_status':'Queued','snapshot_error':None},update_modified=False)
+    frappe.enqueue('finbyzreach.segment_snapshots.build',segment_name=doc.name,
+        generation=doc.snapshot_pending_generation,queue='long',enqueue_after_commit=True)
 
 
 @frappe.whitelist(methods=['POST'])
@@ -181,9 +229,11 @@ def preview_segment_page(segment_name=None, definition=None, after=None, page_le
     frappe.has_permission(doctype, 'read', throw=True)
     table = frappe.qb.DocType(doctype)
     query = member_query(doc)
+    search_condition = None
     if search:
-        label = {'Lead': 'lead_name', 'Contact': 'full_name', 'Customer': 'customer_name'}[doctype]
-        query = query.where(table.name.like('%'+str(search)[:140]+'%') | table[label].like('%'+str(search)[:140]+'%'))
+        label = {'Lead': 'lead_name', 'Contact': 'full_name', 'Customer': 'customer_name', 'Opportunity':'title','Sales Order':'customer_name'}[doctype]
+        search_condition = table.name.like('%'+str(search)[:140]+'%') | table[label].like('%'+str(search)[:140]+'%')
+        query = query.where(search_condition)
     total = None
     if cint(include_count):
         from frappe.query_builder.functions import Count
@@ -194,29 +244,35 @@ def preview_segment_page(segment_name=None, definition=None, after=None, page_le
     names = [row[0] for row in query.select(table.name).orderby(table.name).limit(page_length+1).run()]
     has_more = len(names) > page_length
     names = names[:page_length]
-    columns = parsed_list(doc.get('columns_json')) or ['name', {'Lead': 'lead_name', 'Contact': 'full_name', 'Customer': 'customer_name'}[doctype], 'email_id']
-    from frappe.model import get_permitted_fields
-    allowed = set(get_permitted_fields(doctype)) | {'name'}
-    columns = [name for name in columns if isinstance(name, str) and name in allowed][:20]
-    if 'name' not in columns:
-        columns.insert(0, 'name')
+    columns = effective_columns(doc)
     rows = frappe.get_list(doctype, filters={'name': ['in', names]}, fields=columns, order_by='name asc', limit_page_length=page_length) if names else []
     excluded_count = None
     if cint(include_count):
         from frappe.query_builder.functions import Count
-        candidate_count = cint(member_query(doc, apply_exclusions=False).select(Count(table.name)).run()[0][0])
+        candidate_query = member_query(doc, apply_exclusions=False)
+        if search_condition is not None:
+            candidate_query = candidate_query.where(search_condition)
+        candidate_count = cint(candidate_query.select(Count(table.name)).run()[0][0])
         excluded_count = max(0, candidate_count - total)
     return dict(rows=rows, columns=columns, count=total, excluded_count=excluded_count, has_more=has_more, next_cursor=names[-1] if has_more else None,
-                audience_doctype=doctype)
+                audience_doctype=doctype, snapshot_status=doc.get('snapshot_status') or 'Ready', segment_type=doc.segment_type)
 
 
 @frappe.whitelist(methods=['POST'])
 def change_segment_members(segment_name, records, action):
     from finbyzreach.segment_service import MEMBER, EXCLUSION, _insert_members, initialize_static
     doc = _segment(segment_name, 'write', lock=True)
+    require_ready(doc)
+    if doc.archived:
+        frappe.throw(_('Restore the segment before changing members'))
     records = frappe.parse_json(records)
     if not isinstance(records, list) or not records or len(records) > 500:
         frappe.throw(_('Select between 1 and 500 records'))
+    if any(not isinstance(record,str) or not record for record in records):
+        frappe.throw(_('Invalid record name'))
+    visible = set(frappe.get_list(doc.audience_doctype,filters={'name':['in',records]},pluck='name',limit_page_length=500))
+    if set(records) - visible:
+        frappe.throw(_('One or more selected records are not readable'),frappe.PermissionError)
     if action not in ('add', 'exclude', 'restore'):
         frappe.throw(_('Invalid membership action'))
     if action == 'add' and doc.segment_type != 'Static':
@@ -228,26 +284,46 @@ def change_segment_members(segment_name, records, action):
     for record in set(records):
         if not isinstance(record, str):
             frappe.throw(_('Invalid record name'))
-        frappe.get_doc(doc.audience_doctype, record).check_permission('read')
         if action == 'add':
-            _insert_members(doc.name, [record], source='Manual')
+            _insert_members(doc.name, [record], source='Manual',is_current=0)
             frappe.db.set_value(MEMBER, {'segment': doc.name, 'record_name': record}, 'source', 'Manual')
             # Exclusions take precedence; adding does not silently restore.
         elif action == 'exclude':
             if not frappe.db.exists(EXCLUSION, {'segment': doc.name, 'record_name': record}):
                 frappe.get_doc(dict(doctype=EXCLUSION, segment=doc.name, record_name=record)).insert(ignore_permissions=True)
+                from finbyzreach.segment_history import record_event
+                record_event(doc,record,'Excluded',frappe.generate_hash(length=32))
         else:
-            frappe.db.delete(EXCLUSION, {'segment': doc.name, 'record_name': record})
+            if frappe.db.exists(EXCLUSION, {'segment':doc.name,'record_name':record}):
+                frappe.db.delete(EXCLUSION, {'segment': doc.name, 'record_name': record})
+                from finbyzreach.segment_history import record_event
+                record_event(doc,record,'Restored',frappe.generate_hash(length=32))
+    from frappe.utils import now_datetime
+    if action in ('exclude','restore'):
+        doc.last_definition_change = now_datetime()
+        doc.last_definition_changed_by = frappe.session.user
+        from finbyzreach.segment_service import assert_unused
+        assert_unused(doc,blocking=False)
     doc.save()
     current_members = {row[0] for row in member_query(doc).select(table.name).where(table.name.isin(records)).run()}
     from finbyzreach.segment_automation import emit_entry
     for name in current_members-previous_members:
         emit_entry(doc,name,f'segment:{frappe.generate_hash(length=32)}')
+    from finbyzreach.segment_automation import mark_left, schedule_reconciliation
+    for name in previous_members-current_members:
+        previous = frappe.db.get_value(MEMBER,{'segment':doc.name,'record_name':name},['name','source','is_current'],as_dict=True)
+        if previous:
+            mark_left(doc,previous,name)
+    if current_members:
+        _insert_members(doc.name,list(current_members))
+        member = frappe.qb.DocType(MEMBER)
+        frappe.qb.update(member).set(member.is_current,1).where(member.segment == doc.name).where(member.record_name.isin(list(current_members))).run()
+    schedule_reconciliation(doc.name)
     return dict(member_count=doc.member_count, excluded_count=doc.excluded_count)
 
 
 @frappe.whitelist(methods=['GET'])
-def excluded_segment_records(segment_name, start=0):
+def excluded_segment_records(segment_name, start=0, with_paging=0):
     from frappe.utils import cint
     from finbyzreach.segment_service import EXCLUSION, member_query, parsed_list
     doc = _segment(segment_name)
@@ -260,8 +336,9 @@ def excluded_segment_records(segment_name, start=0):
     excluded = (frappe.qb.from_(table).select(table.name)
         .where(table.name.isin(visible)).where(table.name.notin(included))
         .where(table.name.isin(candidates) | table.name.isin(manual_names))
-        .orderby(table.name).offset(max(0,cint(start))).limit(50))
-    names = [row[0] for row in excluded.run()]
+        .orderby(table.name).offset(max(0,cint(start))).limit(51))
+    all_names = [row[0] for row in excluded.run()]
+    names = all_names[:50]
     details = {row.record_name:row for row in frappe.get_all(EXCLUSION,
         filters={'segment':doc.name,'record_name':['in',names]}, fields=['record_name','owner','creation'])} if names else {}
     result = []
@@ -276,7 +353,7 @@ def excluded_segment_records(segment_name, start=0):
                 reasons.append(other_name)
         result.append(dict(record_name=name,owner='',creation='',manual=False,
                            reason=_('Excluded by segment: {0}').format(', '.join(reasons)) if reasons else _('Exclusion filters or Email Group')))
-    return result
+    return dict(rows=result,has_more=len(all_names)>50) if cint(with_paging) else result
 
 
 @frappe.whitelist(methods=['POST'])
@@ -284,6 +361,7 @@ def duplicate_segment(segment_name, new_name, copy_members=0):
     from frappe.utils import cint
     from finbyzreach.segment_service import MEMBER, EXCLUSION, _insert_members, member_names
     doc = _segment(segment_name)
+    require_ready(doc)
     frappe.has_permission('Reach Segment', 'create', throw=True)
     duplicate = frappe.copy_doc(doc)
     duplicate.segment_name = str(new_name or '').strip()[:140]
@@ -293,47 +371,61 @@ def duplicate_segment(segment_name, new_name, copy_members=0):
     duplicate.insert()
     for row in frappe.get_all(EXCLUSION, filters={'segment': doc.name}, fields=['record_name'], limit_page_length=0):
         frappe.get_doc(dict(doctype=EXCLUSION, segment=duplicate.name, record_name=row.record_name)).insert(ignore_permissions=True)
-    if doc.segment_type == 'Static' and cint(copy_members):
-        frappe.db.delete(MEMBER, {'segment': duplicate.name})
-        _insert_members(duplicate.name, member_names(doc))
-    elif doc.segment_type == 'Static' and not cint(copy_members):
-        frappe.db.delete(MEMBER, {'segment': duplicate.name})
-    duplicate.save()
+    if doc.segment_type == 'Static':
+        from finbyzreach.segment_snapshots import prepare
+        if cint(copy_members):
+            prepare(duplicate, source=doc)
+        else:
+            duplicate.snapshot_generation = frappe.generate_hash(length=32)
+            duplicate.snapshot_pending_generation = None
+            duplicate.snapshot_status = 'Ready'
+        frappe.db.set_value('Reach Segment', duplicate.name, {key:duplicate.get(key) for key in (
+            'snapshot_generation','snapshot_pending_generation','snapshot_status','snapshot_definition')},update_modified=False)
+        from finbyzreach.segment_automation import schedule_reconciliation
+        if not duplicate.snapshot_pending_generation:
+            from finbyzreach.segment_automation import update_counts
+            update_counts(duplicate)
+            schedule_reconciliation(duplicate.name)
     return duplicate.name
 
 
 @frappe.whitelist(methods=['GET'])
-def record_segments(doctype, name):
+def record_segments(doctype, name, after=None, paginated=0):
+    """Bounded widget lookup; one UNION query per page of readable definitions."""
     from finbyzreach.segment_service import member_query, AUDIENCE_TYPES
+    from frappe.utils import cint
+    from pypika.terms import ValueWrapper
     if doctype not in AUDIENCE_TYPES:
         frappe.throw(_('Unsupported segment audience'))
     frappe.get_doc(doctype, name).check_permission('read')
+    filters = {'audience_doctype':doctype, 'archived':0}
+    if after:
+        filters['name'] = ['>',str(after)]
+    names = frappe.get_list('Reach Segment', filters=filters, pluck='name', order_by='name asc',limit_page_length=51)
+    candidates = names[:50]
     table = frappe.qb.DocType(doctype)
-    result = []
-    for segment in frappe.get_list('Reach Segment', filters={'audience_doctype': doctype, 'archived': 0}, pluck='name', limit_page_length=0):
+    combined = None
+    for segment in candidates:
         doc = frappe.get_doc('Reach Segment', segment)
         try:
-            if member_query(doc).select(table.name).where(table.name == name).limit(1).run():
-                result.append(segment)
+            query = member_query(doc).select(ValueWrapper(segment).as_('segment_name')).where(table.name == name)
+            combined = query if combined is None else combined.union_all(query)
         except (frappe.ValidationError, frappe.DoesNotExistError):
-            # Old definitions can refer to a removed custom field. A compact
-            # record widget must not stop the CRM form from loading. Explicit
-            # segment previews and mailing selection still fail validation.
             frappe.clear_last_message()
             frappe.logger('finbyzreach').warning('Invalid Reach Segment definition during record lookup: %s', segment)
-    return result
+    result = [row[0] for row in combined.run()] if combined is not None else []
+    return dict(segments=result,next_cursor=candidates[-1] if len(names)>50 else None) if cint(paginated) else result
 
 
 @frappe.whitelist(methods=['GET'])
-def export_segment(segment_name, file_format='csv'):
+def export_segment(segment_name, file_format='csv', columns=None):
     from finbyzreach.segment_service import member_names, parsed_list
     from frappe.model import get_permitted_fields
     from frappe.utils.csvutils import to_csv
-    doc = _segment(segment_name, 'write')
-    columns = parsed_list(doc.get('columns_json')) or ['name', 'email_id']
-    allowed = set(get_permitted_fields(doc.audience_doctype)) | {'name'}
-    if any(not isinstance(field, str) or field not in allowed for field in columns):
-        frappe.throw(_('One or more export columns are not permitted'))
+    doc = _segment(segment_name)
+    doc.check_permission('export')
+    require_ready(doc)
+    columns = effective_columns(doc, columns)
     data = [columns]
     cursor = None
     while True:
@@ -358,23 +450,26 @@ def export_segment(segment_name, file_format='csv'):
 
 
 @frappe.whitelist(methods=['POST'])
-def request_segment_export(segment_name, file_format='csv'):
-    _segment(segment_name, 'write')
+def request_segment_export(segment_name, file_format='csv', columns=None):
+    doc = _segment(segment_name)
+    doc.check_permission('export')
+    require_ready(doc)
+    columns = effective_columns(doc, columns)
     if file_format not in ('csv','xlsx'):
         frappe.throw(_('Choose csv or xlsx'))
     job_id = f'reach-export:{frappe.generate_hash(length=20)}'
     frappe.enqueue('finbyzreach.segments.build_segment_export', segment_name=segment_name,
-        file_format=file_format, requesting_user=frappe.session.user, queue='long',
+        file_format=file_format, columns=json.dumps(columns), requesting_user=frappe.session.user, queue='long',
         job_id=job_id, enqueue_after_commit=True)
     return {'job_id':job_id}
 
 
-def build_segment_export(segment_name, file_format, requesting_user):
+def build_segment_export(segment_name, file_format, requesting_user, columns=None):
     from frappe.utils.file_manager import save_file
     # Enqueue captures the user's identity; recheck access when the job runs.
     if frappe.session.user != requesting_user:
         frappe.throw(_('Export identity changed'), frappe.PermissionError)
-    export_segment(segment_name, file_format)
+    export_segment(segment_name, file_format, columns)
     content = frappe.response.pop('filecontent')
     filename = frappe.response.pop('filename')
     frappe.response.pop('type', None)
@@ -404,3 +499,24 @@ def is_segment_member(segment_name, record):
         return False
     table = frappe.qb.DocType(segment.audience_doctype)
     return bool(member_query(segment).select(table.name).where(table.name == record['name']).limit(1).run())
+
+
+@frappe.whitelist(methods=['GET'])
+def segment_history(segment_name, after=None):
+    from finbyzreach.segment_history import EVENT, SAMPLE
+    from frappe.utils import add_days, today
+    doc = _segment(segment_name)
+    event = frappe.qb.DocType(EVENT)
+    query = frappe.qb.from_(event).select(event.name,event.record_name,event.event,event.actor,event.event_time).where(event.segment == doc.name)
+    if frappe.session.user != 'Administrator':
+        visible = frappe.qb.get_query(doc.audience_doctype,fields=['name'],ignore_permissions=False)
+        query = query.where(event.record_name.isin(visible))
+    if after:
+        previous = frappe.db.get_value(EVENT,{'name':after,'segment':doc.name},['creation','name'],as_dict=True)
+        if not previous:
+            frappe.throw(_('Invalid history cursor'))
+        query = query.where((event.creation > previous.creation) | ((event.creation == previous.creation) & (event.name > previous.name)))
+    rows = query.orderby(event.creation).orderby(event.name).limit(51).run(as_dict=True)
+    samples = frappe.get_all(SAMPLE,filters={'segment':doc.name,'sample_date':['>=',add_days(today(),-365)]},
+        fields=['sample_date','member_count'],order_by='sample_date asc',limit_page_length=366)
+    return dict(events=rows[:50],next_cursor=rows[49].name if len(rows)>50 else None,samples=samples)

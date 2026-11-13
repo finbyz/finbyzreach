@@ -13,7 +13,7 @@ from frappe.query_builder import Criterion
 from frappe.query_builder.functions import Count
 from frappe.utils import cint, now_datetime
 
-AUDIENCE_TYPES = ('Lead', 'Contact', 'Customer')
+AUDIENCE_TYPES = ('Lead', 'Contact', 'Customer', 'Opportunity', 'Sales Order')
 MEMBER = 'Reach Segment Member'
 EXCLUSION = 'Reach Segment Exclusion'
 CHUNK_SIZE = 500
@@ -104,6 +104,10 @@ def related_condition(doctype, node):
     if doctype == 'Contact' and target == 'Customer':
         # Explicitly selected main customer; never choose an arbitrary link.
         return table.custom_reach_main_customer.isin(base.where(match).select(related.name))
+    if doctype == 'Opportunity' and target == 'Customer':
+        return (table.opportunity_from == 'Customer') & table.party_name.isin(base.where(match).select(related.name))
+    if doctype == 'Sales Order' and target == 'Customer':
+        return table.customer.isin(base.where(match).select(related.name))
     if doctype == 'Lead' and target == 'Customer':
         key = related.lead_name
     elif target == 'Opportunity' and doctype in ('Lead', 'Customer'):
@@ -144,6 +148,8 @@ def activity_condition(doctype, node):
         query = query.where(tracking.marketing_email_campaign == node['campaign'])
     if doctype in ('Lead','Contact'):
         return table.name.isin(query.select(tracking.lead if doctype == 'Lead' else tracking.contact))
+    if doctype in ('Opportunity','Sales Order'):
+        return table.contact_person.isin(query.select(tracking.contact))
     recipient = frappe.qb.DocType('Email Campaign')
     return table.name.isin(query.join(recipient).on(recipient.name == tracking.marketing_campaign_recipient)
                           .where(recipient.email_campaign_for == 'Customer').select(recipient.recipient))
@@ -176,6 +182,12 @@ def visitor_activity_condition(doctype, node):
              .where(identity).where(activity.received_at >= add_days(now_datetime(),-days)))
     if source == 'Tracker Pageview':
         query = query.where(activity.action_type == 'pageview')
+    else:
+        # Tracker Conversion also contains ordinary goals. Only an ecommerce
+        # order with an order identity represents a completed store purchase.
+        query = query.where(activity.goal_id == 0).where(activity.order_id.isnotnull()).where(activity.order_id != '')
+    if node.get('site'):
+        query = query.where(activity.site_id == node['site'])
     return ExistsCriterion(query)
 
 
@@ -194,6 +206,8 @@ def webinar_activity_condition(doctype, node):
              .where(event.activity_datetime >= add_days(now_datetime(),-days)))
     if doctype in ('Lead','Contact'):
         return table.name.isin(query.select(event.linked_lead if doctype == 'Lead' else event.linked_contact))
+    if doctype in ('Opportunity','Sales Order'):
+        return table.contact_person.isin(query.select(event.linked_contact))
     link = frappe.qb.DocType('Dynamic Link')
     contacts = query.select(event.linked_contact)
     linked_customers = (frappe.qb.from_(link).select(link.link_name)
@@ -212,8 +226,16 @@ def member_query(segment, *, seen=(), apply_exclusions=True):
     table = frappe.qb.DocType(doctype)
     member = frappe.qb.DocType(MEMBER)
     stored = frappe.qb.from_(member).select(member.record_name).where(member.segment == segment.name)
-    if segment.segment_type == 'Static':
-        if segment.get('members_initialized'):
+    if segment.get('archived'):
+        included = table.name.isin(stored.where(member.is_current == 1))
+    elif segment.segment_type == 'Static':
+        if segment.get('snapshot_generation'):
+            snapshot = frappe.qb.DocType('Reach Segment Snapshot Row')
+            snapshot_names = (frappe.qb.from_(snapshot).select(snapshot.record_name)
+                              .where(snapshot.segment == segment.name)
+                              .where(snapshot.generation == segment.snapshot_generation))
+            included = table.name.isin(snapshot_names) | table.name.isin(stored.where(member.source == 'Manual'))
+        elif segment.get('members_initialized'):
             included = table.name.isin(stored)
         else:
             names = parsed_list(segment.get('static_leads_json'))
@@ -226,7 +248,7 @@ def member_query(segment, *, seen=(), apply_exclusions=True):
         included |= table.name.isin(manual)
     visible = frappe.qb.get_query(doctype, fields=['name'], ignore_permissions=False)
     query = frappe.qb.from_(table).where(included).where(table.name.isin(visible))
-    if not apply_exclusions:
+    if not apply_exclusions or segment.get('archived'):
         return query
     if parsed_list(segment.get('exclude_filters_json')):
         query = query.where(~_group_condition(doctype, segment.exclude_filters_json))
@@ -244,8 +266,9 @@ def member_query(segment, *, seen=(), apply_exclusions=True):
     if groups:
         email_member = frappe.qb.DocType('Email Group Member')
         blocked_emails = frappe.qb.from_(email_member).select(email_member.email).where(email_member.email_group.isin(groups))
-        if doctype in ('Lead', 'Contact'):
-            query = query.where(table.email_id.isnull() | table.email_id.notin(blocked_emails))
+        if doctype != 'Customer':
+            email = table.email_id if doctype in ('Lead','Contact') else table.contact_email
+            query = query.where(email.isnull() | email.notin(blocked_emails))
         else:
             # Match existing Customer semantics: exclude only when every linked
             # contact is blocked. Evaluate relationally without fetching all IDs.
@@ -260,9 +283,9 @@ def member_query(segment, *, seen=(), apply_exclusions=True):
     return query
 
 
-def member_names(segment, *, after=None, limit=None):
+def member_names(segment, *, after=None, limit=None, apply_exclusions=True):
     table = frappe.qb.DocType(segment.get('audience_doctype') or 'Lead')
-    query = member_query(segment).select(table.name).orderby(table.name)
+    query = member_query(segment,apply_exclusions=apply_exclusions).select(table.name).orderby(table.name)
     if after:
         query = query.where(table.name > after)
     if limit:
@@ -275,16 +298,16 @@ def count_members(segment):
     return cint(member_query(segment).select(Count(table.name)).run()[0][0])
 
 
-def _insert_members(segment, names, source='Filtered'):
+def _insert_members(segment, names, source='Filtered', is_current=1):
     """Deterministic keys make retrying a chunk idempotent."""
     from hashlib import sha256
     now = now_datetime()
     user = frappe.session.user
     for start in range(0, len(names), CHUNK_SIZE):
-        values = [(sha256(f'{segment}\0{name}'.encode()).hexdigest(), now, now, user, user, segment, name, source)
+        values = [(sha256(f'{segment}\0{name}'.encode()).hexdigest(), now, now, user, user, segment, name, source, is_current)
                   for name in names[start:start+CHUNK_SIZE]]
         frappe.db.bulk_insert(MEMBER, ['name', 'creation', 'modified', 'owner', 'modified_by',
-                                     'segment', 'record_name', 'source'], values, ignore_duplicates=True)
+                                     'segment', 'record_name', 'source','is_current'], values, ignore_duplicates=True)
 
 
 def initialize_static(segment):
@@ -295,14 +318,8 @@ def initialize_static(segment):
 
 def refresh_static(segment):
     initialize_static(segment)
-    # Query the saved filters as an Active definition, retaining manual rows.
-    active = frappe._dict(segment.as_dict())
-    active.segment_type = 'Active'
-    names = member_names(active)
-    frappe.db.delete(MEMBER, {'segment': segment.name, 'source': 'Filtered'})
-    _insert_members(segment.name, names)
-    segment.members_initialized = 1
-    segment.static_leads_json = '[]'
+    from finbyzreach.segment_snapshots import prepare
+    prepare(segment)
     segment.member_count = count_members(segment)
 
 
@@ -310,10 +327,13 @@ def validate_segment(segment):
     from finbyzreach.email_marketing import validate_lead_filter_groups, validate_excluded_email_groups
     doctype = segment.get('audience_doctype') or 'Lead'
     if doctype not in AUDIENCE_TYPES:
-        frappe.throw(_('Audience type must be Lead, Contact or Customer'))
+        frappe.throw(_('Unsupported segment audience type'))
     if segment.segment_type not in ('Active', 'Static'):
         frappe.throw(_('Segment type must be Active or Static'))
     before = segment.get_doc_before_save()
+    # Snapshot pointers are server-owned, including for RPC document saves.
+    for key in ('snapshot_generation','snapshot_pending_generation','snapshot_definition','snapshot_status','snapshot_error'):
+        segment.set(key, before.get(key) if before else None)
     if before and before.audience_doctype != doctype:
         frappe.throw(_('Audience type cannot change after creation'))
     segment.filter_groups_json = validate_lead_filter_groups(segment.get('filter_groups_json'),
@@ -326,20 +346,24 @@ def validate_segment(segment):
     changed = not before or any(before.get(key) != segment.get(key) for key in (
         'filter_groups_json', 'filter_expression_json', 'exclude_filters_json',
         'exclude_email_groups_json', 'exclude_segments_json', 'segment_type'))
+    if before and before.get('snapshot_pending_generation') and changed:
+        frappe.throw(_('Wait for membership preparation before changing the segment definition'))
+    if before and before.get('archived') and segment.get('archived') and changed:
+        frappe.throw(_('Restore the segment before changing its definition'))
     if changed:
         segment.last_definition_change = now_datetime()
         segment.last_definition_changed_by = frappe.session.user
     if before and before.segment_type == 'Active' and segment.segment_type == 'Static':
-        frozen = member_names(before)
-        frappe.db.delete(MEMBER, {'segment': segment.name, 'source': 'Filtered'})
-        _insert_members(segment.name, frozen)
-        segment.members_initialized = 1
-        segment.static_leads_json = '[]'
+        from finbyzreach.segment_snapshots import prepare
+        prepare(segment, source=before)
     elif segment.segment_type == 'Static':
         initialize_static(segment)
         filters_changed = not before or any(before.get(key) != segment.get(key) for key in ('filter_groups_json', 'filter_expression_json'))
-        if filters_changed:
+        if (filters_changed or segment.flags.get('reach_force_refresh')) and not segment.get('archived'):
             refresh_static(segment)
+    else:
+        segment.snapshot_pending_generation = None
+        segment.snapshot_status = 'Ready'
     if segment.get('archived'):
         if before and not before.get('archived'):
             assert_unused(segment, blocking=True)
@@ -350,7 +374,8 @@ def validate_segment(segment):
     table = frappe.qb.DocType(doctype)
     candidates = member_query(segment, apply_exclusions=False).select(Count(table.name)).run()[0][0]
     segment.excluded_count = max(0, cint(candidates) - segment.member_count)
-    if before and changed:
+    if before and (changed or any(before.get(key) != segment.get(key) for key in (
+        'segment_name', 'description', 'folder', 'columns_json'))):
         assert_unused(segment, blocking=False)
 
 
