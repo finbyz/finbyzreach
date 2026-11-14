@@ -1,6 +1,12 @@
 frappe.listview_settings["Email Template Master"] = frappe.listview_settings["Email Template Master"] || {};
 
 (function () {
+	frappe.listview_settings["Email Template Master"].get_form_link = function (doc) {
+		if (frappe.user.has_role("Email Designer") || frappe.user.has_role("System Manager")) {
+			return `/app/email-template-builder/${encodeURIComponent(doc.name)}/${encodeURIComponent("Email Template Master")}/${encodeURIComponent(frappe.app?.sidebar?.current_module || "")}`;
+		}
+		return `/app/email-template-master/${encodeURIComponent(doc.name)}`;
+	};
 	const settings = frappe.listview_settings["Email Template Master"];
 	const existing_onload = settings.onload;
 
