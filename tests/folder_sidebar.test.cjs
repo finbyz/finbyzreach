@@ -32,7 +32,7 @@ test('all three native lists use their own folder models with bounded children',
     }
 });
 
-test('folder selection preserves search and other filters; unfiled includes legacy root links',async()=>{
+test('folder selection preserves search and other filters; unfiled uses native is not set',async()=>{
     const {sidebar,list}=setup();
     await sidebar.select('folder:Events');
     let filters=list.filter_area.get();
@@ -40,11 +40,27 @@ test('folder selection preserves search and other filters; unfiled includes lega
     assert.deepEqual(filters[0],['Reach Segment','name','like','%search%']);
     assert.deepEqual(filters[2],['Reach Segment','folder','=','Events']);
     await sidebar.select('@without');
-    assert.deepEqual(list.filter_area.get()[2],['Reach Segment','folder','in',['','All Reach Segment Folders']]);
+    assert.deepEqual(list.filter_area.get()[2],['Reach Segment','folder','is','not set']);
     assert.equal(sidebar.selected(),'@without');
     await sidebar.select('@all');
     assert.equal(list.filter_area.get().length,2);
     assert.equal(list.start,0);
+});
+
+test('Without Folder counts use the same native filter as selection for all three lists',async()=>{
+    for(const doctype of ['Reach Segment','Email Template Master','Email Template']) {
+        const {sidebar,list,calls}=setup(doctype);
+        await sidebar.reload();
+        await sidebar.select('@without');
+        await sidebar.refresh();
+        const selected=list.filter_area.get();
+        const count=calls.filter(call=>call.method==='frappe.client.get_count').at(-1);
+        assert.deepEqual(count.args.filters,selected);
+        assert.equal(count.args.filters.at(-1)[2],'is');
+        assert.equal(count.args.filters.at(-1)[3],'not set');
+        await sidebar.select(`folder:${sidebar.config.root}`);
+        assert.equal(sidebar.selected(),`folder:${sidebar.config.root}`);
+    }
 });
 
 test('expanding and loading more uses independent bounded keyset cursors',async()=>{
