@@ -3,15 +3,21 @@ frappe.pages["email-campaign-report"].on_page_load = function (wrapper) {
 };
 
 frappe.pages["email-campaign-report"].on_page_show = function (wrapper) {
+	wrapper.campaign_report?.page.set_title(__("Emails"));
 	wrapper.campaign_report?.applyRoute();
 };
 
 class EmailCampaignReport {
 	constructor(wrapper) {
-		this.page = frappe.ui.make_app_page({ parent: wrapper, title: __("Email Campaign Report"), single_column: true });
+		this.page = frappe.ui.make_app_page({ parent: wrapper, title: __("Emails"), single_column: true });
 		this.page.main.addClass("email-campaign-report-page");
+		this.page.set_title(__("Emails"));
+		frappe.require([
+			"/assets/finbyzreach/css/email_workspace.css",
+			"/assets/finbyzreach/js/email_workspace.js",
+		], () => frappe.email_workspace?.mount(this.page, "statistics"));
 		this.method = "finbyzreach.finbyzreach.page.email_campaign_report.email_campaign_report.";
-		this.metric = "opened";
+		this.metric = "clicked";
 		this.days = 30;
 		this.pageNumber = 1;
 		this.requestId = 0;
@@ -35,12 +41,7 @@ class EmailCampaignReport {
 	render() {
 		this.page.main.html(`
 			<div class="ecr-shell">
-				<p class="ecr-intro">${__("Email broadcast results by campaign or email template")}</p>
-				<nav class="ecr-view-tabs" aria-label="${__("Report view")}">
-					<button type="button" data-view="single" class="active">${__("Single report")}</button>
-					<button type="button" data-view="compare">${__("Compare")}</button>
-					<button type="button" data-view="overall">${__("Overall")}</button>
-				</nav>
+				<div class="ecr-toolbar"><label class="ecr-view-picker"><span class="sr-only">${__("Report view")}</span><select class="form-control ecr-view-select"><option value="single">${__("Email statistics")}</option><option value="compare">${__("Compare emails")}</option><option value="overall">${__("Overall statistics")}</option></select></label></div>
 				<div class="ecr-single">
 				<section class="ecr-card ecr-filters">
 					<div class="ecr-filter" data-field="scope"></div>
@@ -55,21 +56,25 @@ class EmailCampaignReport {
 					</div>
 				</section>
 				<div class="ecr-state" role="status"></div>
+				<div class="ecr-placeholder"><span>${frappe.utils.icon("bar-chart", "lg")}</span><h3>${__("Email statistics")}</h3><p>${__("Choose a campaign or email template, then show its report.")}</p></div>
+				<div class="ecr-single-content" hidden>
 				<p class="ecr-summary-note">${__("Totals and percentages cover all sends. The date range applies to the timeline only.")}</p>
 				<section class="ecr-single-acceptance"></section>
 				<section class="ecr-metrics"></section>
-				<section class="ecr-card ecr-chart-card">
-					<div class="ecr-section-head"><div><h3>${__("Activity timeline")}</h3><p>${__("Daily first actions during the selected period")}</p></div><span class="ecr-chart-period"></span></div>
+				<div class="ecr-dashboard-row"><section class="ecr-card ecr-chart-card">
+					<div class="ecr-section-head"><div><h3>${__("Opens and clicks")}</h3><p>${__("Daily first actions during the selected period")}</p></div><span class="ecr-chart-period"></span></div>
 					<div id="ecr-trend"></div>
-					<div class="ecr-peaks"></div>
 					<p class="ecr-note ecr-timeline-note"></p>
 				</section>
+				<section class="ecr-card ecr-highlights-card"><div class="ecr-section-head"><div><h3>${__("Recorded actions")}</h3><p>${__("Total engagement for this selection")}</p></div></div><div class="ecr-peaks"></div></section></div>
 				<section class="ecr-card ecr-details">
-					<div class="ecr-section-head"><div><h3>${__("Details")}</h3><p>${__("People behind each recorded action")}</p></div><span class="ecr-detail-total"></span></div>
-					<nav class="ecr-tabs" aria-label="${__("Campaign actions")}"></nav>
+					<div class="ecr-section-head"><div><h3 class="ecr-contacts-title">${__("Contacts: Clicked")}</h3><p>${__("People behind each recorded action")}</p></div><span class="ecr-detail-total"></span></div>
+
 					<div class="ecr-table-wrap"><table class="ecr-table"><thead><tr><th>${__("Full Name")}</th><th>${__("Email")}</th><th>${__("Campaign")}</th><th>${__("Status")}</th><th>${__("Action Time")}</th></tr></thead><tbody></tbody></table></div>
 					<div class="ecr-pagination"><span class="ecr-page-label"></span><div><button class="btn btn-default btn-sm ecr-prev">${__("Previous")}</button><button class="btn btn-default btn-sm ecr-next">${__("Next")}</button></div></div>
 				</section>
+				<section class="ecr-card ecr-email-overview"><div class="ecr-section-head"><div><h3>${__("All emails")}</h3><p class="ecr-overview-period"></p></div><button type="button" class="btn btn-default btn-xs ecr-open-overall">${__("View overall statistics")}</button></div><div class="ecr-table-wrap"><table class="ecr-table"><thead><tr><th>${__("Selection")}</th><th>${__("Sent")}</th><th>${__("Opened")}</th><th>${__("Clicked")}</th><th>${__("Replied")}</th><th>${__("Bounces")}</th><th>${__("Unsubscribed")}</th><th>${__("Failed")}</th></tr></thead><tbody></tbody></table></div></section>
+				</div>
 				</div>
 				<div class="ecr-cohort" hidden>
 					<section class="ecr-card ecr-cohort-filters">
@@ -113,6 +118,8 @@ class EmailCampaignReport {
 		this.period = make("days", { fieldtype: "Select", fieldname: "days", label: __("Timeline in days"), options: ["7", "30", "60", __("Custom")], default: "30", change: () => this.period && this.togglePeriod() });
 		this.fromDate = make("from_date", { fieldtype: "Date", fieldname: "from_date", label: __("From Date"), default: frappe.datetime.add_days(frappe.datetime.get_today(), -29) });
 		this.toDate = make("to_date", { fieldtype: "Date", fieldname: "to_date", label: __("To Date"), default: frappe.datetime.get_today() });
+		this.scope.set_value(__("Campaign"));
+		this.period.set_value("30");
 		this.toggleScope();
 		this.togglePeriod();
 		this.resetComparison();
@@ -175,6 +182,7 @@ class EmailCampaignReport {
 	setView(view) {
 		if (!["single", "compare", "overall"].includes(view)) return;
 		this.view = view;
+		this.page.main.find(".ecr-view-select").val(view);
 		this.requestId += 1;
 		this.page.main.find("[data-view]").removeClass("active").filter(`[data-view="${view}"]`).addClass("active");
 		this.page.main.find(".ecr-single").prop("hidden", view !== "single");
@@ -226,7 +234,7 @@ class EmailCampaignReport {
 	}
 
 	bind() {
-		this.page.main.on("click", "[data-view]", (event) => this.setView(event.currentTarget.dataset.view));
+		this.page.main.on("change", ".ecr-view-select", (event) => this.setView(event.currentTarget.value));
 		this.page.main.on("change", ".ecr-compare-scope", () => this.resetComparison());
 		this.page.main.on("focus input", ".ecr-compare-input", () => this.renderSuggestions());
 		this.page.main.on("blur", ".ecr-compare-input", () => {
@@ -250,6 +258,7 @@ class EmailCampaignReport {
 			this.renderCompareItems();
 			this.page.main.find(".ecr-cohort-state").text(this.compareItems.length < 2 ? __("Choose at least two items to compare.") : __("Ready to compare {0} items.", [this.compareItems.length]));
 		});
+		this.page.main.on("click", ".ecr-open-overall", () => this.setView("overall"));
 		this.page.main.on("click", ".ecr-apply", () => this.load());
 		this.page.main.on("click", "[data-metric]", (event) => {
 			this.metric = event.currentTarget.dataset.metric;
@@ -281,6 +290,17 @@ class EmailCampaignReport {
 			await this.template.set_value(template);
 			this.toggleScope();
 			this.load();
+		} else if (!this.report && !this.initialSelectionRequested) {
+			this.initialSelectionRequested = true;
+			try {
+				const result = await frappe.call({method: "frappe.client.get_list", args: {doctype: "Campaign", fields: ["name"], order_by: "modified desc", limit_page_length: 1}});
+				if (!this.selection().value && result.message?.length && this.view === "single") {
+					await this.campaign.set_value(result.message[0].name);
+					await this.load();
+				}
+			} catch (error) {
+				this.page.main.find(".ecr-state").text(__("Choose a campaign or email template to view statistics."));
+			}
 		}
 	}
 
@@ -412,14 +432,32 @@ class EmailCampaignReport {
 			const result = await frappe.call({ method: this.method + "get_report", args: { ...selection, ...range } });
 			if (requestId !== this.requestId) return;
 			this.report = result.message || {};
+			this.page.main.find(".ecr-placeholder").prop("hidden", true);
+			this.page.main.find(".ecr-single-content").prop("hidden", false);
 			this.days = this.report.days || 30;
 			this.page.main.find(".ecr-state").text(__("Showing {0} campaign(s)", [this.report.campaign_count || 0]));
 			this.renderMetrics();
 			this.renderTrend();
 			this.highlightMetric();
 			await this.loadDetails();
+			if (requestId === this.requestId) this.loadDashboardOverview(range, requestId);
 		} catch (error) {
 			if (requestId === this.requestId) this.page.main.find(".ecr-state").text(__("Could not load this report."));
+		}
+	}
+
+	async loadDashboardOverview(range, requestId) {
+		const body = this.page.main.find(".ecr-email-overview tbody");
+		body.html(`<tr><td colspan="8" class="ecr-empty">${__("Loading…")}</td></tr>`);
+		try {
+			const result = await frappe.call({method: this.method + "get_overview", args: range.days ? {period: String(range.days)} : {period: "custom", ...range}});
+			if (requestId !== this.requestId) return;
+			const data = result.message || {};
+			const counts = data.summary || {};
+			this.page.main.find(".ecr-overview-period").text(data.range?.label || "");
+			body.html(`<tr><td><strong>${this.esc(__("All campaigns ({0})", [data.campaign_count || 0]))}</strong></td><td>${this.number(counts.sent)}</td><td>${this.rate(counts.open_rate)}</td><td>${this.rate(counts.click_rate)}</td><td>${this.number(counts.replied)}</td><td>${this.number(Number(counts.hard_bounce || 0) + Number(counts.soft_bounce || 0))}</td><td>${this.number(counts.unsubscribed)}</td><td>${this.number(counts.failed)}</td></tr>`);
+		} catch (error) {
+			if (requestId === this.requestId) body.html(`<tr><td colspan="8" class="ecr-empty">${__("Could not load overall statistics.")}</td></tr>`);
 		}
 	}
 
@@ -447,18 +485,20 @@ class EmailCampaignReport {
 
 	renderTrend() {
 		const rows = this.report.trend || [];
-		const keys = ["sent", "opened", "clicked", "unsubscribed", "replied", "failed", "hard_bounce", "soft_bounce", "spam"];
-		const colors = ["#171717", "#1d7f67", "#2563eb", "#d97706", "#7c3aed", "#d14343", "#9b4f31", "#e0a34f", "#b45381"];
+		const keys = ["opened", "clicked"];
+		const colors = ["#2490ef", "#ec864b"];
 		const activeSeries = keys.map((key, index) => ({ key, color: colors[index] }))
 			.filter(({ key }) => rows.some((row) => Number(row[key] || 0) > 0));
 		this.page.main.find("#ecr-trend").empty();
 		this.page.main.find(".ecr-chart-period").text(this.report.range?.label || __("Last {0} days", [this.days]));
 		this.page.main.find(".ecr-timeline-note").text(this.report.notes?.timeline || "");
-		this.page.main.find(".ecr-peaks").html(["opened", "clicked", "replied", "unsubscribed"].map((key) => {
-			const peak = rows.reduce((best, row) => Number(row[key] || 0) > Number(best?.[key] || 0) ? row : best, null);
-			if (!peak || !peak[key]) return "";
-			const label = this.metrics.find((entry) => entry[0] === key)[1];
-			return `<span><strong>${this.esc(label)}</strong> ${this.esc(peak.date)} · ${this.number(peak[key])}</span>`;
+		const counts = this.report.summary || {};
+		const actions = ["opened", "clicked", "replied", "unsubscribed"];
+		const maximum = Math.max(1, ...actions.map(key => Number(counts[key] || 0)));
+		this.page.main.find(".ecr-peaks").html(actions.map(key => {
+			const label = this.metrics.find(entry => entry[0] === key)[1];
+			const count = Number(counts[key] || 0);
+			return `<button type="button" class="ecr-action-bar" data-metric="${key}"><span><span>${this.esc(label)}</span><strong>${this.number(count)}</strong></span><span class="ecr-bar-track"><span style="width:${100 * count / maximum}%"></span></span></button>`;
 		}).join(""));
 		if (!activeSeries.length) {
 			this.page.main.find("#ecr-trend").html(`<div class="ecr-chart-empty">${__("No recorded activity in this period.")}</div>`);
@@ -473,6 +513,7 @@ class EmailCampaignReport {
 	}
 
 	highlightMetric() {
+		this.page.main.find(".ecr-contacts-title").text(__("Contacts: {0}", [this.metrics.find(entry => entry[0] === this.metric)[1]]));
 		this.page.main.find("[data-metric]").removeClass("active");
 		this.page.main.find(`[data-metric="${this.metric}"]`).addClass("active");
 	}
@@ -483,7 +524,7 @@ class EmailCampaignReport {
 		const page = this.pageNumber;
 		const requestId = this.requestId;
 		const selection = this.selection();
-		const body = this.page.main.find(".ecr-table tbody");
+		const body = this.page.main.find(".ecr-details tbody");
 		body.html(`<tr><td colspan="5">${__("Loading…")}</td></tr>`);
 		try {
 			const result = await frappe.call({ method: this.method + "get_details", args: { ...selection, metric, page } });
