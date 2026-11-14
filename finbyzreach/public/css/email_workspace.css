@@ -1,0 +1,24 @@
+.email-workspace-tabs {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 16px;
+    padding-top: 8px;
+    border-bottom: 1px solid var(--border-color);
+    overflow-x: auto;
+}
+.email-workspace-tab {
+    flex: 0 0 auto;
+    padding: 12px 14px 10px;
+    border-bottom: 2px solid transparent;
+    color: var(--text-muted);
+    font-size: var(--text-sm);
+    font-weight: 500;
+    text-decoration: none;
+}
+.email-workspace-tab:hover { color: var(--text-color); text-decoration: none; }
+.email-workspace-tab.active { border-bottom-color: var(--text-color); color: var(--text-color); }
+.email-workspace-tab:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+@media (max-width: 767px) {
+    .email-workspace-tabs { margin: 0 10px; }
+}

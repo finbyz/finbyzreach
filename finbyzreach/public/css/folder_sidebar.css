@@ -39,9 +39,10 @@
     min-height: 32px;
     padding: 0 8px 0 calc(8px + var(--folder-depth, 0) * 12px);
     border-radius: var(--border-radius-md);
+    transition: background-color 120ms ease;
 }
-.reach-folder-row:hover { background: var(--control-bg); border-radius: 12px; }
-.reach-folder-row.active { background: var(--control-bg); font-weight: 500; border-radius: 12px; }
+.reach-folder-row:hover { background: var(--control-bg); }
+.reach-folder-row.active { background: var(--control-bg); font-weight: 600; }
 .reach-folder-select {
     display: grid;
     grid-template-columns: 14px minmax(0, 1fr);
@@ -69,17 +70,23 @@
 .reach-folder-row:hover .reach-folder-toggle,
 .reach-folder-row:focus-within .reach-folder-toggle,
 .reach-folder-toggle[aria-expanded="true"] { opacity: 1; }
-.reach-folder-count { min-width: 16px; font-size: var(--text-xs); font-weight: 400; text-align: right; }
-.reach-folder-footer { margin-top: 8px; padding: 0 8px; }
+.reach-folder-count { min-width: 20px; font-size: var(--text-xs); font-weight: 400; font-variant-numeric: tabular-nums; text-align: right; }
+.reach-folder-footer { margin-top: 8px; }
 .reach-folder-sidebar .reach-folder-action {
     display: flex;
     align-items: center;
+    justify-content: flex-start;
     gap: 8px;
-    padding: 6px 0;
+    width: 100%;
+    min-height: 32px;
+    padding: 6px 8px;
+    border-radius: var(--border-radius-md);
     color: var(--blue-500, var(--primary));
     text-align: left;
 }
-.reach-folder-action .icon { width: 14px; height: 14px; color: var(--text-muted); }
+.reach-folder-sidebar .reach-folder-action > .icon { flex: 0 0 14px; width: 14px; height: 14px; margin: 0; color: var(--text-muted); }
+.reach-folder-action > span { flex: 0 1 auto; margin: 0; text-align: left; }
+.reach-folder-action:hover { background: var(--control-bg); }
 .reach-folder-action:hover span { text-decoration: underline; }
 @media (max-width: 767px) {
     .reach-folder-layout { flex-direction: column; gap: var(--margin-sm); }
