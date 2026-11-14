@@ -176,15 +176,7 @@ frappe.provide("frappe.email_template_library");
 	function open_builder(template_name, template_doctype = EMAIL) {
 		if (!template_name) return;
 
-		const params = new URLSearchParams({
-			template: template_name,
-		});
-
-		if (template_doctype === MASTER) {
-			params.set("template_doctype", MASTER);
-		}
-
-		window.location.href = `/builder?${params.toString()}`;
+		frappe.set_route("email-template-builder", template_name, template_doctype, frappe.app?.sidebar?.current_module || "");
 	}
 
 	

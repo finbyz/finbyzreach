@@ -3,6 +3,7 @@ frappe.provide("frappe.reach_folder_sidebar");
 
 (() => {
     const CONFIG = {
+        "Automation Workflow": {folder: "Automation Workflow Folder", field: "folder", parent: "parent_folder", root: "", path: true},
         "Reach Segment": {folder: "Reach Segment Folder", field: "folder", parent: "parent_reach_segment_folder", root: "All Reach Segment Folders"},
         "Email Template Master": {folder: "Email Template Folder", field: "folder", parent: "parent_email_template_folder", root: "All Email Template Folders"},
         "Email Template": {folder: "Email Folder", field: "custom_folder", parent: "parent_email_folder", root: "All Email Folders"},
@@ -22,7 +23,7 @@ frappe.provide("frappe.reach_folder_sidebar");
             this.$root.html('<nav class="reach-folder-nav"></nav><div class="reach-folder-footer"></div>');
             list.page.add_menu_item(__("Refresh folders"), () => this.reload());
             if (frappe.model.can_read(this.config.folder)) {
-                list.page.add_menu_item(__("Manage folders"), () => frappe.set_route("Tree", this.config.folder));
+                list.page.add_menu_item(__("Manage folders"), () => frappe.set_route(this.config.path ? "List" : "Tree", this.config.folder));
             }
             this.$root.on("click", "[data-select]", event => this.select($(event.currentTarget).attr("data-select")));
             this.$root.on("click", "[data-expand]", event => this.toggle($(event.currentTarget).attr("data-expand")));
@@ -77,7 +78,7 @@ frappe.provide("frappe.reach_folder_sidebar");
             if (branch.loading) return;
             branch.loading = true;
             this.branches.set(parent, branch);
-            const filters = [[this.config.parent, "=", parent]];
+            const filters = [parent ? [this.config.parent, "=", parent] : [this.config.parent, "is", "not set"]];
             if (more && branch.rows.length) filters.push(["name", ">", branch.rows.at(-1).name]);
             try {
                 const rows = await request("frappe.client.get_list", {doctype: this.config.folder,
@@ -162,13 +163,15 @@ frappe.provide("frappe.reach_folder_sidebar");
             frappe.prompt([
                 {fieldname: "folder_name", fieldtype: "Data", label: __("Folder Name"), reqd: 1},
                 {fieldname: "parent", fieldtype: "Link", options: this.config.folder, label: __("Parent Folder"),
-                    default: selected?.startsWith("folder:") ? selected.slice("folder:".length) : this.config.root, reqd: 1},
+                    default: selected?.startsWith("folder:") ? selected.slice("folder:".length) : this.config.root, reqd: this.config.root ? 1 : 0},
             ], async values => {
                 await frappe.call({method: "frappe.client.insert", args: {doc: {doctype: this.config.folder,
-                    folder_name: values.folder_name.trim(), [this.config.parent]: values.parent}}});
-                this.branches.delete(values.parent);
-                this.expanded.add(values.parent);
-                await this.load(values.parent);
+                    folder_name: values.folder_name.trim(), [this.config.parent]: values.parent || null,
+                    ...(this.config.path ? {path: [values.parent, values.folder_name.trim()].filter(Boolean).join("/")} : {})}}});
+                const parent = values.parent || this.config.root;
+                this.branches.delete(parent);
+                this.expanded.add(parent);
+                await this.load(parent);
                 frappe.show_alert({message: __("Folder created"), indicator: "green"});
             }, __("New Folder"), __("Create"));
         }
