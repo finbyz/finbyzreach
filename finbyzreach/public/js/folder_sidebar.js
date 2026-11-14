@@ -3,6 +3,7 @@ frappe.provide("frappe.reach_folder_sidebar");
 
 (() => {
     const CONFIG = {
+        "Form": {folder: "FP Form Folder", field: "folder", parent: "parent_fp_form_folder", root: ""},
         "Automation Workflow": {folder: "Automation Workflow Folder", field: "folder", parent: "parent_folder", root: "", path: true},
         "Reach Segment": {folder: "Reach Segment Folder", field: "folder", parent: "parent_reach_segment_folder", root: "All Reach Segment Folders"},
         "Email Template Master": {folder: "Email Template Folder", field: "folder", parent: "parent_email_template_folder", root: "All Email Template Folders"},

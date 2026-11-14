@@ -32,7 +32,7 @@ app_include_js = [
     "/assets/finbyzreach/js/email_template_quick_entry.js?v=20260930.3",
     "/assets/finbyzreach/js/segment_membership.js?v=20261113.1",
     "/assets/finbyzreach/js/segment_library.js?v=20261113.1",
-    "/assets/finbyzreach/js/folder_sidebar.js?v=20261114.2",
+    "/assets/finbyzreach/js/folder_sidebar.js?v=20261114.3",
     "/assets/finbyzreach/js/email_workspace.js?v=20261114.1",
 ]
 
@@ -60,6 +60,7 @@ doctype_js = {
     "Email Campaign": "public/js/doctype_js/email_campaign.js",
 }
 doctype_list_js = {
+    "Form": "public/js/doctype_list_js/form_list.js",
     "Automation Workflow": "public/js/doctype_list_js/automation_workflow_list.js",
     "Email Template": "public/js/doctype_list_js/email_template_list.js",
     "Email Template Master": "public/js/doctype_list_js/email_template_master_list.js",
