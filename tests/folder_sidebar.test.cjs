@@ -129,3 +129,29 @@ test('no-read access does not mount a sidebar or send queries',()=>{
     assert.equal(sidebar,undefined);
     assert.equal(calls.length,0);
 });
+
+
+test('workflow folders load top-level null/empty parents and create valid nested paths', async () => {
+    const {sidebar,frappe,list,calls}=setup('Automation Workflow');
+    await sidebar.reload();
+    assert.equal(sidebar.config.folder,'Automation Workflow Folder');
+    const query=calls.find(call=>call.args.doctype==='Automation Workflow Folder');
+    assert.deepEqual(query.args.filters[0],['parent_folder','is','not set']);
+    await sidebar.select('@without');
+    assert.deepEqual(list.filter_area.get().at(-1),['Automation Workflow','folder','is','not set']);
+    sidebar.new_folder();
+    assert.equal(frappe.promptFields.find(field=>field.fieldname==='parent').reqd,0);
+    await frappe.promptAction({folder_name:'Newsletter',parent:'Marketing'});
+    const insert=calls.find(call=>call.method==='frappe.client.insert');
+    assert.equal(insert.args.doc.path,'Marketing/Newsletter');
+    assert.equal(insert.args.doc.parent_folder,'Marketing');
+});
+
+test('workflow root folder creation supplies the existing path-based folder identity', async () => {
+    const {sidebar,frappe,calls}=setup('Automation Workflow');
+    sidebar.new_folder();
+    await frappe.promptAction({folder_name:'Events',parent:''});
+    const insert=calls.find(call=>call.method==='frappe.client.insert');
+    assert.equal(insert.args.doc.path,'Events');
+    assert.equal(insert.args.doc.parent_folder,null);
+});
