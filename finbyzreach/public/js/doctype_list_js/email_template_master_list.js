@@ -7,6 +7,10 @@ frappe.listview_settings["Email Template Master"] = frappe.listview_settings["Em
 	settings.onload = function (listview) {
 		if (existing_onload) existing_onload(listview);
 		frappe.reach_folder_sidebar.setup(listview);
+		frappe.require([
+			"/assets/finbyzreach/css/email_workspace.css",
+			"/assets/finbyzreach/js/email_workspace.js",
+		], () => frappe.email_workspace?.mount(listview.page, "templates"));
 		if (listview._template_library_actions_added) return;
 
 		listview.page.add_button(__("New Master"), () => {

@@ -44,15 +44,18 @@ frappe.provide("frappe.reach_folder_sidebar");
             const filter = this.filters().find(f => f[0] === this.list.doctype && f[1] === this.config.field);
             if (!filter) return "@all";
             if (filter[2] === "is" && filter[3] === "not set") return "@without";
-            if (filter[2] === "in" && Array.isArray(filter[3]) && filter[3].length === 2 &&
-                filter[3].includes("") && filter[3].includes(this.config.root)) return "@without";
             return filter[2] === "=" ? `folder:${filter[3]}` : null;
+        }
+
+        folder_filter(value) {
+            return [this.list.doctype, this.config.field,
+                value === "@without" ? "is" : "=",
+                value === "@without" ? "not set" : value.slice("folder:".length)];
         }
 
         async select(value) {
             const filters = this.filters().filter(f => !(f[0] === this.list.doctype && f[1] === this.config.field));
-            if (value !== "@all") filters.push([this.list.doctype, this.config.field,
-                value === "@without" ? "in" : "=", value === "@without" ? ["", this.config.root] : value.slice("folder:".length)]);
+            if (value !== "@all") filters.push(this.folder_filter(value));
             // Native APIs preserve unrelated filters and persist the route normally.
             await this.list.filter_area.clear(false);
             await this.list.filter_area.set(filters);
@@ -137,7 +140,7 @@ frappe.provide("frappe.reach_folder_sidebar");
             try {
                 const [all, without, grouped] = await Promise.all([
                     request("frappe.client.get_count", {doctype: this.list.doctype, filters}),
-                    request("frappe.client.get_count", {doctype: this.list.doctype, filters: [...filters, [this.list.doctype, this.config.field, "in", ["", this.config.root]]]}),
+                    request("frappe.client.get_count", {doctype: this.list.doctype, filters: [...filters, this.folder_filter("@without")]}),
                     names.length ? request("frappe.client.get_list", {doctype: this.list.doctype,
                         fields: [this.config.field, {COUNT: "name", as: "folder_count"}], group_by: this.config.field,
                         filters: [...filters, [this.list.doctype, this.config.field, "in", names]], limit_page_length: names.length}) : [],

@@ -21,7 +21,8 @@ add_to_apps_screen = [
 app_include_css = [
     "/assets/finbyzreach/css/subscription_preferences.css?v=20261028.1",
     "/assets/finbyzreach/css/segments.css?v=20261113.1",
-    "/assets/finbyzreach/css/folder_sidebar.css?v=20261113.10",
+    "/assets/finbyzreach/css/folder_sidebar.css?v=20261114.3",
+    "/assets/finbyzreach/css/email_workspace.css?v=20261114.1",
 ]
 after_request = ["finbyzreach.subscription_embed.set_subscription_embed_policy"]
 app_include_js = [
@@ -31,7 +32,8 @@ app_include_js = [
     "/assets/finbyzreach/js/email_template_quick_entry.js?v=20260930.3",
     "/assets/finbyzreach/js/segment_membership.js?v=20261113.1",
     "/assets/finbyzreach/js/segment_library.js?v=20261113.1",
-    "/assets/finbyzreach/js/folder_sidebar.js?v=20261113.7",
+    "/assets/finbyzreach/js/folder_sidebar.js?v=20261114.1",
+    "/assets/finbyzreach/js/email_workspace.js?v=20261114.1",
 ]
 
 # include js, css files in header of web template

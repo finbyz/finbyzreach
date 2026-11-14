@@ -172,6 +172,10 @@ frappe.listview_settings["Email Template"] = frappe.listview_settings["Email Tem
 	frappe.listview_settings["Email Template"].onload = function (listview) {
 		if (existing_onload) existing_onload(listview);
 		frappe.reach_folder_sidebar.setup(listview);
+		frappe.require([
+			"/assets/finbyzreach/css/email_workspace.css",
+			"/assets/finbyzreach/js/email_workspace.js",
+		], () => frappe.email_workspace?.mount(listview.page, "emails"));
 		if (!can_design_email() || listview._visual_builder_actions_added) return;
 
 		listview.page.add_button(__("Build with AI ✨"), () => show_ai_create_dialog("Email Template"));
