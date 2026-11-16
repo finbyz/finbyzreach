@@ -9,6 +9,9 @@
   "topic_name",
   "category",
   "disabled",
+  "consent_required",
+  "double_opt_in",
+  "deliver_while_pending",
   "description",
   "translations"
  ],
@@ -29,7 +32,7 @@
    "fieldtype": "Select",
    "in_standard_filter": 1,
    "label": "Category",
-   "options": "Mailing Type\nTopic",
+   "options": "Mailing Type\nTopic\nSystem",
    "reqd": 1
   },
   {
@@ -50,6 +53,29 @@
    "fieldtype": "Table",
    "label": "Translations",
    "options": "Subscription Topic Translation"
+  },
+  {
+   "fieldname": "consent_required",
+   "fieldtype": "Check",
+   "label": "Consent required",
+   "default": "1",
+   "depends_on": "eval:doc.category === 'Mailing Type'",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "double_opt_in",
+   "fieldtype": "Check",
+   "label": "Double opt-in",
+   "default": "1",
+   "depends_on": "eval:doc.category === 'Mailing Type'"
+  },
+  {
+   "fieldname": "deliver_while_pending",
+   "fieldtype": "Check",
+   "label": "Deliver while DOI is pending",
+   "default": "0",
+   "depends_on": "eval:doc.category === 'Mailing Type' && doc.consent_required && doc.double_opt_in",
+   "description": "Only enable for mailing types where pending subscriptions may receive emails."
   }
  ],
  "links": [],
@@ -84,6 +110,10 @@
   {
    "read": 1,
    "role": "Sales User"
+  },
+  {
+   "role": "Email Designer",
+   "read": 1
   }
  ],
  "quick_entry": 1,
