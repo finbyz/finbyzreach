@@ -528,14 +528,15 @@ export function useEmailBuilderController() {
   })
 
   const saveDocument = useCallback(async (silent = false, allowOverwrite = false) => {
-    if (!document || saving || !dirty) return
+    if (!document || saving) return false
+    if (!dirty) return true
     if (saveConflict) {
       if (!silent) setModal('conflict')
-      return
+      return false
     }
     if (requiresOverwrite && !allowOverwrite) {
       if (!silent) setOverwriteConfirmationOpen(true)
-      return
+      return false
     }
     setSaving(true)
     const submittedSnapshot = safeJson(document)
@@ -567,6 +568,7 @@ export function useEmailBuilderController() {
       const issues = response.message.issues || []
       const messages = issues.length ? issues.map((issue) => issue.message) : response.message.warnings || []
       if (!silent) messages.slice(0, 3).forEach((message) => notify(message, 'info'))
+      return hasNoNewerChanges
     } catch (error) {
       if (!mounted.current) return
       const handledConflict = handleConcurrentEdit(error)
@@ -591,10 +593,24 @@ export function useEmailBuilderController() {
       } else if (!handledConflict) {
         notify(getErrorMessage(error, 'The template could not be saved. Your browser draft is safe.'), 'error')
       }
+      return false
     } finally {
       if (mounted.current) setSaving(false)
     }
   }, [dirty, document, documentRef, draftKey, handleConcurrentEdit, modified, notify, patchTemplateState, realtime.clientId, requiresOverwrite, savedSnapshot, saveConflict, saving, sdk.save, setDirty, setDocument, setModal, setOverwriteConfirmationOpen, setSaving, templateDoctype, templateName])
+
+  // Same-origin Desk composer bridge. No postMessage handler or arbitrary
+  // document access: the host can only flush this mounted template's save.
+  useEffect(() => {
+    const hostWindow = window as Window & {
+      finbyzEmailBuilder?: { templateName: string; save: () => Promise<boolean | undefined> }
+    }
+    const bridge = { templateName, save: () => saveDocument(false) }
+    hostWindow.finbyzEmailBuilder = bridge
+    return () => {
+      if (hostWindow.finbyzEmailBuilder === bridge) delete hostWindow.finbyzEmailBuilder
+    }
+  }, [templateName, saveDocument])
 
   useEffect(() => {
     if (!dirty) {
