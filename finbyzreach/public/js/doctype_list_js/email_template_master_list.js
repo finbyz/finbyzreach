@@ -41,3 +41,20 @@ frappe.listview_settings["Email Template Master"] = frappe.listview_settings["Em
 		listview._template_library_actions_added = true;
 	};
 })();
+
+(() => {
+    const doctype = "Email Template Master";
+    if (frappe.builder_list_navigation) {
+        frappe.builder_list_navigation.setup(doctype);
+    } else {
+        // An already-open Desk session may not have the new boot asset yet.
+        const onload = frappe.listview_settings[doctype].onload;
+        frappe.listview_settings[doctype].onload = function (listview) {
+            frappe.require("/assets/finbyzreach/js/builder_list_navigation.js", () => {
+                frappe.builder_list_navigation.setup(doctype);
+                frappe.builder_list_navigation.mount(listview);
+            });
+            return onload?.call(this, listview);
+        };
+    }
+})();

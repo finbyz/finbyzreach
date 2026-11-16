@@ -15,3 +15,20 @@ frappe.listview_settings["Form"] = frappe.listview_settings["Form"] || {};
         return `/app/forms-pro-designer/${encodeURIComponent(doc.name)}/${encodeURIComponent(sidebar)}`;
     };
 })();
+
+(() => {
+    const doctype = "Form";
+    if (frappe.builder_list_navigation) {
+        frappe.builder_list_navigation.setup(doctype);
+    } else {
+        // An already-open Desk session may not have the new boot asset yet.
+        const onload = frappe.listview_settings[doctype].onload;
+        frappe.listview_settings[doctype].onload = function (listview) {
+            frappe.require("/assets/finbyzreach/js/builder_list_navigation.js", () => {
+                frappe.builder_list_navigation.setup(doctype);
+                frappe.builder_list_navigation.mount(listview);
+            });
+            return onload?.call(this, listview);
+        };
+    }
+})();
