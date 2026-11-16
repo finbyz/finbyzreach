@@ -1,0 +1,30 @@
+.marketing-start { padding: 22px 16px 32px; color: var(--text-color); }
+.ms-intro { margin-bottom: 22px; }
+.ms-intro h2 { font-size: 22px; font-weight: 600; margin: 0 0 8px; }
+.ms-intro p { margin: 0; color: var(--text-muted); font-size: var(--text-sm); }
+.ms-actions { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 14px; margin-bottom: 24px; }
+.ms-action { display: flex; flex-direction: column; align-items: flex-start; gap: 9px; padding: 18px; border: 1px solid var(--border-color); border-radius: var(--border-radius-lg,8px); color: var(--text-color); background: var(--fg-color); text-align: left; }
+.ms-action > .icon { margin: 0 0 5px; color: var(--text-muted); }
+.ms-action strong { font-size: 14px; font-weight: 600; }
+.ms-action span { font-size: 12px; line-height: 1.55; color: var(--text-muted); }
+.ms-action:hover:not(:disabled) { background: var(--control-bg); border-color: var(--gray-400); }
+.ms-action:disabled { opacity: .55; cursor: not-allowed; }
+.ms-action:focus-visible, .ms-link:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
+.ms-panels { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1.25fr); gap: 18px; align-items: start; }
+.ms-panel { min-width: 0; border: 1px solid var(--border-color); border-radius: var(--border-radius-lg,8px); overflow: hidden; background: var(--fg-color); }
+.ms-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 13px 14px; border-bottom: 1px solid var(--border-color); }
+.ms-panel-head h3 { font-size: 13px; font-weight: 600; margin: 0; }
+.ms-table-wrap { overflow: auto; max-height: 470px; }
+.ms-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.ms-table th { background: var(--control-bg); color: var(--text-muted); font-weight: 500; font-size: 11px; white-space: nowrap; }
+.ms-table th, .ms-table td { padding: 12px 13px; border-bottom: 1px solid var(--border-color); text-align: left; }
+.ms-table tbody tr:last-child td { border-bottom: 0; }
+.ms-table td.num, .ms-table th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ms-link { display: block; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-color); font-weight: 500; }
+.ms-link:hover { color: var(--text-color); text-decoration: underline; }
+.ms-table .ms-time { color: var(--text-muted); font-size: 11px; white-space: nowrap; }
+.ms-table .ms-empty { padding: 36px 16px; text-align: center; color: var(--text-muted); line-height: 1.6; }
+.ms-note { margin: 12px 2px 0; color: var(--text-muted); font-size: 11px; line-height: 1.6; }
+.ms-status { min-height: 20px; margin: 0 0 8px; color: var(--text-muted); font-size: 12px; }
+@media (max-width: 1200px) { .ms-actions { grid-template-columns: repeat(2,minmax(0,1fr)); } .ms-panels { grid-template-columns: minmax(0,1fr); } }
+@media (max-width: 575px) { .marketing-start { padding: 16px 10px; } .ms-actions { grid-template-columns: minmax(0,1fr); gap: 10px; } .ms-action { padding: 14px; } }
