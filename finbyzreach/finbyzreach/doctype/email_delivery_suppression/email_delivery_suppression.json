@@ -1,0 +1,56 @@
+{
+ "doctype": "DocType",
+ "name": "Email Delivery Suppression",
+ "module": "Finbyzreach",
+ "autoname": "hash",
+ "field_order": [
+  "email",
+  "reason",
+  "communication",
+  "recorded_on"
+ ],
+ "fields": [
+  {
+   "fieldname": "email",
+   "fieldtype": "Data",
+   "label": "Email",
+   "reqd": 1,
+   "unique": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "reason",
+   "fieldtype": "Select",
+   "options": "Hard bounce\nSpam complaint",
+   "label": "Reason",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "communication",
+   "fieldtype": "Link",
+   "options": "Communication",
+   "label": "Evidence"
+  },
+  {
+   "fieldname": "recorded_on",
+   "fieldtype": "Datetime",
+   "label": "Recorded on",
+   "reqd": 1
+  }
+ ],
+ "permissions": [
+  {
+   "role": "Marketing Manager",
+   "read": 1,
+   "report": 1
+  },
+  {
+   "role": "System Manager",
+   "read": 1,
+   "report": 1
+  }
+ ],
+ "sort_field": "recorded_on",
+ "sort_order": "DESC"
+}
