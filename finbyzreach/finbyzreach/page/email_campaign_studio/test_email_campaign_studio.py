@@ -762,3 +762,45 @@ class TestEmailCampaignStudio(UnitTestCase):
 	def test_create_campaign_rejects_unknown_launch_action(self, _check_permission):
 		with self.assertRaises(frappe.ValidationError):
 			create_campaign(payload="{}", launch="unexpected")
+
+	def test_workflow_composer_needs_no_campaign_or_recipient_access(self):
+		def permission(doctype, ptype="read", throw=False):
+			allowed = doctype == "Email Template" and ptype == "write"
+			if throw and not allowed:
+				raise frappe.PermissionError
+			return allowed
+
+		module = "finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio"
+		with patch(module + ".frappe.has_permission", side_effect=permission), \
+			patch(module + ".frappe.get_list") as get_list, \
+			patch(module + "._campaign_for_studio", return_value=None), \
+			patch(module + "._system_to_studio_datetime", side_effect=lambda value: value):
+			result = get_bootstrap()
+		self.assertTrue(result["workflow_only"])
+		self.assertEqual(result["email_accounts"], [])
+		self.assertEqual(result["email_groups"], [])
+		get_list.assert_not_called()
+
+	def test_contact_only_campaign_creator_can_open_composer(self):
+		def permission(doctype, ptype="read", throw=False):
+			return (doctype, ptype) in {("Campaign", "create"), ("Contact", "read")}
+
+		module = "finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio"
+		with patch(module + ".frappe.has_permission", side_effect=permission), \
+			patch(module + "._campaign_for_studio", return_value=None), \
+			patch(module + "._system_to_studio_datetime", side_effect=lambda value: value):
+			result = get_bootstrap()
+		self.assertFalse(result["workflow_only"])
+
+	def test_composer_denies_user_without_campaign_or_email_edit_access(self):
+		def permission(doctype, ptype="read", throw=False):
+			if throw:
+				raise frappe.PermissionError
+			return False
+
+		module = "finbyzreach.finbyzreach.page.email_campaign_studio.email_campaign_studio"
+		with patch(module + ".frappe.has_permission", side_effect=permission), \
+			patch(module + ".frappe.get_list") as get_list:
+			with self.assertRaises(frappe.PermissionError):
+				get_bootstrap()
+		get_list.assert_not_called()

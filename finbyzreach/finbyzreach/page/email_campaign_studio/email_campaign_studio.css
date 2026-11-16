@@ -1,0 +1,82 @@
+/* Guided composer uses Desk theme tokens; the existing controls stay mounted. */
+.email-campaign-studio.ecs-wizard {
+	background: var(--page-bg);
+	padding-top: var(--padding-md);
+}
+.ecs-wizard .ecs-shell { width: 100%; }
+.ecs-wizard .ecs-wizard-nav {
+	display: flex;
+	border: 1px solid var(--border-color);
+	border-radius: var(--border-radius-lg);
+	margin-bottom: var(--margin-lg);
+	overflow-x: auto;
+}
+.ecs-wizard-nav button {
+	appearance: none;
+	display: flex;
+	align-items: center;
+	gap: var(--margin-sm);
+	flex: 1 0 110px;
+	padding: var(--padding-md);
+	border: 0;
+	border-right: 1px solid var(--border-color);
+	background: var(--card-bg);
+	color: var(--text-muted);
+	text-align: left;
+}
+.ecs-wizard-nav button:last-child { border-right: 0; }
+.ecs-wizard-nav button.active {
+	background: var(--subtle-fg);
+	color: var(--text-color);
+	font-weight: 600;
+	box-shadow: inset 0 -2px var(--text-color);
+}
+.ecs-wizard-nav button span {
+	display: grid;
+	place-items: center;
+	width: 24px;
+	height: 24px;
+	border-radius: 50%;
+	background: var(--control-bg);
+	color: var(--text-color);
+}
+.ecs-wizard-nav button.active span { background: var(--text-color); color: var(--card-bg); }
+.ecs-wizard .ecs-grid {
+	grid-template-columns: minmax(0, 1fr) 320px;
+	grid-template-areas: "main side" "footer side";
+}
+.ecs-wizard .ecs-main { grid-area: main; }
+.ecs-wizard .ecs-side { grid-area: side; position: static; height: auto; padding: 0; }
+.ecs-wizard-footer { grid-area: footer; display: flex; justify-content: space-between; gap: var(--margin-md); }
+.ecs-wizard .ecs-card,
+.ecs-wizard .ecs-days-wrap,
+.ecs-wizard .ecs-target-panel {
+	border-color: var(--border-color);
+	border-radius: var(--border-radius-lg);
+	box-shadow: none;
+	background: var(--card-bg);
+}
+.ecs-wizard .ecs-card-head,
+.ecs-wizard .ecs-audience-intro { background: var(--card-bg); }
+.ecs-wizard .ecs-step { background: var(--control-bg); color: var(--text-color); box-shadow: none; }
+.ecs-wizard .ecs-card .input-with-feedback:not([type='checkbox']),
+.ecs-wizard .ecs-card .form-control { min-height: 30px; }
+.ecs-wizard .ecs-card .form-control:focus { border-color: var(--border-color); box-shadow: var(--focus-ring); }
+.ecs-wizard .ecs-side-actions #ecs-launch-btn { background: var(--btn-primary-bg) !important; border-color: transparent !important; }
+.ecs-wizard .ecs-summary-title span { background: var(--control-bg); color: var(--text-muted); }
+.ecs-wizard .ecs-launch-note { background: var(--subtle-fg); color: var(--text-muted); border-color: var(--border-color); }
+.ecs-wizard-frame { display: block; width: 100%; height: 760px; min-height: 65vh; border: 0; }
+.ecs-wizard-design .ecs-grid { grid-template-columns: minmax(0, 1fr); grid-template-areas: "main" "footer"; }
+.ecs-wizard-design .ecs-side { display: none; }
+.ecs-wizard-design #ecs-step-design > .ecs-card-body { padding: 0; }
+.ecs-wizard-check .ecs-grid { grid-template-columns: minmax(0, 1fr); grid-template-areas: "side" "footer"; }
+.ecs-wizard-check .ecs-main { display: none; }
+.ecs-wizard-check .ecs-side { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 1fr); align-items: start; }
+@media (max-width: 1000px) {
+	.ecs-wizard .ecs-grid { grid-template-columns: minmax(0, 1fr); grid-template-areas: "main" "side" "footer"; }
+	.ecs-wizard .ecs-main, .ecs-wizard .ecs-side { grid-row: auto; }
+	.ecs-wizard .ecs-side { display: flex; }
+	.ecs-wizard-design .ecs-side { display: none; }
+	.ecs-wizard-check .ecs-grid { grid-template-areas: "side" "footer"; }
+}
+.ecs-wizard .ecs-card[data-step] .ecs-step { background: var(--control-bg); color: var(--text-color); box-shadow: none; }

@@ -597,30 +597,34 @@ def _sample_document(payload, sample_name):
 @frappe.whitelist(methods=["GET"])
 def get_bootstrap(campaign_name=None):
 	campaign_name = str(campaign_name or "").strip()
+	workflow_only = False
 	if campaign_name:
 		audience_doctype = frappe.db.get_value("Campaign", campaign_name, "custom_audience_doctype") or "Lead"
 		_check_permission("read", audience_doctype)
 	else:
-		frappe.has_permission("Campaign", ptype="create", throw=True)
-		if not (frappe.has_permission("Lead", ptype="read") or (
-			frappe.has_permission("Customer", ptype="read") and frappe.has_permission("Contact", ptype="read")
-		)):
-			frappe.throw(_("Read access to Lead or Customer and Contact is required"), frappe.PermissionError)
+		can_target = any(frappe.has_permission(dt, ptype="read") for dt in ("Lead", "Contact"))
+		workflow_only = not (frappe.has_permission("Campaign", ptype="create") and can_target)
+		if workflow_only:
+			# Composing a reusable workflow email must not require Campaign creation
+			# or access to campaign recipients. Sending endpoints keep their checks.
+			if not frappe.has_permission("Email Template", ptype="create"):
+				frappe.has_permission("Email Template", ptype="write", throw=True)
 	accounts = frappe.get_list(
 		"Email Account",
 		filters={"enable_outgoing": 1},
 		fields=["name", "email_id", "default_outgoing"],
 		order_by="default_outgoing desc, modified desc",
 		limit=100,
-	)
+	) if frappe.has_permission("Email Account", ptype="read") else []
 	email_groups = frappe.get_list(
 		"Email Group",
 		fields=["name", "title"],
 		order_by="title asc",
 		limit=500,
-	)
+	) if frappe.has_permission("Email Group", ptype="read") else []
 	start = _system_to_studio_datetime(now_datetime() + timedelta(minutes=5))
 	return {
+		"workflow_only": workflow_only,
 		"start_date": start.strftime("%Y-%m-%d"),
 		"start_time": start.strftime("%H:%M:%S"),
 		"email_accounts": [

@@ -175,6 +175,10 @@ frappe.listview_settings["Email Template"] = frappe.listview_settings["Email Tem
 	frappe.provide("frappe.email_template_builder");
 	frappe.email_template_builder.show_ai_create_dialog = show_ai_create_dialog;
 
+	frappe.listview_settings["Email Template"].primary_action = function () {
+		frappe.set_route("email-campaign-studio", {new: Date.now().toString(36)});
+	};
+
 	frappe.listview_settings["Email Template"].onload = function (listview) {
 		if (existing_onload) existing_onload(listview);
 		frappe.reach_folder_sidebar.setup(listview);
