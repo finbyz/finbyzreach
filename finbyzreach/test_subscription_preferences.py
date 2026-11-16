@@ -135,17 +135,17 @@ class TestSubscriptionPreferences(unittest.TestCase):
 		preferences._ensure_public_subscriber_lead("person@example.com")
 		self.assertEqual(get_doc.call_count, 1)
 
-	@patch.object(email_marketing.frappe, "db", new=MagicMock())
-	def test_disabled_content_topic_blocks_scheduled_delivery(self):
-		db = email_marketing.frappe.db
-		db.get_value.side_effect = [0, 1]
-		recipient = SimpleNamespace(custom_unsubscribed=0)
+	def test_disabled_content_topic_does_not_gate_scheduled_delivery(self):
+		recipient = frappe._dict(custom_unsubscribed=0, custom_recipient_email="person@example.com", recipient="LEAD-1", email_campaign_for="Lead")
 		campaign = frappe._dict(custom_subscription_topic="Marketing E-Mails", custom_content_topic="News")
-		self.assertEqual(
-			email_marketing._current_recipient_exclusion(recipient, campaign),
-			"Content topic unavailable or disabled",
-		)
-		db.get_value.assert_any_call("Subscription Topic", "News", "disabled")
+		with patch.object(email_marketing, "email_policy", return_value=frappe._dict(available=True, consent_required=1)), \
+			patch.object(email_marketing, "consent_exclusion", return_value=None), \
+			patch.object(frappe.db, "get_value", return_value=frappe._dict(disabled=0, unsubscribed=0, status="Lead")) as get_value, \
+			patch.object(email_marketing, "_linked_unsubscribed_leads", return_value=set()), \
+			patch.object(email_marketing, "_globally_unsubscribed_emails", return_value=set()), \
+			patch.object(email_marketing, "_reference_unsubscribed_pairs", return_value=set()):
+			self.assertIsNone(email_marketing._current_recipient_exclusion(recipient, campaign))
+			self.assertFalse(any(call.args[0] == "Subscription Topic" for call in get_value.call_args_list))
 
 	@patch.object(email_marketing, "_mark_campaign_recipient_unsubscribed")
 	@patch.object(preferences, "signed_recipient", return_value=(SimpleNamespace(campaign_name="Campaign-1"), "person@example.com"))

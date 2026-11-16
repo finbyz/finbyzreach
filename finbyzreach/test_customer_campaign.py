@@ -27,6 +27,9 @@ def _make_get_value(records):
 class TestCustomerCampaign(TestCase):
 	def setUp(self):
 		self.enterContext(patch.object(frappe, "_", side_effect=lambda value: value))
+		for module in ("finbyzreach.customer_campaign", "finbyzreach.email_marketing"):
+			self.enterContext(patch(module + ".email_policy", return_value=frappe._dict(available=True, consent_required=1, deliver_while_pending=0)))
+			self.enterContext(patch(module + ".suppressed_addresses", return_value={}))
 
 	def test_contact_for_customer_requires_both_names(self):
 		self.assertFalse(contact_for_customer("CUST-1", ""))
@@ -261,7 +264,7 @@ class TestCustomerCampaign(TestCase):
 	def test_customer_test_send_honors_contact_reference_optout(self):
 		def get_all(doctype, **kwargs):
 			return ["CONT-1"] if doctype in ("Contact Email", "Contact") else []
-		with patch("finbyzreach.email_marketing.is_subscribed", return_value=True), \
+		with patch("finbyzreach.email_marketing.consent_exclusion", return_value=None), \
 			patch("finbyzreach.email_marketing._globally_unsubscribed_emails", return_value=set()), \
 			patch("finbyzreach.email_marketing._reference_unsubscribed_pairs", side_effect=lambda names, doctype: {("CONT-1", "person@example.com")} if doctype == "Contact" else set()), \
 			patch.object(frappe, "get_all", side_effect=get_all), \
@@ -272,7 +275,7 @@ class TestCustomerCampaign(TestCase):
 	def test_customer_test_send_honors_customer_reference_optout(self):
 		def get_all(doctype, **kwargs):
 			return {"Contact Email": ["CONT-1"], "Contact": ["CONT-1"], "Dynamic Link": ["CUST-1"]}.get(doctype, [])
-		with patch("finbyzreach.email_marketing.is_subscribed", return_value=True), \
+		with patch("finbyzreach.email_marketing.consent_exclusion", return_value=None), \
 			patch("finbyzreach.email_marketing._globally_unsubscribed_emails", return_value=set()), \
 			patch("finbyzreach.email_marketing._reference_unsubscribed_pairs", side_effect=lambda names, doctype: {("CUST-1", "person@example.com")} if doctype == "Customer" else set()), \
 			patch.object(frappe, "get_all", side_effect=get_all), \
@@ -334,7 +337,7 @@ class TestCustomerCampaign(TestCase):
 	@patch("finbyzreach.email_marketing._globally_unsubscribed_emails", return_value=set())
 	@patch("finbyzreach.email_marketing._reference_unsubscribed_pairs", return_value=set())
 	@patch("finbyzreach.email_marketing._normalized_email", return_value="ok@example.com")
-	@patch("finbyzreach.customer_campaign.is_subscribed", return_value=True)
+	@patch("finbyzreach.customer_campaign.consent_exclusion", return_value=None)
 	@patch.object(frappe.db, "get_value")
 	def test_current_exclusion_passes_eligible(self, get_value, is_sub, norm, reference_unsub, glob_unsub):
 		get_value.side_effect = _make_get_value({
@@ -422,7 +425,7 @@ class TestCustomerCampaign(TestCase):
 			patch("finbyzreach.email_marketing._normalized_email", return_value="ok@example.com"), \
 			patch("finbyzreach.email_marketing._globally_unsubscribed_emails", return_value=set()), \
 			patch("finbyzreach.email_marketing._reference_unsubscribed_pairs", return_value=set()), \
-			patch("finbyzreach.customer_campaign.is_subscribed", return_value=False):
+			patch("finbyzreach.customer_campaign.consent_exclusion", return_value="No confirmed subscription to Updates"):
 			self.assertEqual(
 				current_customer_exclusion(recipient, campaign),
 				"No confirmed subscription to Updates",

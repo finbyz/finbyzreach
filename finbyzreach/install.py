@@ -354,6 +354,8 @@ def after_install():
 	setup_membership()
 	from finbyzreach.patches.v1_0.add_list_folder_sidebar import execute as setup_folder_sidebar
 	setup_folder_sidebar()
+	from finbyzreach.patches.v1_0.add_consent_policy import execute as setup_consent
+	setup_consent()
 
 
 def setup_email_template_library():
