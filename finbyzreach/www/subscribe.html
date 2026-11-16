@@ -205,8 +205,8 @@
       if (!selected_topics.length) return;
       frappe.call({
         method: 'finbyzreach.subscription_preferences.request_public_subscriptions',
-        args: {email, selected_topics},
-        callback: () => { document.getElementById('registration-result').textContent = {{ copy.pending | tojson }}; },
+        args: {email, selected_topics, language: {{ language | tojson }}},
+        callback: (r) => { document.getElementById('registration-result').textContent = r.message === "Pending" ? {{ copy.pending | tojson }} : {{ copy.subscribed | tojson }}; },
         error: () => { document.getElementById('registration-result').textContent = {{ copy.error | tojson }}; }
       });
     });

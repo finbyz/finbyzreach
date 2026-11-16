@@ -1,7 +1,7 @@
 import frappe
 from frappe.utils.verified_command import get_signed_params
 
-from finbyzreach.subscription_preferences import LANGUAGES, signed_recipient, topic_rows
+from finbyzreach.subscription_preferences import LANGUAGES, signed_recipient, topic_rows, signed_address, address_urls
 
 
 COPY = {
@@ -14,6 +14,7 @@ COPY = {
 
 def get_copy(language):
 	copy = COPY[language].copy()
+	copy["subscribed"] = {"de": "Ihre Abonnements wurden aktualisiert.", "en": "Your subscriptions have been updated.", "fr": "Vos abonnements ont été mis à jour.", "it": "I tuoi abbonamenti sono stati aggiornati."}[language]
 	row = frappe.db.get_value(
 		"Subscription Center Translation",
 		{"parent": "Subscription Center Settings", "language": language},
@@ -29,6 +30,17 @@ def get_context(context):
 	context.no_cache = True
 	try:
 		raw = frappe.safe_decode(getattr(frappe.request, "query_string", b""))
+		if frappe.form_dict.get("consent_email"):
+			email, email_type, values = signed_address(raw)
+			language = values.get("lang", ["de"])[0]
+			language = language if language in LANGUAGES else "de"
+			context.email = email
+			context.topics = topic_rows(email, language)
+			context.copy = get_copy(language)
+			context.language = language
+			context.language_urls = {lang: address_urls(email, email_type, lang)["email_preference_center_url"] for lang in LANGUAGES}
+			context.unsubscribe_all_url = address_urls(email, email_type, language)["unsubscribe_all_url"]
+			return context
 		campaign_recipient = frappe.form_dict.get("campaign_recipient")
 		recipient, email = signed_recipient(campaign_recipient, raw)
 		party_doctype = recipient.get("email_campaign_for") or "Lead"
@@ -42,7 +54,7 @@ def get_context(context):
 				raise frappe.ValidationError
 			preferred_doc = frappe.get_doc("Contact", recipient.custom_contact)
 		preferred = (preferred_doc.get("custom_preferred_language") or preferred_doc.get("language")
-			or party.get("custom_preferred_language") or party.get("language") or "en").lower()[:2]
+			or party.get("custom_preferred_language") or party.get("language") or "de").lower()[:2]
 		language = frappe.form_dict.get("lang") or preferred
 		language = language if language in LANGUAGES else "en"
 		campaign = frappe.db.get_value("Campaign", recipient.campaign_name, ["custom_subscription_topic", "custom_content_topic"], as_dict=True)
@@ -52,6 +64,7 @@ def get_context(context):
 			row["is_current"] = row["name"] == current_topic
 		context.email = email
 		context.campaign_recipient = campaign_recipient
+		context.unsubscribe_all_url = address_urls(email, campaign.custom_subscription_topic if campaign else "", language)["unsubscribe_all_url"]
 		context.topics = rows
 		context.copy = get_copy(language)
 		context.language = language

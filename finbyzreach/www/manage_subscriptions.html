@@ -354,7 +354,7 @@
             }
 
             frappe.call({
-                method: 'finbyzreach.email_marketing.update_subscription_preferences',
+                method: urlParams.has('consent_email') ? 'finbyzreach.subscription_preferences.update_address_preferences' : 'finbyzreach.email_marketing.update_subscription_preferences',
                 args: {
                     campaign_recipient: campaign_recipient,
                     email: email,
