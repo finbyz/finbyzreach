@@ -72,6 +72,8 @@ WEEKDAY_FIELDS = (
 	"send_saturday",
 	"send_sunday",
 )
+from finbyzreach.consent import email_policy, consent_exclusion, suppressed_addresses
+
 FEEDBACK_DELIVERY_STATUSES = ("Bounced", "Soft-Bounced", "Marked As Spam")
 TERMINAL_DELIVERY_STATUSES = ("Sent", "Failed", "Skipped", "Cancelled", *FEEDBACK_DELIVERY_STATUSES)
 REPEAT_UNITS = ("Minutes", "Hours", "Days")
@@ -311,7 +313,7 @@ def validate_campaign(doc, require_ready=False, skip_queued_check=False):
 	):
 		frappe.throw(_("Subscription Topic {0} is disabled").format(doc.custom_subscription_topic))
 	if require_ready:
-		if frappe.db.get_value("Subscription Topic", doc.custom_subscription_topic, "category") != "Mailing Type":
+		if not email_policy(doc.custom_subscription_topic).available:
 			frappe.throw(_("Select an active mailing type"))
 		if doc.get("custom_content_topic") and frappe.db.get_value("Subscription Topic", doc.custom_content_topic, "category") != "Topic":
 			frappe.throw(_("Select an active content topic"))
@@ -638,8 +640,14 @@ def test_recipient_exclusion(email, subscription_topic=None, audience_doctype="L
 	normalized_email = _normalized_email(email)
 	if not normalized_email:
 		return _("Missing or invalid email")
-	if subscription_topic and not is_subscribed(normalized_email, subscription_topic):
-		return _("No confirmed subscription to {0}").format(subscription_topic)
+	if subscription_topic:
+		policy = email_policy(subscription_topic)
+		reason = consent_exclusion(normalized_email, subscription_topic, policy=policy)
+		if reason:
+			return reason
+		if not cint(policy.consent_required):
+			return None
+
 	if normalized_email in _globally_unsubscribed_emails([normalized_email]):
 		return _("Globally unsubscribed")
 
@@ -732,7 +740,8 @@ def resolve_campaign_audience(campaign):
 		for name in include_leads
 	}
 	mailing_type = campaign.get("custom_subscription_topic")
-	content_topic = campaign.get("custom_content_topic")
+	policy = email_policy(mailing_type)
+	blocks = suppressed_addresses(normalized_by_lead.values())
 	preference_rows = []
 	if mailing_type:
 		for emails in _chunks(list(set(normalized_by_lead.values()) - {""})):
@@ -742,7 +751,7 @@ def resolve_campaign_audience(campaign):
 				fields=["email", "subscription_topic", "status"],
 				limit_page_length=0,
 			))
-	confirmed = {(row.email, row.subscription_topic) for row in preference_rows if row.status == "Subscribed"}
+	preference_statuses = {(row.email, row.subscription_topic): row.status for row in preference_rows}
 	global_unsubscribed = _globally_unsubscribed_emails(
 		{email for email in normalized_by_lead.values() if email}
 	)
@@ -759,30 +768,31 @@ def resolve_campaign_audience(campaign):
 		email = lead.email_id if lead else ""
 		normalized = normalized_by_lead.get(lead_name) or ""
 		reason = None
+		policy_reason = consent_exclusion(normalized, mailing_type, policy=policy, status=preference_statuses.get((normalized, mailing_type)), status_loaded=True, suppressions=blocks) if mailing_type else None
 		if not lead:
 			reason = "Lead unavailable"
 		elif lead_name in exclude_leads:
 			reason = "Excluded by Lead filters"
 		elif cint(lead.disabled):
 			reason = "Lead disabled"
-		elif cint(lead.unsubscribed):
+		elif cint(policy.consent_required) and (cint(lead.unsubscribed)):
 			reason = "Lead unsubscribed"
-		elif lead.status == "Do Not Contact":
+		elif cint(policy.consent_required) and (lead.status == "Do Not Contact"):
 			reason = "Do Not Contact"
-		elif lead_name in linked_unsubscribed:
+		elif cint(policy.consent_required) and (lead_name in linked_unsubscribed):
 			reason = "Linked Contact unsubscribed"
 		elif not normalized:
 			reason = "Missing or invalid email"
+		elif normalized in blocks:
+			reason = blocks[normalized]
 		elif normalized in exclude_emails:
 			reason = "Excluded by Email Group"
-		elif normalized in global_unsubscribed:
+		elif cint(policy.consent_required) and (normalized in global_unsubscribed):
 			reason = "Globally unsubscribed"
-		elif (lead_name, normalized) in reference_unsubscribed:
+		elif cint(policy.consent_required) and ((lead_name, normalized) in reference_unsubscribed):
 			reason = "Unsubscribed from Lead emails"
-		elif mailing_type and (normalized, mailing_type) not in confirmed:
-			reason = _("No confirmed subscription to {0}").format(mailing_type)
-		elif content_topic and (normalized, content_topic) not in confirmed:
-			reason = _("No confirmed subscription to {0}").format(content_topic)
+		elif policy_reason:
+			reason = policy_reason
 		elif normalized in seen_emails:
 			reason = "Duplicate email"
 		else:
@@ -1268,16 +1278,13 @@ def _log_event(
 
 
 def _current_recipient_exclusion(recipient, campaign):
-	if cint(recipient.custom_unsubscribed):
+	policy = email_policy(campaign.custom_subscription_topic)
+	reason = consent_exclusion(recipient.custom_recipient_email, campaign.custom_subscription_topic, policy=policy)
+	if reason:
+		return reason
+	if cint(policy.consent_required) and cint(recipient.custom_unsubscribed):
 		return _("Recipient unsubscribed")
-	if not campaign.custom_subscription_topic or frappe.db.get_value(
-		"Subscription Topic", campaign.custom_subscription_topic, "disabled"
-	):
-		return _("Subscription Topic unavailable or disabled")
-	if campaign.get("custom_content_topic") and frappe.db.get_value(
-		"Subscription Topic", campaign.custom_content_topic, "disabled"
-	) != 0:
-		return _("Content topic unavailable or disabled")
+
 	if recipient.email_campaign_for == "Customer":
 		from finbyzreach.customer_campaign import current_customer_exclusion
 		return current_customer_exclusion(recipient, campaign)
@@ -1292,23 +1299,18 @@ def _current_recipient_exclusion(recipient, campaign):
 		return _("Lead unavailable")
 	if cint(lead.disabled):
 		return _("Lead disabled")
-	if cint(lead.unsubscribed):
+	if cint(policy.consent_required) and (cint(lead.unsubscribed)):
 		return _("Lead unsubscribed")
-	if lead.status == "Do Not Contact":
+	if cint(policy.consent_required) and (lead.status == "Do Not Contact"):
 		return _("Do Not Contact")
-	if audience_doctype == "Lead" and recipient.recipient in _linked_unsubscribed_leads([recipient.recipient]):
+	if cint(policy.consent_required) and (audience_doctype == "Lead" and recipient.recipient in _linked_unsubscribed_leads([recipient.recipient])):
 		return _("Linked Contact unsubscribed")
 	normalized_email = _normalized_email(recipient.custom_recipient_email)
-	if normalized_email in _globally_unsubscribed_emails([normalized_email]):
+	if cint(policy.consent_required) and (normalized_email in _globally_unsubscribed_emails([normalized_email])):
 		return _("Globally unsubscribed")
-	if (recipient.recipient, normalized_email) in _reference_unsubscribed_pairs([recipient.recipient], audience_doctype):
+	if cint(policy.consent_required) and ((recipient.recipient, normalized_email) in _reference_unsubscribed_pairs([recipient.recipient], audience_doctype)):
 		return _("Unsubscribed from Lead emails")
-	if not is_subscribed(normalized_email, campaign.custom_subscription_topic):
-		return _("No confirmed subscription to {0}").format(campaign.custom_subscription_topic)
-	if campaign.get("custom_content_topic") and not is_subscribed(normalized_email, campaign.custom_content_topic):
-		return _("No confirmed subscription to {0}").format(campaign.custom_content_topic)
 	return None
-
 
 def _dispatch_recipient(recipient, campaign):
 	if recipient.custom_email_queue and frappe.db.exists(
@@ -1346,12 +1348,12 @@ def _dispatch_recipient(recipient, campaign):
 	present_links = {str(link.get("href") or "") for link in BeautifulSoup(rendered.html, "html.parser").find_all("a")}
 	html = decorate_campaign_links(rendered.html, campaign, recipient.name)
 	missing_links = []
-	if compliance_urls["unsubscribe_url"] not in present_links:
+	if campaign.custom_subscription_topic != "Transactional" and compliance_urls["unsubscribe_url"] not in present_links:
 		missing_links.append(
 			f'<a href="{escape(compliance_urls["unsubscribe_url"], quote=True)}">'
 			f'{escape(campaign.get("custom_unsubscribe_label") or _("Unsubscribe"))}</a>'
 		)
-	if compliance_urls["email_preference_center_url"] not in present_links:
+	if campaign.custom_subscription_topic != "Transactional" and compliance_urls["email_preference_center_url"] not in present_links:
 		missing_links.append(
 			f'<a href="{escape(compliance_urls["email_preference_center_url"], quote=True)}">'
 			f'{escape(campaign.get("custom_preference_label") or _("Email preference center"))}</a>'
@@ -1412,6 +1414,9 @@ def _dispatch_recipient(recipient, campaign):
 	)
 	if not queue:
 		frappe.throw(_("Frappe did not create an Email Queue record"))
+	from finbyzreach.consent import add_list_headers
+	if campaign.custom_subscription_topic != "Transactional":
+		add_list_headers(queue, compliance_urls["unsubscribe_url"])
 	if not cint(campaign.custom_enable_open_tracking):
 		queue.message = str(queue.message or "").replace("<!--email_open_check-->", "")
 		queue.db_set("message", queue.message, update_modified=False)
@@ -2016,7 +2021,7 @@ def track_marketing_click(campaign_recipient=None, url=None):
 	frappe.local.response["location"] = url
 
 
-@frappe.whitelist(allow_guest=True, methods=["GET"])
+@frappe.whitelist(allow_guest=True, methods=["GET", "POST"])
 def unsubscribe_marketing(**kwargs):
 	from finbyzreach.subscription_preferences import signed_recipient, unsubscribe
 
@@ -2074,7 +2079,7 @@ def get_unsubscribed_user_emails(self):
 	The queue's legacy reference-level list is bypassed for these campaign rows;
 	global opt-outs are checked in preview and again at dispatch time.
 	"""
-	if self._unsubscribe_method == f"/api/method/{UNSUBSCRIBE_METHOD}":
+	if self._unsubscribe_method in (f"/api/method/{UNSUBSCRIBE_METHOD}", "/api/method/finbyzreach.subscription_preferences.unsubscribe_address"):
 		return []
 	return _original_get_unsubscribed_user_emails(self)
 

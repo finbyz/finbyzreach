@@ -7,6 +7,7 @@ from frappe import _
 from frappe.utils import cint
 
 from finbyzreach.subscription_preferences import is_subscribed
+from finbyzreach.consent import email_policy, consent_exclusion, suppressed_addresses
 
 
 def contact_for_customer(customer_name, contact_name):
@@ -94,6 +95,8 @@ def resolve_customer_audience(campaign):
 				fields=["email", "subscription_topic", "status"], limit_page_length=0,
 			):
 				preference_statuses_by_email.setdefault(row.email, {})[row.subscription_topic] = row.status
+	policy = email_policy(campaign.get("custom_subscription_topic"))
+	blocks = suppressed_addresses(contact_emails)
 	seen = set()
 	global_unsubscribed = email_marketing._globally_unsubscribed_emails(contact_emails)
 	customer_unsubscribed = email_marketing._reference_unsubscribed_pairs(customers, "Customer")
@@ -120,26 +123,26 @@ def resolve_customer_audience(campaign):
 			preference_statuses = preference_statuses_by_email.get(normalized, {})
 			reason = None
 			unconfirmed_topic = None
+			policy_reason = consent_exclusion(normalized, campaign.get("custom_subscription_topic"), policy=policy, status=preference_statuses.get(campaign.get("custom_subscription_topic")), status_loaded=True, suppressions=blocks) if campaign.get("custom_subscription_topic") else None
 			if customer_name in exclude:
 				reason = "Excluded by Customer filters"
 			elif cint(customer.disabled):
 				reason = "Customer disabled"
-			elif cint(contact.unsubscribed):
+			elif cint(policy.consent_required) and (cint(contact.unsubscribed)):
 				reason = "Contact unsubscribed"
 			elif not normalized:
 				reason = "Missing or invalid email"
+			elif normalized in blocks:
+				reason = blocks[normalized]
 			elif normalized in exclude_emails:
 				reason = "Excluded by Email Group"
-			elif normalized in global_unsubscribed:
+			elif cint(policy.consent_required) and (normalized in global_unsubscribed):
 				reason = "Globally unsubscribed"
-			elif (customer_name, normalized) in customer_unsubscribed or (contact_name, normalized) in contact_unsubscribed:
+			elif cint(policy.consent_required) and ((customer_name, normalized) in customer_unsubscribed or (contact_name, normalized) in contact_unsubscribed):
 				reason = "Unsubscribed from Customer or Contact emails"
-			elif campaign.get("custom_subscription_topic") and preference_statuses.get(campaign.custom_subscription_topic) != "Subscribed":
+			elif policy_reason:
 				unconfirmed_topic = campaign.custom_subscription_topic
-				reason = _("No confirmed subscription to {0}").format(campaign.custom_subscription_topic)
-			elif campaign.get("custom_content_topic") and preference_statuses.get(campaign.custom_content_topic) != "Subscribed":
-				unconfirmed_topic = campaign.custom_content_topic
-				reason = _("No confirmed subscription to {0}").format(campaign.custom_content_topic)
+				reason = policy_reason
 			elif normalized in seen:
 				reason = "Duplicate email"
 			else:
@@ -163,18 +166,15 @@ def current_customer_exclusion(recipient, campaign):
 	contact_name = recipient.get("custom_contact")
 	if not contact_for_customer(recipient.recipient, contact_name):
 		return _("Contact no longer linked to Customer")
+	policy = email_policy(campaign.custom_subscription_topic)
 	contact = frappe.db.get_value("Contact", contact_name, ["email_id", "unsubscribed"], as_dict=True)
-	if not contact or cint(contact.unsubscribed):
+	if not contact or (cint(policy.consent_required) and cint(contact.unsubscribed)):
 		return _("Contact unavailable or unsubscribed")
 	if email_marketing._normalized_email(contact.email_id) != recipient.custom_normalized_email:
 		return _("Contact email changed")
-	if recipient.custom_normalized_email in email_marketing._globally_unsubscribed_emails([recipient.custom_normalized_email]):
+	if cint(policy.consent_required) and (recipient.custom_normalized_email in email_marketing._globally_unsubscribed_emails([recipient.custom_normalized_email])):
 		return _("Globally unsubscribed")
-	if ((recipient.recipient, recipient.custom_normalized_email) in email_marketing._reference_unsubscribed_pairs([recipient.recipient], "Customer")
-		or (contact_name, recipient.custom_normalized_email) in email_marketing._reference_unsubscribed_pairs([contact_name], "Contact")):
+	if cint(policy.consent_required) and (((recipient.recipient, recipient.custom_normalized_email) in email_marketing._reference_unsubscribed_pairs([recipient.recipient], "Customer")
+		or (contact_name, recipient.custom_normalized_email) in email_marketing._reference_unsubscribed_pairs([contact_name], "Contact"))):
 		return _("Unsubscribed from Customer or Contact emails")
-	if not is_subscribed(recipient.custom_normalized_email, campaign.custom_subscription_topic):
-		return _("No confirmed subscription to {0}").format(campaign.custom_subscription_topic)
-	if campaign.get("custom_content_topic") and not is_subscribed(recipient.custom_normalized_email, campaign.custom_content_topic):
-		return _("No confirmed subscription to {0}").format(campaign.custom_content_topic)
-	return None
+	return consent_exclusion(recipient.custom_normalized_email, campaign.custom_subscription_topic, policy=policy)

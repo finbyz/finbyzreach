@@ -160,6 +160,7 @@ after_migrate = [
 # }
 
 extend_doctype_class = {
+    "Email Queue": ["finbyzreach.consent.ConsentQueueMixin"],
 	"Campaign": [
 		"finbyzreach.email_marketing.CampaignEmailBroadcastMixin",
 	],
@@ -177,7 +178,9 @@ doc_events = {
         "after_insert": [
             "finbyzreach.doc_events.communication.after_insert",
             "finbyzreach.email_marketing.communication_after_insert",
-        ]
+            "finbyzreach.consent.capture_delivery_failure",
+        ],
+        "on_change": "finbyzreach.consent.capture_delivery_failure",
     },
     "File": {
         "after_insert": "finbyzreach.email_template_builder.realtime.on_file_after_insert"
