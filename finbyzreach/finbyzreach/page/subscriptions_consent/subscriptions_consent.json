@@ -1,0 +1,10 @@
+{
+ "doctype": "Page",
+ "name": "subscriptions-consent",
+ "page_name": "subscriptions-consent",
+ "title": "Subscriptions & consent",
+ "module": "Finbyzreach",
+ "standard": "Yes",
+ "system_page": 0,
+ "roles": []
+}

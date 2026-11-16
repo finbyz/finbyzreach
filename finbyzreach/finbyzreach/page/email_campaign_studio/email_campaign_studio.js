@@ -207,15 +207,15 @@ class EmailCampaignStudio {
 			{ fieldtype: "Column Break" },
 			{
 				fieldname: "subscription_topic",
-				label: __("Mailing Type"),
+				label: __("Email Type"),
 				fieldtype: "Link",
 				options: "Subscription Topic",
 				reqd: 1,
-				description: __("Only confirmed subscribers to this email type can receive the campaign."),
-				get_query: () => ({ filters: { disabled: 0, category: "Mailing Type" } }),
+				description: __("Consent and double opt-in are checked using this email type. Transactional messages ignore marketing opt-outs."),
+				get_query: () => ({ filters: { disabled: 0, category: ["in", ["Mailing Type", "System"]] } }),
 				change: topicChange,
 			},
-			{ fieldname: "content_topic", label: __("Content Topic"), fieldtype: "Link", options: "Subscription Topic", description: __("Optional topic. Recipients must also subscribe to this topic."), get_query: () => ({ filters: { disabled: 0, category: "Topic" } }), change: topicChange },
+			{ fieldname: "content_topic", label: __("Content Topic"), fieldtype: "Link", options: "Subscription Topic", description: __("Optional preference for filtering. Topics do not control consent."), get_query: () => ({ filters: { disabled: 0, category: "Topic" } }), change: topicChange },
 			{ fieldtype: "Section Break", label: __("Email content") },
 			{
 				fieldname: "email_template",
@@ -559,7 +559,7 @@ class EmailCampaignStudio {
 		this.$root.find("#ecs-step-design .ecs-step").text("2");
 		this.$root.find("#ecs-step-3").toggle(this.wizardStep === "design" && this.wizardUsage !== "workflow");
 		this.$root.find("[data-wizard-create]").toggle(Boolean(this.editable));
-		this.$root.find("#ecs-content-form [data-fieldname='campaign_title'], #ecs-content-form [data-fieldname='subscription_topic'], #ecs-content-form [data-fieldname='content_topic'], #ecs-content-form [data-fieldname='subject_override']").toggle(this.wizardUsage !== "workflow");
+		this.$root.find("#ecs-content-form [data-fieldname='campaign_title'], #ecs-content-form [data-fieldname='content_topic'], #ecs-content-form [data-fieldname='subject_override']").toggle(this.wizardUsage !== "workflow");
 		this.$root.find(".ecs-summary-title h3").text(this.wizardUsage === "workflow" ? __("Email summary") : __("Launch summary"));
 		this.$root.toggleClass("ecs-wizard-design", this.wizardStep === "design");
 		this.$root.toggleClass("ecs-wizard-check", this.wizardStep === "check");
@@ -644,10 +644,17 @@ class EmailCampaignStudio {
 			return frappe.set_route("List", "Email Template");
 		}
 		if (this.wizardStep === "what") {
-			const required = this.wizardUsage === "workflow" ? ["email_template"] : ["campaign_title", "subscription_topic", "email_template"];
+			const required = this.wizardUsage === "workflow" ? (this.consentPolicyEnabled ? ["subscription_topic", "email_template"] : ["email_template"]) : ["campaign_title", "subscription_topic", "email_template"];
 			if (required.some((field) => !String(this.contentForm.get_value(field) || "").trim())) {
 				frappe.msgprint(__("Choose an email and complete the required setup fields before continuing."));
 				return;
+			}
+			if (this.consentPolicyEnabled) {
+				if (!(await this.flushWizardDesign())) return;
+				const savedType = await frappe.call({method: this.method + "set_email_type", type: "POST", args: {template_name: this.contentForm.get_value("email_template"), email_type: this.contentForm.get_value("subscription_topic")}});
+				if (savedType.message?.updated && this.wizardFrame) {
+					this.wizardFrame.remove(); this.wizardFrame = null; this.wizardTemplate = null;
+				}
 			}
 			if (!(await this.loadWizardDesign())) return;
 		}
@@ -980,6 +987,7 @@ class EmailCampaignStudio {
 				if (requestId !== this.bootstrapRequest || route.key !== this.routeKey) return null;
 				this.bootstrapLoaded = true;
 				this.wizardStep = "what";
+				this.consentPolicyEnabled = Boolean(data.consent_policy_enabled);
 				this.workflowOnly = Boolean(data.workflow_only);
 				this.wizardUsage = this.workflowOnly ? "workflow" : "segment";
 				if (this.wizardUsageForm) await this.wizardUsageForm.set_value("usage", this.workflowOnly ? "Automation workflow" : "Segment campaign");

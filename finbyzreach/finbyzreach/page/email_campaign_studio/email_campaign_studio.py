@@ -29,6 +29,7 @@ from finbyzreach.email_template_builder.services import (
 )
 from finbyzreach import email_marketing
 from finbyzreach.segments import get_segment_filters
+from finbyzreach.consent import policy_ready
 
 
 MAX_EXCLUSION_LISTS = 50
@@ -625,6 +626,7 @@ def get_bootstrap(campaign_name=None):
 	start = _system_to_studio_datetime(now_datetime() + timedelta(minutes=5))
 	return {
 		"workflow_only": workflow_only,
+		"consent_policy_enabled": policy_ready(),
 		"start_date": start.strftime("%Y-%m-%d"),
 		"start_time": start.strftime("%H:%M:%S"),
 		"email_accounts": [
@@ -943,14 +945,7 @@ def send_test(payload=None, recipient=None, sample_lead=None):
 		if campaign and campaign.custom_broadcast_status != "Draft"
 		else payload.get("subscription_topic")
 	)
-	test_content_topic = (
-		campaign.get("custom_content_topic")
-		if campaign and campaign.custom_broadcast_status != "Draft"
-		else payload.get("content_topic")
-	)
 	exclusion_reason = email_marketing.test_recipient_exclusion(recipient, test_topic, audience_doctype)
-	if not exclusion_reason and test_content_topic:
-		exclusion_reason = email_marketing.test_recipient_exclusion(recipient, test_content_topic, audience_doctype)
 	if exclusion_reason:
 		frappe.throw(
 			_("Test email blocked by recipient suppression: {0}").format(exclusion_reason)
@@ -1050,3 +1045,20 @@ def send_test(payload=None, recipient=None, sample_lead=None):
 	)
 	return {"status": "queued", "email_queue": queue.name if queue else None}
 																														
+
+
+@frappe.whitelist(methods=["POST"])
+def set_email_type(template_name, email_type):
+	from finbyzreach.consent import email_policy, policy_ready
+	if not policy_ready():
+		frappe.throw(_("The consent policy migration must be applied first"))
+	if not email_policy(email_type).available:
+		frappe.throw(_("Choose an active email type"))
+	template = frappe.get_doc("Email Template", template_name, for_update=True)
+	template.check_permission("read")
+	if template.get("custom_email_type") == email_type:
+		return {"updated": False}
+	template.check_permission("write")
+	template.custom_email_type = email_type
+	template.save()
+	return {"updated": True}
