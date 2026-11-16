@@ -936,6 +936,16 @@
    "in_list_view": 1,
    "search_index": 1,
    "name": "Email Template-custom_folder"
+  },
+  {
+   "dt": "Email Template",
+   "fieldname": "custom_email_type",
+   "fieldtype": "Link",
+   "label": "Email type",
+   "options": "Subscription Topic",
+   "insert_after": "custom_folder",
+   "module": "Email Template Builder",
+   "name": "Email Template-custom_email_type"
   }
  ],
  "custom_perms": [],
