@@ -1,7 +1,7 @@
 frappe.ui.form.on("Campaign", {
 	setup(frm) {
 		frm.set_query("custom_email_account", () => ({ filters: { enable_outgoing: 1 } }));
-		frm.set_query("custom_subscription_topic", () => ({ filters: { disabled: 0 } }));
+		frm.set_query("custom_subscription_topic", () => ({ filters: { disabled: 0, category: ["in", ["Mailing Type", "System"]] } }));
 		frm.set_query("custom_email_template", () => ({
 			filters: [["Email Template", "custom_reference_doctype", "in", ["", frm.doc.custom_personalization_doctype || frm.doc.custom_audience_doctype || "Lead"]]],
 		}));
