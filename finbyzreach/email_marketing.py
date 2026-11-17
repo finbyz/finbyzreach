@@ -640,6 +640,11 @@ def test_recipient_exclusion(email, subscription_topic=None, audience_doctype="L
 	normalized_email = _normalized_email(email)
 	if not normalized_email:
 		return _("Missing or invalid email")
+	if not subscription_topic:
+		# Hard bounces and spam complaints block every email, typed or not (rule 4.2).
+		blocks = suppressed_addresses([normalized_email])
+		if normalized_email in blocks:
+			return _(blocks[normalized_email])
 	if subscription_topic:
 		policy = email_policy(subscription_topic)
 		reason = consent_exclusion(normalized_email, subscription_topic, policy=policy)

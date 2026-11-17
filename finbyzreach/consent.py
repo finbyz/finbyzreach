@@ -127,8 +127,11 @@ class ConsentQueueMixin:
 				reason = _current_recipient_exclusion(campaign_recipient, campaign)
 		elif method == "/api/method/finbyzreach.subscription_preferences.unsubscribe_address":
 			from finbyzreach.email_marketing import test_recipient_exclusion
+			if not str(params.get("email_type") or "").strip():
+				# Every email needs exactly one email type; without it consent cannot be checked (rule 4.1).
+				reason = _("No email type set: choose a mailing type or Transactional")
 			for row in self.recipients:
-				if row.status != "Sent":
+				if not reason and row.status != "Sent":
 					reason = test_recipient_exclusion(row.recipient, params.get("email_type"))
 					if reason:
 						break

@@ -137,6 +137,24 @@ class TestConsentPolicy(TestCase):
 			self.assertEqual(q.db_set.call_args.args[0]["status"], "Error")
 			self.assertEqual(set_value.call_args.args[2]["custom_delivery_status"], "Skipped")
 
+	def test_queue_without_email_type_is_suppressed_before_smtp(self):
+		class Base:
+			def send(self, *args, **kwargs): raise AssertionError("SMTP must not be reached")
+		class Queue(consent.ConsentQueueMixin, Base): pass
+		q = Queue(); q.unsubscribe_method = "/api/method/finbyzreach.subscription_preferences.unsubscribe_address"
+		q.unsubscribe_params = '{"email_type": ""}'
+		q.recipients = [frappe._dict(status="Not Sent", recipient="person@example.com")]
+		q.db_set = MagicMock()
+		q.send(force_send=True)
+		values = q.db_set.call_args.args[0]
+		self.assertEqual(values["status"], "Error")
+		self.assertIn("No email type", values["error"])
+
+	def test_untyped_test_recipient_still_blocks_hard_bounce(self):
+		from finbyzreach import email_marketing
+		with patch.object(email_marketing, "suppressed_addresses", return_value={"person@example.com": "Hard bounce"}):
+			self.assertEqual(email_marketing.test_recipient_exclusion("Person@Example.com", None), "Hard bounce")
+
 	def test_queue_does_not_reclassify_already_sent_messages(self):
 		class Base:
 			def send(self, *args, **kwargs): return "native-no-op"
