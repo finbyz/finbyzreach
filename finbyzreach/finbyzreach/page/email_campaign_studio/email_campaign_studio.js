@@ -76,7 +76,10 @@ class EmailCampaignStudio {
 		if (frappe.route_options && !Object.keys(frappe.route_options).length) {
 			frappe.route_options = {};
 		}
-		if (!value) return { campaign: "", key: "new:" + session };
+		if (!value) {
+			const preset = this.segmentPreset();
+			return { campaign: "", key: "new:" + session + (preset.segment ? ":segment:" + preset.segment : "") };
+		}
 		let campaign;
 		try {
 			campaign = String(JSON.parse(value));
@@ -84,6 +87,17 @@ class EmailCampaignStudio {
 			campaign = value;
 		}
 		return { campaign: campaign, key: "campaign:" + campaign + ":" + session };
+	}
+
+	segmentPreset() {
+		// "Send email" on a Reach Segment opens a new campaign for that segment.
+		const params = new URLSearchParams(window.location.search || "");
+		const options = frappe.route_options || {};
+		const audience = String(options.reach_audience || params.get("reach_audience") || "Lead");
+		return {
+			segment: String(options.reach_segment || params.get("reach_segment") || ""),
+			audience: ["Lead", "Contact", "Customer"].includes(audience) ? audience : "Lead",
+		};
 	}
 
 	handleRouteChange() {
@@ -1036,6 +1050,11 @@ class EmailCampaignStudio {
 	}
 
 	async applyNewCampaignDefaults(data) {
+		const preset = this.segmentPreset();
+		if (frappe.route_options) {
+			delete frappe.route_options.reach_segment;
+			delete frappe.route_options.reach_audience;
+		}
 		this.sourceCampaign = "";
 		this.updateCampaignNavigation();
 		this.presetFilters = null;
@@ -1044,7 +1063,7 @@ class EmailCampaignStudio {
 		try {
 			await this.runBootstrapStep(__("Preparing workspace controls"), () => this.setEditableState(true, "Draft"));
 			await this.runBootstrapStep(__("Loading audience type"), () => this.setBootstrapFormValues(this.audienceForm, {
-				audience_doctype: "Lead", contact_mode: "Primary Contact", personalization_doctype: "Customer",
+				audience_doctype: preset.segment ? preset.audience : "Lead", contact_mode: "Primary Contact", personalization_doctype: "Customer",
 			}));
 			this.syncAudienceControls();
 			await this.runBootstrapStep(__("Loading campaign segment"), () => this.setBootstrapFormValues(this.segmentForm, {
@@ -1094,6 +1113,15 @@ class EmailCampaignStudio {
 		this.renderPreview(null);
 		this.syncCustomControls();
 		this.showTemplateState();
+		if (preset.segment) {
+			this.applyingSegmentSelection = true;
+			try {
+				await this.segmentForm.set_value("segment_name", preset.segment);
+			} finally {
+				this.applyingSegmentSelection = false;
+			}
+			await this.loadSegment(preset.segment);
+		}
 	}
 
 	async applyCampaignData(campaign) {

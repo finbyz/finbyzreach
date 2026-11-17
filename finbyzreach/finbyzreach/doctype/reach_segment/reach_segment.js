@@ -30,6 +30,7 @@ class ReachSegmentBuilder {
             <section class="rs-records"><div class="rs-toolbar" role="tablist">
                 <button type="button" class="btn btn-default btn-sm" role="tab" data-tab="members">${__("Members")}</button>
                 <button type="button" class="btn btn-default btn-sm" role="tab" data-tab="excluded">${__("Excluded")}</button>
+                <button type="button" class="btn btn-default btn-sm" role="tab" data-tab="used">${__("Used in")}</button>
                 <button type="button" class="btn btn-default btn-sm" role="tab" data-tab="history">${__("History")}</button>
             </div><p class="rs-summary text-muted"></p><div class="rs-members-view"><div class="rs-toolbar">
                 <strong class="rs-count"></strong><input type="search" class="form-control rs-search" aria-label="${escape(__("Search members"))}" placeholder="${escape(__("Search members"))}">
@@ -40,7 +41,7 @@ class ReachSegmentBuilder {
             </div><div class="rs-excluded-view" hidden><div class="rs-excluded-results"></div><div class="rs-pagination">
                 <button type="button" class="btn btn-default btn-sm rs-excluded-prev">${__("Previous")}</button><span class="rs-excluded-page"></span>
                 <button type="button" class="btn btn-default btn-sm rs-excluded-next">${__("Next")}</button>
-            </div></div><div class="rs-history-view" hidden><div class="rs-chart"></div><div class="rs-history-results"></div>
+            </div></div><div class="rs-used-view" hidden><div class="rs-used-results"></div></div><div class="rs-history-view" hidden><div class="rs-chart"></div><div class="rs-history-results"></div>
                 <button type="button" class="btn btn-default btn-sm rs-history-next">${__("Next changes")}</button>
             </div></section></div>`);
         this.$root.on("click","[data-tab]",e=>this.setTab($(e.currentTarget).attr("data-tab")));
@@ -218,6 +219,7 @@ class ReachSegmentBuilder {
         if (!this.ready || this.disposed) return;
         if (this.tab === "excluded") return this.loadExcluded();
         if (this.tab === "history") return this.loadHistory();
+        if (this.tab === "used") return this.loadUsage();
         const sequence = ++this.sequence;
         if (reset) { this.page = 0; this.cursors = [null]; }
         const args = {segment_name: this.frm.is_new() ? null : this.frm.doc.name, after: this.cursors[this.page], page_length: 50, search: this.$root.find(".rs-search").val(), include_count: reset ? 1 : 0};
@@ -274,7 +276,7 @@ class ReachSegmentBuilder {
     setTab(tab, load=true) {
         this.tab = tab;
         this.frm._segment_tab = tab;
-        for (const name of ["members","excluded","history"]) this.$root.find(`.rs-${name}-view`).prop("hidden",name !== tab);
+        for (const name of ["members","excluded","used","history"]) this.$root.find(`.rs-${name}-view`).prop("hidden",name !== tab);
         if (load) this.load(true);
     }
     async loadExcluded() {
@@ -305,6 +307,43 @@ class ReachSegmentBuilder {
                 data:{labels:data.samples.map(row=>String(row.sample_date)),datasets:[{name:__("Members"),values:data.samples.map(row=>row.member_count)}]}});
         }
     }
+    async fetchUsage() {
+        if (this.frm.is_new()) return null;
+        if (!this.usagePromise) this.usagePromise = Promise.resolve().then(() => frappe.call({method:"finbyzreach.segments.segment_usage",type:"GET",
+            args:{segment_name:this.frm.doc.name}})).then(r => r?.message || null).catch(() => { this.usagePromise = null; return null; });
+        return this.usagePromise;
+    }
+    async showUsageWarning() {
+        // SEG-41 / SEG-43: warn before editing, naming what depends on this segment.
+        const usage = await this.fetchUsage();
+        if (!usage || this.disposed) return;
+        if (!this.frm.dashboard?.set_headline_alert) return;
+        const names = [...usage.workflows.map(w => w.title), ...usage.campaigns.filter(c => c.live || c.status === "Draft").map(c => c.title)];
+        if (!names.length) return;
+        const escape = frappe.utils.escape_html;
+        const message = usage.live
+            ? __("Used in live automations or scheduled emails: {0}. Changes apply to them immediately; it cannot be deleted or archived.", [escape(names.join(", "))])
+            : __("Used in: {0}. Changes affect these drafts.", [escape(names.join(", "))]);
+        this.frm.dashboard.set_headline_alert(message, usage.live ? "red" : "orange");
+    }
+    async loadUsage() {
+        if (this.frm.is_new()) return;
+        const sequence = ++this.sequence;
+        this.usagePromise = null;
+        const usage = await this.fetchUsage();
+        if (!usage || this.disposed || sequence !== this.sequence) return;
+        const escape = frappe.utils.escape_html;
+        const rows = [];
+        for (const w of usage.workflows) rows.push([__("Workflow"), `/app/automation-workflow-designer/${encodeURIComponent(w.name)}`, w.title, __(w.status || ""), w.live]);
+        for (const c of usage.campaigns) {
+            const draft = c.status === "Draft";
+            const url = draft ? `/app/email-campaign-studio?studio_campaign=${encodeURIComponent(c.name)}` : `/app/email-campaign-report?campaign=${encodeURIComponent(c.name)}`;
+            rows.push([c.role === "exclude" ? __("Email (excluded)") : __("Email"), url, c.title, __(c.status), c.live]);
+        }
+        for (const name of usage.segments) rows.push([__("Segment"), `/app/reach-segment/${encodeURIComponent(name)}`, name, __("References this segment"), false]);
+        const hidden = usage.hidden_campaigns + usage.hidden_segments;
+        this.$root.find(".rs-used-results").html(rows.length || hidden ? `<table class="table table-bordered"><thead><tr><th>${__("Type")}</th><th>${__("Name")}</th><th>${__("Status")}</th><th>${__("Effect")}</th></tr></thead><tbody>${rows.map(r => `<tr><td>${escape(r[0])}</td><td><a href="${r[1]}">${escape(r[2])}</a></td><td>${escape(r[3])}</td><td>${r[4] ? __("Cannot be deleted or archived while live") : __("Editing possible")}</td></tr>`).join("")}</tbody></table>${hidden ? `<p class="text-muted">${__("{0} more items you do not have access to.", [hidden])}</p>` : ""}` : `<p>${__("Not used yet")}</p>`);
+    }
     async exportDialog(format) {
         const {message:data} = await frappe.call({method:"finbyzreach.segments.segment_columns",type:"GET",args:{segment_name:this.frm.doc.name}});
         const dialog = new frappe.ui.Dialog({title:__("Export columns"),fields:[{fieldname:"columns",fieldtype:"MultiSelectList",label:__("Columns"),reqd:1,
@@ -321,6 +360,22 @@ class ReachSegmentBuilder {
             for (const format of ["csv", "xlsx"]) this.frm.add_custom_button(__("Export {0}", [format.toUpperCase()]),()=>this.exportDialog(format), __("Export"));
         }
         this.frm.add_custom_button(__("Excluded"),()=>this.setTab("excluded"));
+        this.showUsageWarning();
+        const doc = this.frm.doc;
+        const usable = !doc.archived && !doc.snapshot_pending_generation && doc.snapshot_status !== "Failed";
+        if (usable && ["Lead","Contact","Customer"].includes(this.doctype) && frappe.model.can_create?.("Campaign")) {
+            this.frm.add_custom_button(__("Send email"), () => {
+                frappe.route_options = {reach_segment: doc.name, reach_audience: this.doctype};
+                frappe.set_route("email-campaign-studio");
+            });
+        }
+        if (usable && frappe.model.can_create?.("Automation Workflow")) {
+            this.frm.add_custom_button(__("Use in workflow"), async () => {
+                const {message} = await frappe.call({method:"finbyzreach.segments.create_workflow_for_segment",args:{segment_name:doc.name},
+                    freeze:true,freeze_message:__("Creating workflow…")});
+                frappe.set_route("automation-workflow-designer", message);
+            });
+        }
         if (!this.canWrite) return;
         if (this.frm.doc.snapshot_status === "Failed") this.frm.add_custom_button(__("Retry membership preparation"),async()=>{
             await frappe.call({method:"finbyzreach.segments.retry_segment_snapshot",args:{segment_name:this.frm.doc.name}});

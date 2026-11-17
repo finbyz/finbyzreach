@@ -520,3 +520,48 @@ def segment_history(segment_name, after=None):
     samples = frappe.get_all(SAMPLE,filters={'segment':doc.name,'sample_date':['>=',add_days(today(),-365)]},
         fields=['sample_date','member_count'],order_by='sample_date asc',limit_page_length=366)
     return dict(events=rows[:50],next_cursor=rows[49].name if len(rows)>50 else None,samples=samples)
+
+
+@frappe.whitelist(methods=['GET'])
+def segment_usage(segment_name):
+    """Everything that depends on this segment, for the "Used in" tab and edit warnings."""
+    from finbyzreach.segment_service import workflow_usage, campaign_usage
+    from finbyzreach.segment_automation import segment_references
+    doc = _segment(segment_name)
+    workflows = workflow_usage(doc)
+    campaigns = campaign_usage(doc)
+    can_read_campaigns = frappe.has_permission('Campaign', 'read')
+    dependents = [row.name for row in frappe.get_all('Reach Segment',
+                  fields=['name', 'exclude_segments_json', 'filter_expression_json'], limit_page_length=0)
+                  if row.name != doc.name and doc.name in segment_references(row)]
+    readable = set(frappe.get_list('Reach Segment', filters={'name': ['in', dependents]}, pluck='name',
+                                   limit_page_length=0)) if dependents else set()
+    return dict(
+        workflows=workflows,
+        # Titles of campaigns the user cannot read are not disclosed, only counted.
+        campaigns=campaigns if can_read_campaigns else [],
+        hidden_campaigns=0 if can_read_campaigns else len(campaigns),
+        segments=[name for name in dependents if name in readable],
+        hidden_segments=len(dependents) - len(readable),
+        live=any(row['live'] for row in workflows) or any(row['live'] for row in campaigns),
+    )
+
+
+@frappe.whitelist(methods=['POST'])
+def create_workflow_for_segment(segment_name):
+    """New draft workflow whose trigger is "Record enters segment" for this segment."""
+    from finbyzreach.segment_automation import TOPIC
+    from finbyzai.workflow_builder import registry
+    from finbyzai.workflow_builder.authoring import create_workflow_record, save_workflow_draft
+    registry.require_builder()
+    doc = _segment(segment_name)
+    if doc.archived:
+        frappe.throw(_('Restore the segment before using it in a workflow'))
+    created = create_workflow_record(_('{0} workflow').format(doc.name)[:140], doc.audience_doctype,
+                                     trigger_type='trigger.any')
+    graph = created['graph']
+    graph['nodes'][0]['config'] = {'triggers': [{'id': 'segment-entry', 'type': 'trigger.event', 'config': {
+        'event_topic': TOPIC, 'condition': None,
+        'event_filter': {'kind': 'predicate', 'field': 'segment', 'operator': 'eq', 'value': doc.name}}}]}
+    save_workflow_draft(created['workflow'], created['draft_revision'], graph)
+    return created['workflow']
