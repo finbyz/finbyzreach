@@ -2231,27 +2231,65 @@ class EmailCampaignStudio {
 		const dialog = new frappe.ui.Dialog({
 			title: __("Send Campaign Test"),
 			fields: [
-				{ fieldname: "recipient", label: __("Test Recipient"), fieldtype: "Data", options: "Email", reqd: 1, default: this.defaultTestRecipient },
+				// EM-28: several test recipients, from users, contacts or typed addresses.
+				{ fieldname: "people", label: __("Users and contacts"), fieldtype: "MultiSelectList",
+					description: __("Search users and contacts by name or email."),
+					get_data: (txt) => this.searchTestRecipients(txt) },
+				{ fieldname: "recipient", label: __("Other addresses"), fieldtype: "Small Text", default: this.defaultTestRecipient,
+					description: __("Separate addresses with commas or new lines. Up to 10 recipients in total.") },
 				{ fieldname: "sample_lead", label: __("Sample {0}", [this.audienceDoctype()]), fieldtype: "Link", options: this.audienceDoctype(), reqd: 1 },
 			],
 			primary_action_label: __("Queue Test"),
 			primary_action: (values) => {
+				const recipients = [...(values.people || []), ...String(values.recipient || "").split(/[,;\n\r]+/)]
+					.map((value) => value.trim()).filter(Boolean);
+				if (!recipients.length) {
+					frappe.msgprint(__("Add at least one test recipient."));
+					return;
+				}
 				dialog.get_primary_btn().prop("disabled", true);
 				frappe.call({
 					method: this.method + "send_test",
 					type: "POST",
 					args: {
 						payload: JSON.stringify(payload),
-						recipient: values.recipient,
+						recipients: JSON.stringify(recipients),
 						sample_lead: values.sample_lead,
 					},
-				}).then(() => {
+				}).then((response) => {
+					const result = response.message || {};
 					dialog.hide();
-					frappe.show_alert({ message: __("Test email queued"), indicator: "green" });
+					frappe.show_alert({ message: __("Test email queued for {0} recipient(s)", [(result.recipients || []).length]), indicator: "green" });
+					if ((result.blocked || []).length) {
+						frappe.msgprint({
+							title: __("Some recipients were skipped"),
+							message: result.blocked.map((row) => frappe.utils.escape_html(row.email + ": " + row.reason)).join("<br>"),
+							indicator: "orange",
+						});
+					}
 				}).always(() => dialog.get_primary_btn().prop("disabled", false));
 			},
 		});
 		dialog.show();
+	}
+
+	async searchTestRecipients(txt) {
+		const like = "%" + String(txt || "").trim() + "%";
+		// frappe.db.get_list never settles on a permission error, so wrap the call.
+		const list = (doctype, args) => new Promise((resolve) => frappe.call({
+			method: "frappe.desk.reportview.get_list", type: "GET", args: { doctype, limit: 10, ...args },
+			callback: (r) => resolve(r.message || []), error: () => resolve([]),
+		}));
+		const [users, contacts] = await Promise.all([
+			list("User", { fields: ["email", "full_name"], filters: { enabled: 1, user_type: "System User" }, or_filters: [["full_name", "like", like], ["email", "like", like]] }),
+			list("Contact", { fields: ["email_id", "full_name"], filters: [["email_id", "is", "set"]], or_filters: [["full_name", "like", like], ["email_id", "like", like]] }),
+		]);
+		const options = [
+			...users.filter((row) => row.email).map((row) => ({ value: row.email, description: (row.full_name || "") + " · " + __("User") })),
+			...contacts.map((row) => ({ value: row.email_id, description: (row.full_name || "") + " · " + __("Contact") })),
+		];
+		const seen = new Set();
+		return options.filter((row) => !seen.has(row.value.toLowerCase()) && seen.add(row.value.toLowerCase()));
 	}
 
 	setBusy(busy) {

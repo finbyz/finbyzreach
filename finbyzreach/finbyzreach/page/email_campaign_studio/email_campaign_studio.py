@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from collections import Counter
 from datetime import UTC, timedelta
 from email.utils import formataddr
@@ -1032,8 +1033,32 @@ def create_campaign(payload=None, launch="schedule"):
 	}
 
 
+MAX_TEST_RECIPIENTS = 10
+
+
+def _test_recipient_list(recipients=None, recipient=None):
+	"""EM-28: users, contacts and free addresses; a JSON list or text split by comma, semicolon or line."""
+	values = []
+	for value in (recipients, recipient):
+		if not value:
+			continue
+		if isinstance(value, str) and value.strip().startswith("["):
+			value = frappe.parse_json(value)
+		if isinstance(value, str):
+			value = re.split(r"[,;\n\r]+", value)
+		values.extend(str(item or "").strip() for item in value)
+	emails = list(dict.fromkeys(item.lower() for item in values if item))
+	if not emails:
+		frappe.throw(_("Enter at least one test recipient"))
+	if len(emails) > MAX_TEST_RECIPIENTS:
+		frappe.throw(_("Send a test to at most {0} addresses at a time").format(MAX_TEST_RECIPIENTS))
+	for email in emails:
+		validate_email_address(email, throw=True)
+	return emails
+
+
 @frappe.whitelist(methods=["POST"])
-def send_test(payload=None, recipient=None, sample_lead=None):
+def send_test(payload=None, recipient=None, sample_lead=None, recipients=None):
 	payload = _parse_payload(payload)
 	source_campaign = str(payload.get("source_campaign") or "").strip()
 	campaign = None
@@ -1047,20 +1072,24 @@ def send_test(payload=None, recipient=None, sample_lead=None):
 		payload.personalization_doctype = campaign.get("custom_personalization_doctype") or payload.audience_doctype
 	audience_doctype = payload.get("audience_doctype") or "Lead"
 	_check_permission("email", audience_doctype)
-	recipient = str(recipient or "").strip()
-	validate_email_address(recipient, throw=True)
-	if any(character in recipient for character in (",", ";", "\n", "\r")):
-		frappe.throw(_("Send a test to one email address at a time"))
+	emails = _test_recipient_list(recipients, recipient)
 	test_topic = (
 		campaign.custom_subscription_topic
 		if campaign and campaign.custom_broadcast_status != "Draft"
 		else payload.get("subscription_topic")
 	)
-	exclusion_reason = email_marketing.test_recipient_exclusion(recipient, test_topic, audience_doctype)
-	if exclusion_reason:
-		frappe.throw(
-			_("Test email blocked by recipient suppression: {0}").format(exclusion_reason)
-		)
+	# The send guard applies to tests as well: opted-out or bounced addresses are skipped.
+	blocked, allowed = [], []
+	for email in emails:
+		reason = email_marketing.test_recipient_exclusion(email, test_topic, audience_doctype)
+		if reason:
+			blocked.append({"email": email, "reason": str(reason)})
+		else:
+			allowed.append(email)
+	if not allowed:
+		frappe.throw(_("Test email blocked by recipient suppression: {0}").format(
+			"; ".join(f"{row['email']} ({row['reason']})" for row in blocked)
+		))
 	_check_test_email_rate_limit()
 
 	if frozen and not (
@@ -1143,7 +1172,7 @@ def send_test(payload=None, recipient=None, sample_lead=None):
 	).strip()
 	sender = formataddr((sender_name, account.email_id)) if sender_name else account.email_id
 	queue = frappe.sendmail(
-		recipients=[recipient],
+		recipients=allowed,
 		sender=sender,
 		reply_to=reply_to or None,
 		subject=f"[TEST] {rendered.subject}",
@@ -1154,7 +1183,7 @@ def send_test(payload=None, recipient=None, sample_lead=None):
 		add_css=snapshot.mode != "Visual",
 		add_unsubscribe_link=0,
 	)
-	return {"status": "queued", "email_queue": queue.name if queue else None}
+	return {"status": "queued", "email_queue": queue.name if queue else None, "recipients": allowed, "blocked": blocked}
 																														
 
 
