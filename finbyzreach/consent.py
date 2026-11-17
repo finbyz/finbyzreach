@@ -72,11 +72,20 @@ def capture_delivery_failure(doc, method=None):
 			frappe.get_doc(dict(doctype="Email Delivery Suppression", email=email, reason=reason, communication=doc.name, recorded_on=now_datetime())).insert(ignore_permissions=True, ignore_if_duplicate=True)
 
 
-def delivery_footer(html, urls):
+FOOTER_LABELS = {
+	"de": ("Abmelden", "E-Mail-Einstellungen"),
+	"fr": ("Se désabonner", "Préférences e-mail"),
+	"it": ("Annulla iscrizione", "Preferenze email"),
+	"en": ("Unsubscribe", "Email preferences"),
+}
+
+
+def delivery_footer(html, urls, language=None):
 	"""Append a server-owned footer after rendering, outside editable builder content."""
 	from html import escape
 	from finbyzreach.email_marketing import _insert_email_footer
-	links = f'<a href="{escape(urls["unsubscribe_url"], quote=True)}">{escape(_("Unsubscribe"))}</a> · <a href="{escape(urls["email_preference_center_url"], quote=True)}">{escape(_("Email preference center"))}</a>'
+	labels = FOOTER_LABELS.get(language) or (_("Unsubscribe"), _("Email preference center"))
+	links = f'<a href="{escape(urls["unsubscribe_url"], quote=True)}">{escape(labels[0])}</a> · <a href="{escape(urls["email_preference_center_url"], quote=True)}">{escape(labels[1])}</a>'
 	return _insert_email_footer(html, '<div class="email-preferences" style="padding:20px;text-align:center;font-size:12px">' + links + '</div>')
 
 

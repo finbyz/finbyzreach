@@ -26,7 +26,7 @@ app_include_css = [
 ]
 after_request = ["finbyzreach.subscription_embed.set_subscription_embed_policy"]
 app_include_js = [
-    "/assets/finbyzreach/js/builder_list_navigation.js?v=20261116.1",
+    "/assets/finbyzreach/js/builder_list_navigation.js?v=20261117.1",
     "/assets/finbyzreach/js/subscription_preferences.js?v=20261028.1",
     "/assets/finbyzreach/js/email_builder_composer.js?v=20260716.1",
     "/assets/finbyzreach/js/email_template_library.js?v=20261114.1",

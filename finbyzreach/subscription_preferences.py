@@ -102,6 +102,47 @@ def _save(email, topic, status, source, *, token_hash=None, expires=None, langua
 	return doc
 
 
+DOI_COPY = {
+	"de": {"subject": "Bitte bestätigen Sie Ihr Abonnement", "body": "Bitte bestätigen Sie Ihr Abonnement für «{0}».", "button": "Abonnement bestätigen",
+		"ignore": "Wenn Sie sich nicht angemeldet haben, können Sie diese E-Mail ignorieren."},
+	"fr": {"subject": "Veuillez confirmer votre abonnement", "body": "Veuillez confirmer votre abonnement à « {0} ».", "button": "Confirmer l'abonnement",
+		"ignore": "Si vous ne vous êtes pas inscrit, vous pouvez ignorer cet e-mail."},
+	"it": {"subject": "Conferma la tua iscrizione", "body": "Conferma la tua iscrizione a «{0}».", "button": "Conferma iscrizione",
+		"ignore": "Se non ti sei iscritto, puoi ignorare questa email."},
+	"en": {"subject": "Please confirm your subscription", "body": "Please confirm your subscription to “{0}”.", "button": "Confirm subscription",
+		"ignore": "If you did not sign up, you can ignore this email."},
+}
+
+
+def topic_label(topic, language):
+	label = frappe.db.get_value("Subscription Topic Translation", {"parent": topic, "language": language}, "label") if language else None
+	return label or topic
+
+
+def doi_message(topic, url, language):
+	"""Double opt-in email in the subscriber's language (falls back to German)."""
+	from html import escape
+	language = language if language in LANGUAGES else "de"
+	text = DOI_COPY[language]
+	label = escape(topic_label(topic, language))
+	return text["subject"], (
+		f'<p>{text["body"].format(label)}</p>'
+		f'<p><a href="{escape(url, quote=True)}" style="display:inline-block;padding:10px 18px;background:#0f2f4f;color:#ffffff;'
+		f'text-decoration:none;border-radius:6px">{escape(text["button"])}</a></p>'
+		f'<p style="color:#5d6875;font-size:12px">{escape(text["ignore"])}</p>'
+	)
+
+
+NAME_CACHE = "finbyzreach:pending_subscriber_name:"
+
+
+def remember_name(email, first_name=None, last_name=None):
+	"""Names typed on /subscribe wait in cache until the double opt-in is confirmed."""
+	first_name, last_name = str(first_name or "").strip()[:140], str(last_name or "").strip()[:140]
+	if first_name or last_name:
+		frappe.cache.set_value(NAME_CACHE + email, {"first_name": first_name, "last_name": last_name}, expires_in_sec=3 * 86400)
+
+
 def unsubscribe(email, topic, source="Email unsubscribe link"):
 	if _topic(topic, active=False).category == "System":
 		return None
@@ -137,7 +178,8 @@ def request_subscription(email, topic, source="Preference center", language=None
 		expires=now_datetime() + timedelta(days=2),
 		**consent_metadata,
 	)
-	url = get_url(f"/confirm_subscription?preference={doc.name}&token={token}")
+	url = get_url(f"/confirm_subscription?preference={doc.name}&token={token}&lang={language if language in LANGUAGES else 'de'}")
+	subject, message = doi_message(topic, url, language)
 	queue_options = {}
 	if policy_ready():
 		queue_options = {"add_unsubscribe_link": 0,
@@ -147,10 +189,8 @@ def request_subscription(email, topic, source="Preference center", language=None
 		**queue_options,
 		delayed=True,
 		recipients=[email],
-		subject=_("Confirm your email subscription"),
-		message=_("Please confirm your subscription to {0}: <a href='{1}'>Confirm subscription</a>").format(
-			frappe.utils.escape_html(topic), frappe.utils.escape_html(url)
-		),
+		subject=subject,
+		message=message,
 	)
 	if queue and isinstance(getattr(queue, "name", None), str):
 		frappe.enqueue_doc("Email Queue", queue.name, "send", queue="short", enqueue_after_commit=True)
@@ -159,11 +199,12 @@ def request_subscription(email, topic, source="Preference center", language=None
 
 @frappe.whitelist(allow_guest=True, methods=["POST"])
 @rate_limit(limit=5, seconds=600)
-def request_public_subscriptions(email, selected_topics, language=None):
+def request_public_subscriptions(email, selected_topics, language=None, first_name=None, last_name=None):
 	selected = frappe.parse_json(selected_topics) if isinstance(selected_topics, str) else selected_topics
 	if not isinstance(selected, list) or not selected or len(selected) > 20 or not all(isinstance(topic, str) for topic in selected) or len(set(selected)) != len(selected):
 		frappe.throw(_("Choose one or more subscription options"), frappe.ValidationError)
 	email = normalize_email(email)
+	remember_name(email, first_name, last_name)
 	results = [request_subscription(email, topic, "Public registration", **({"language": language} if language else {})) for topic in selected]
 	return "Pending" if "Pending" in results else "Subscribed"
 
@@ -172,7 +213,11 @@ def _ensure_public_subscriber_lead(email):
 	"""Make a confirmed public subscriber available to Lead-based campaigns."""
 	if frappe.db.exists("Lead", {"email_id": email}):
 		return
-	frappe.get_doc({"doctype": "Lead", "email_id": email, "status": "Lead"}).insert(ignore_permissions=True)
+	names = frappe.cache.get_value(NAME_CACHE + email) or {}
+	lead = {"doctype": "Lead", "email_id": email, "status": "Lead"}
+	lead.update({key: value for key, value in names.items() if key in ("first_name", "last_name") and value})
+	frappe.get_doc(lead).insert(ignore_permissions=True)
+	frappe.cache.delete_value(NAME_CACHE + email)
 
 
 def confirm(preference, token):
@@ -216,8 +261,21 @@ def signed_recipient(campaign_recipient, signed_query_string):
 	return recipient, email
 
 
+def email_language(campaign_name):
+	"""Language of the email that was sent, taken from its template (CS-05)."""
+	template = frappe.db.get_value("Campaign", campaign_name, "custom_email_template") if campaign_name else None
+	if template and frappe.db.has_column("Email Template", "custom_language"):
+		language = str(frappe.db.get_value("Email Template", template, "custom_language") or "").lower()[:2]
+		if language in LANGUAGES:
+			return language
+	return None
+
+
 def recipient_urls(recipient):
 	params = {"campaign_recipient": recipient.name, "email": normalize_email(recipient.custom_normalized_email or recipient.custom_recipient_email)}
+	language = email_language(recipient.get("campaign_name"))
+	if language:
+		params["lang"] = language
 	signed = get_signed_params(params)
 	return {
 		"unsubscribe_url": get_url(f"/api/method/finbyzreach.email_marketing.unsubscribe_marketing?{signed}"),

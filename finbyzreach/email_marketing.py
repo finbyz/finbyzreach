@@ -1339,6 +1339,9 @@ def _dispatch_recipient(recipient, campaign):
 		f"/view_email?{get_signed_params({'campaign_recipient': recipient.name})}"
 	)
 	compliance_urls = recipient_urls(recipient)
+	from finbyzreach.consent import FOOTER_LABELS
+	from finbyzreach.subscription_preferences import email_language
+	footer_labels = FOOTER_LABELS.get(email_language(campaign.name)) or (_("Unsubscribe"), _("Email preference center"))
 	rendered = render_campaign_snapshot(
 		campaign.custom_snapshot_subject,
 		campaign.custom_snapshot_html,
@@ -1351,12 +1354,12 @@ def _dispatch_recipient(recipient, campaign):
 	if campaign.custom_subscription_topic != "Transactional" and compliance_urls["unsubscribe_url"] not in present_links:
 		missing_links.append(
 			f'<a href="{escape(compliance_urls["unsubscribe_url"], quote=True)}">'
-			f'{escape(campaign.get("custom_unsubscribe_label") or _("Unsubscribe"))}</a>'
+			f'{escape(campaign.get("custom_unsubscribe_label") or footer_labels[0])}</a>'
 		)
 	if campaign.custom_subscription_topic != "Transactional" and compliance_urls["email_preference_center_url"] not in present_links:
 		missing_links.append(
 			f'<a href="{escape(compliance_urls["email_preference_center_url"], quote=True)}">'
-			f'{escape(campaign.get("custom_preference_label") or _("Email preference center"))}</a>'
+			f'{escape(campaign.get("custom_preference_label") or footer_labels[1])}</a>'
 		)
 	if missing_links:
 		footer = f'<div class="email-preferences" style="padding:20px;text-align:center;font-size:12px">{" &nbsp;|&nbsp; ".join(missing_links)}</div>'
