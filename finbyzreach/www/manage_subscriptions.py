@@ -13,21 +13,45 @@ COPY = {
 
 
 def get_copy(language):
+	"""Messages for /subscribe and older callers, taken from the published page design."""
+	from finbyzreach.preference_center import copy_for
+	language = language if language in COPY else "de"
 	copy = COPY[language].copy()
-	copy["subscribed"] = {"de": "Ihre Abonnements wurden aktualisiert.", "en": "Your subscriptions have been updated.", "fr": "Vos abonnements ont été mis à jour.", "it": "I tuoi abbonamenti sono stati aggiornati."}[language]
-	row = frappe.db.get_value(
-		"Subscription Center Translation",
-		{"parent": "Subscription Center Settings", "language": language},
-		["title", "intro", "mailing", "topics", "current", "save", "register", "pending", "waiting", "saving", "error"],
-		as_dict=True,
-	)
-	if row:
-		copy.update({key: value for key, value in row.items() if value})
+	texts = copy_for(language)
+	copy.update({"title": texts["h"], "intro": texts["s"], "mailing": texts["mailing"], "topics": texts["top"],
+		"save": texts["save"], "current": texts["current"], "pending": texts["pending"], "waiting": texts["waiting"],
+		"saving": texts["saving"], "error": texts["error"], "language": texts["language"], "subscribed": texts["subscribed"]})
 	return copy
+
+
+def _design(context, language, draft=False):
+	from finbyzreach.preference_center import draft_config, page_context, published_config
+	context.update(page_context(draft_config() if draft else published_config(), language))
+
+
+def _preview(context):
+	"""Desk editor preview: the draft design with sample options; editors only, never saves."""
+	if frappe.session.user == "Guest" or not frappe.has_permission("Subscription Center Settings", "write"):
+		raise frappe.PermissionError
+	language = frappe.form_dict.get("lang") or "de"
+	language = language if language in LANGUAGES else "de"
+	context.preview = True
+	context.email = "name@example.com"
+	context.language = language
+	context.copy = get_copy(language)
+	context.topics = topic_rows(None, language)
+	for index, row in enumerate(context.topics):
+		row["status"] = "Subscribed" if index % 2 == 0 else "Unknown"
+	context.language_urls = {lang: f"/manage_subscriptions?pc_preview=1&lang={lang}" for lang in LANGUAGES}
+	context.unsubscribe_all_url = "#"
+	_design(context, language, draft=True)
+	return context
 
 
 def get_context(context):
 	context.no_cache = True
+	if frappe.form_dict.get("pc_preview"):
+		return _preview(context)
 	try:
 		raw = frappe.safe_decode(getattr(frappe.request, "query_string", b""))
 		if frappe.form_dict.get("consent_email"):
@@ -40,6 +64,7 @@ def get_context(context):
 			context.language = language
 			context.language_urls = {lang: address_urls(email, email_type, lang)["email_preference_center_url"] for lang in LANGUAGES}
 			context.unsubscribe_all_url = address_urls(email, email_type, language)["unsubscribe_all_url"]
+			_design(context, language)
 			return context
 		campaign_recipient = frappe.form_dict.get("campaign_recipient")
 		recipient, email = signed_recipient(campaign_recipient, raw)
@@ -72,6 +97,9 @@ def get_context(context):
 			lang: "/manage_subscriptions?" + get_signed_params({"campaign_recipient": campaign_recipient, "email": email, "lang": lang})
 			for lang in LANGUAGES
 		}
+		_design(context, language)
 	except (frappe.PermissionError, frappe.DoesNotExistError, frappe.ValidationError, ValueError):
-		context.error_message = "This preference link is invalid. Please use the link in your email."
+		language = frappe.form_dict.get("lang") if frappe.form_dict.get("lang") in LANGUAGES else "de"
+		_design(context, language)
+		context.error_message = context.text["invalid"]
 	return context

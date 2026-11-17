@@ -1,382 +1,120 @@
 {% extends "templates/web.html" %}
 
-{% block title %}{{ copy.title if copy else "Manage Subscriptions" }}{% endblock %}
+{% block title %}{{ (text.h if text else "Manage subscriptions") | e }}{% endblock %}
+{% block navbar %}{% if not preview %}{{ super() }}{% endif %}{% endblock %}
+{% block footer %}{% if not preview %}{{ super() }}{% endif %}{% endblock %}
+
+{% from "finbyzreach/templates/includes/preference_macros.html" import pc_text with context %}
 
 {% block page_content %}
-<style>
-    /* Reset & Scope */
-    body {
-        background-color: #f8f9fa; /* Light grey background for the whole page */
-    }
-    
-    .pref-wrapper {
-        font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-        background-color: #ffffff;
-        max-width: 640px; /* Matched width proportions */
-        margin: 40px auto;
-        padding: 40px 48px; /* Proper padding matching the design */
-        min-height: calc(100vh - 200px);
-        position: relative;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02); /* Almost invisible shadow */
-        border-radius: 8px;
-    }
+{% include "finbyzreach/templates/includes/preference_theme.html" %}
 
-    /* Top gradient line exactly like screenshot */
-    .pref-wrapper::before {
-        content: "";
-        position: absolute;
-        top: 0; left: 0; right: 0; height: 3px;
-        background: linear-gradient(90deg, #3b82f6, #ec4899);
-        border-top-left-radius: 8px;
-        border-top-right-radius: 8px;
-    }
-    
-    .pref-header {
-        text-align: center;
-        margin-bottom: 32px;
-        margin-top: 16px;
-    }
-    
-    .pref-title {
-        font-size: 26px;
-        font-weight: 700;
-        color: #0f172a;
-        margin: 0 0 10px 0;
-    }
-    
-    .pref-subtitle {
-        color: #64748b;
-        font-size: 14px;
-        line-height: 1.6;
-        margin: 0;
-    }
-
-    /* Topic List */
-    .pref-topics-title {
-        font-size: 11px;
-        font-weight: 700;
-        color: #94a3b8;
-        margin-bottom: 12px;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-    }
-
-    .pref-topics-list {
-        display: flex;
-        flex-direction: column;
-        gap: 12px;
-        margin-bottom: 32px;
-    }
-
-    .topic-item {
-        position: relative;
-        display: flex;
-        align-items: center;
-        padding: 14px 16px; /* Compact padding like the design */
-        background: #f8fafc; /* Grey background for unselected */
-        border: 1px solid transparent;
-        border-radius: 8px;
-        cursor: pointer;
-        transition: all 0.2s ease;
-    }
-    
-    .topic-item:hover {
-        background: #ffffff; /* White background on hover */
-        border-color: #e2e8f0; /* Grey border on hover */
-    }
-
-    /* Custom Checkbox */
-    .topic-checkbox {
-        position: absolute;
-        opacity: 0;
-        width: 0;
-        height: 0;
-    }
-    
-    .custom-check {
-        flex-shrink: 0;
-        width: 18px; /* Slightly smaller box */
-        height: 18px;
-        background: #ffffff;
-        border: 1.5px solid #cbd5e1;
-        border-radius: 4px; 
-        margin-right: 16px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        transition: all 0.1s ease;
-    }
-    
-    .custom-check::after {
-        content: "";
-        width: 9px;
-        height: 9px;
-        background-color: transparent;
-        border-right: 2px solid white;
-        border-bottom: 2px solid white;
-        transform: rotate(45deg) scale(0);
-        margin-bottom: 2px;
-        transition: transform 0.1s ease;
-    }
-
-    /* Checked State */
-    .topic-checkbox:checked + .custom-check {
-        background-color: #ec4899; /* Pink */
-        border-color: #ec4899;
-    }
-    
-    .topic-checkbox:checked + .custom-check::after {
-        transform: rotate(45deg) scale(1);
-    }
-    
-    .topic-item:has(.topic-checkbox:checked) {
-        background: #fdf2f8; /* Light pink background */
-        border-color: #fdf2f8; /* Remove grey border, blend with background */
-    }
-    .topic-item:has(.topic-checkbox:checked):hover {
-        background: #fce7f3;
-        border-color: #fce7f3;
-    }
-
-    .topic-content {
-        flex-grow: 1;
-    }
-    
-    .topic-content h5 {
-        font-size: 15px;
-        color: #0f172a;
-        font-weight: 600;
-        margin: 0;
-        line-height: 1.4;
-    }
-    
-    .topic-content p {
-        font-size: 13px;
-        color: #64748b;
-        margin: 2px 0 0 0; /* Tighter spacing */
-        line-height: 1.5;
-    }
-
-    /* Submit Button */
-    .pref-save-btn {
-        background: #0f172a;
-        color: #ffffff;
-        border: none;
-        padding: 16px 24px; /* Taller button */
-        border-radius: 8px;
-        font-size: 15px;
-        font-weight: 600;
-        cursor: pointer;
-        transition: all 0.2s ease;
-        width: 100%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-    
-    .pref-save-btn:hover:not(:disabled) {
-        background: #1e293b;
-    }
-    
-    .pref-save-btn:disabled {
-        opacity: 0.5;
-        cursor: not-allowed;
-    }
-
-    @keyframes spin { 
-        to { transform: rotate(360deg); } 
-    }
-
-    /* Responsive */
-    @media (max-width: 640px) {
-        .pref-wrapper {
-            margin: 16px auto;
-            padding: 24px 16px;
-            width: calc(100% - 32px);
-            box-sizing: border-box;
-        }
-        .pref-header {
-            margin-bottom: 24px;
-            margin-top: 8px;
-        }
-        .pref-title {
-            font-size: 22px;
-        }
-        .pref-subtitle {
-            font-size: 13px;
-        }
-        .pref-topics-list {
-            gap: 8px;
-            margin-bottom: 24px;
-        }
-        .topic-item {
-            padding: 12px 14px;
-        }
-        .custom-check {
-            width: 16px;
-            height: 16px;
-            margin-right: 12px;
-        }
-        .custom-check::after {
-            width: 8px;
-            height: 8px;
-        }
-        .topic-content h5 {
-            font-size: 14px;
-        }
-        .topic-content p {
-            font-size: 12px;
-        }
-        .pref-save-btn {
-            padding: 14px 20px;
-            font-size: 14px;
-        }
-    }
-    
-    .current-topic-badge {
-        font-size: 11px;
-        background: #eff6ff;
-        color: #2563eb;
-        padding: 3px 8px;
-        border-radius: 12px;
-        margin-left: 8px;
-        font-weight: 600;
-        vertical-align: middle;
-        letter-spacing: 0.3px;
-        text-transform: uppercase;
-    }
-    
-    .topic-item.highlight-current {
-        border: 1px solid #93c5fd;
-        background-color: #f8fafc;
-    }
-    .topic-item.highlight-current:hover {
-        background-color: #f1f5f9;
-        border-color: #60a5fa;
-    }
-</style>
-
-<div class="pref-wrapper">
-    {% if error_message %}
-    <div class="pref-header" style="margin-bottom: 0;">
-        <div style="font-size: 48px; margin-bottom: 24px;">❌</div>
-        <h2 class="pref-title">Invalid Link</h2>
-        <p class="pref-subtitle">{{ error_message }}</p>
-    </div>
-    {% else %}
-    <div style="text-align:right;margin-bottom:16px">
-        <label for="preference-language">{{ copy.language }}</label>
-        <select id="preference-language" aria-label="{{ copy.language }}" onchange="window.location.href=this.value">
-            {% for lang, url in language_urls.items() %}
-            <option value="{{ url }}" {% if lang == language %}selected{% endif %}>{{ {"de":"Deutsch","en":"English","fr":"Français","it":"Italiano"}[lang] }}</option>
-            {% endfor %}
+<div class="pc-page">
+  <div class="pc-card">
+    <div class="pc-head">
+      <div class="pc-logo">{% if pc_theme.logo %}<img src="{{ pc_theme.logo | e }}" alt="Megasol">{% else %}<span class="pc-wordmark">MEGASOL</span>{% endif %}</div>
+      {% if language_urls %}
+      <div class="pc-lang">
+        <select id="preference-language" aria-label="{{ text.language | e }}" onchange="window.location.href=this.value">
+          {% for lang, url in language_urls.items() %}
+          <option value="{{ url | e }}" {% if lang == language %}selected{% endif %}>{{ {"de":"Deutsch","en":"English","fr":"Français","it":"Italiano"}[lang] }}</option>
+          {% endfor %}
         </select>
-    </div>
-    <div class="pref-header">
-        <h2 class="pref-title">{{ copy.title }}</h2>
-        <p class="pref-subtitle">{{ copy.intro }}<br>{{ email }}</p>
+      </div>
+      {% endif %}
     </div>
 
-    <form id="subscription-form">
-        {% for category, heading in [("Mailing Type", copy.mailing), ("Topic", copy.topics)] %}
-        <div class="pref-topics-title">{{ heading }}</div>
-        <div class="pref-topics-list">
-                {% for topic in topics if topic.category == category %}
-                <label class="topic-item {% if topic.is_current %}highlight-current{% endif %}">
-                    <input type="checkbox" class="topic-checkbox" value="{{ topic.name }}" {% if topic.status == "Subscribed" %}checked{% endif %}>
-                    <div class="custom-check"></div>
-                    <div class="topic-content">
-                        <h5>{{ topic.label }} {% if topic.is_current %}<span class="current-topic-badge">{{ copy.current }}</span>{% endif %}</h5>
-                        {% if topic.description %}
-                        <p>{{ topic.description }}</p>
-                        {% endif %}
-                        {% if topic.status == "Pending" %}<p>{{ copy.waiting }}</p>{% endif %}
-                    </div>
-                </label>
-                {% endfor %}
+    {% if error_message %}
+    <div class="pc-error"><p class="pc-text" style="{{ pc_css.s }}">{{ error_message | e }}</p></div>
+    {% else %}
+    <form id="subscription-form" style="display:flex;flex-direction:column;gap:18px">
+      {% for section in sections %}
+        {% if section == "intro" %}
+        <div data-pc-section="intro">{{ pc_text("h") }}<div style="height:6px"></div>{{ pc_text("s") }}<div class="pc-email">{{ email | e }}</div></div>
+        {% elif section == "types" %}
+        <div data-pc-section="types">
+          {{ pc_text("mailing") }}
+          {% for topic in topics if topic.category == "Mailing Type" %}
+          <label class="pc-option">
+            <input type="checkbox" class="topic-checkbox" value="{{ topic.name | e }}" {% if topic.status == "Subscribed" %}checked{% endif %}>
+            <span class="pc-switch" aria-hidden="true"></span>
+            <span>
+              <span class="pc-label">{{ topic.label | e }}</span>{% if topic.is_current %}<span class="pc-badge">{{ text.current | e }}</span>{% endif %}
+              {% if pc.show_descriptions and topic.description %}<span class="pc-desc" style="display:block">{{ topic.description | e }}</span>{% endif %}
+              {% if topic.status == "Pending" %}<span class="pc-desc" style="display:block">{{ text.waiting | e }}</span>{% endif %}
+            </span>
+          </label>
+          {% endfor %}
+        </div>
+        {% elif section == "topics" %}
+          {% if pc.show_topics and topics | selectattr("category", "equalto", "Topic") | list %}
+          <div data-pc-section="topics">
+            {{ pc_text("top") }}
+            <div class="pc-chips">
+              {% for topic in topics if topic.category == "Topic" %}
+              <label class="pc-chip" title="{{ (topic.description or '') | e }}"><input type="checkbox" class="topic-checkbox" value="{{ topic.name | e }}" {% if topic.status == "Subscribed" %}checked{% endif %}><span>{{ topic.label | e }}</span></label>
+              {% endfor %}
             </div>
-            {% endfor %}
-            
-            <button type="submit" id="save-btn" class="pref-save-btn" disabled>
-                {{ copy.save }}
-            </button>
-            <p id="preference-result" role="status" aria-live="polite"></p>
-        </form>
+          </div>
+          {% endif %}
+        {% elif section == "buttons" %}
+        <div data-pc-section="buttons">
+          <div class="pc-actions">
+            <button type="submit" id="save-btn" class="pc-save" disabled>{{ pc_text("save") }}</button>
+            {% if unsubscribe_all_url %}<a class="pc-all" href="{{ unsubscribe_all_url | e }}" id="unsubscribe-all">{{ pc_text("all") }}</a>{% endif %}
+          </div>
+          <p id="preference-result" role="status" aria-live="polite"></p>
+        </div>
+        {% elif section == "foot" %}
+        <div data-pc-section="foot">{{ pc_text("foot") }}</div>
+        {% else %}
+        <div data-pc-section="{{ section }}">{{ pc_text(section) }}</div>
+        {% endif %}
+      {% endfor %}
+      {% if "buttons" not in sections %}
+      <button type="submit" id="save-btn" class="pc-save" disabled>{{ pc_text("save") }}</button>
+      <p id="preference-result" role="status" aria-live="polite"></p>
+      {% endif %}
+    </form>
     {% endif %}
-    </div>
+  </div>
+</div>
 
-{% if not error_message %}
+{% if not error_message and not preview %}
 <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        const form = document.getElementById('subscription-form');
-        const saveBtn = document.getElementById('save-btn');
-        
-        const checkboxes = document.querySelectorAll('.topic-checkbox');
-        let initialState = Array.from(checkboxes).map(cb => cb.checked);
+  document.addEventListener('DOMContentLoaded', function () {
+    const form = document.getElementById('subscription-form');
+    const saveBtn = document.getElementById('save-btn');
+    const saveText = saveBtn.querySelector('.pc-text');
+    const result = document.getElementById('preference-result');
+    const checkboxes = Array.from(document.querySelectorAll('.topic-checkbox'));
+    const initial = checkboxes.map(cb => cb.checked);
+    const labels = {save: {{ text.save | tojson }}, saving: {{ text.saving | tojson }}, error: {{ text.error | tojson }}, done: {{ text.subscribed | tojson }}};
 
-        function checkChanges() {
-            let changed = false;
-            checkboxes.forEach((cb, index) => {
-                if (cb.checked !== initialState[index]) {
-                    changed = true;
-                }
-            });
-            saveBtn.disabled = !changed;
-        }
+    function changed() { saveBtn.disabled = !checkboxes.some((cb, i) => cb.checked !== initial[i]); }
+    checkboxes.forEach(cb => cb.addEventListener('change', changed));
 
-        checkboxes.forEach(cb => {
-            cb.addEventListener('change', checkChanges);
-        });
-
-        form.addEventListener('submit', function(e) {
-            e.preventDefault();
-            
-            saveBtn.disabled = true;
-            saveBtn.textContent = {{ copy.saving | tojson }};
-
-            let selectedTopics = [];
-            let visibleTopics = [];
-            checkboxes.forEach(cb => {
-                visibleTopics.push(cb.value);
-                if (cb.checked) {
-                    selectedTopics.push(cb.value);
-                }
-            });
-
-            const urlParams = new URLSearchParams(window.location.search);
-            const campaign_recipient = urlParams.get('campaign_recipient');
-            const email = urlParams.get('email');
-            const signed_query_string = window.location.search.substring(1);
-
-            if (typeof frappe === 'undefined') {
-                alert("Error: Frappe environment not loaded.");
-                return;
-            }
-
-            frappe.call({
-                method: urlParams.has('consent_email') ? 'finbyzreach.subscription_preferences.update_address_preferences' : 'finbyzreach.email_marketing.update_subscription_preferences',
-                args: {
-                    campaign_recipient: campaign_recipient,
-                    email: email,
-                    selected_topics: selectedTopics,
-                    visible_topics: visibleTopics,
-                    signed_query_string: signed_query_string
-                },
-                callback: function(r) {
-                    saveBtn.textContent = {{ copy.save | tojson }};
-                    if (r.message === "success") {
-                        window.location.reload();
-                    }
-                },
-                error: function(r) {
-                    saveBtn.textContent = {{ copy.save | tojson }};
-                    checkChanges(); // Re-enables the button so user can try again later
-                    
-                    document.getElementById('preference-result').textContent = {{ copy.error | tojson }};
-                }
-            });
-        });
+    form.addEventListener('submit', function (event) {
+      event.preventDefault();
+      saveBtn.disabled = true;
+      saveText.textContent = labels.saving;
+      const params = new URLSearchParams(window.location.search);
+      frappe.call({
+        method: params.has('consent_email') ? 'finbyzreach.subscription_preferences.update_address_preferences' : 'finbyzreach.email_marketing.update_subscription_preferences',
+        args: {
+          campaign_recipient: params.get('campaign_recipient'),
+          email: params.get('email'),
+          selected_topics: checkboxes.filter(cb => cb.checked).map(cb => cb.value),
+          visible_topics: checkboxes.map(cb => cb.value),
+          signed_query_string: window.location.search.substring(1)
+        },
+        callback: function (r) {
+          if (r.message === 'success') { result.textContent = labels.done; setTimeout(() => window.location.reload(), 800); }
+        },
+        error: function () { saveText.textContent = labels.save; changed(); result.textContent = labels.error; }
+      });
     });
+  });
 </script>
 {% endif %}
 {% endblock %}
