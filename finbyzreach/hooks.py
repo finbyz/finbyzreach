@@ -20,7 +20,7 @@ add_to_apps_screen = [
 # include js, css files in header of desk.html
 app_include_css = [
     "/assets/finbyzreach/css/subscription_preferences.css?v=20261028.1",
-    "/assets/finbyzreach/css/segments.css?v=20261113.1",
+    "/assets/finbyzreach/css/segments.css?v=20261117.2",
     "/assets/finbyzreach/css/folder_sidebar.css?v=20261114.3",
     "/assets/finbyzreach/css/email_workspace.css?v=20261114.1",
 ]
@@ -212,6 +212,12 @@ doc_events = {
         "on_update": ["finbyzreach.segment_automation.capture_change", "finbyzreach.segment_automation.capture_related_change"],
         "after_delete": ["finbyzreach.segment_automation.capture_change", "finbyzreach.segment_automation.capture_related_change"],
         "on_cancel": ["finbyzreach.segment_automation.capture_change", "finbyzreach.segment_automation.capture_related_change"],
+    },
+    # Quotations are a connected object in segment filters (briefing: linked quotations).
+    "Quotation": {
+        "on_update": ["finbyzreach.segment_automation.capture_related_change"],
+        "after_delete": ["finbyzreach.segment_automation.capture_related_change"],
+        "on_cancel": ["finbyzreach.segment_automation.capture_related_change"],
     },
     "Email Tracking Event": {
         "after_insert": ["finbyzreach.segment_automation.capture_activity"],

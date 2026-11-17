@@ -203,3 +203,22 @@
     padding: 0;
     text-align: left;
 }
+
+/* Grouped, searchable condition picker. */
+.rs-picker {
+    max-height: 60vh;
+    overflow-y: auto;
+}
+.rs-picker-group {
+    margin: var(--margin-md) 0 var(--margin-xs);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+}
+.rs-picker-item {
+    margin: 0 var(--margin-xs) var(--margin-xs) 0;
+}
+.rs-excluded-view .rs-toolbar .rs-excluded-search {
+    max-width: 260px;
+}

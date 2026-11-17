@@ -277,6 +277,8 @@ def capture_related_change(doc, method=None):
             continue
         if value.doctype == 'Opportunity':
             queue_identity(value.get('opportunity_from'),value.get('party_name'))
+        elif value.doctype == 'Quotation':
+            queue_identity(value.get('quotation_to'),value.get('party_name'))
         else:
             queue_identity('Customer',value.get('customer'))
         queue_identity('Contact',value.get('contact_person'))

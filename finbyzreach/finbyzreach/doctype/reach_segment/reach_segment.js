@@ -22,7 +22,7 @@ class ReachSegmentBuilder {
             <section class="rs-filters"><h4>${__("Filters")}</h4>
                 <div class="rs-match-control"><label for="rs-match">${__("Match groups")}</label><select id="rs-match" class="form-control rs-match"><option value="OR">${__("Any")}</option><option value="AND">${__("All")}</option></select></div>
                 <div class="rs-include"></div><button type="button" class="btn btn-default btn-sm rs-add">${__("Add group")}</button>
-                <div class="rs-special-actions"><button type="button" class="btn btn-default btn-sm rs-add-segment">${__("Segment condition")}</button><button type="button" class="btn btn-default btn-sm rs-add-related">${__("Connected object")}</button><button type="button" class="btn btn-default btn-sm rs-add-activity">${__("Activity")}</button></div><div class="rs-specials"></div>
+                <div class="rs-special-actions"><button type="button" class="btn btn-primary btn-sm rs-add-pick">${__("Add condition")}</button><button type="button" class="btn btn-default btn-sm rs-add-segment">${__("Segment condition")}</button><button type="button" class="btn btn-default btn-sm rs-add-related">${__("Connected object")}</button><button type="button" class="btn btn-default btn-sm rs-add-activity">${__("Activity")}</button></div><div class="rs-specials"></div>
                 <h4>${__("Exclusions")}</h4><p class="text-muted">${__("Exclusions always take precedence, including over manual additions.")}</p>
                 <div class="rs-exclude"></div><button type="button" class="btn btn-default btn-sm rs-add-exclude">${__("Add exclusion group")}</button>
                 <div class="rs-excluded-segments"></div>
@@ -58,6 +58,7 @@ class ReachSegmentBuilder {
         this.$root.find(".rs-excluded-export").on("click",()=>this.exportDialog("xlsx","excluded"));
         this.$root.find(".rs-add").on("click", () => this.addGroup([], false));
         this.$root.find(".rs-add-exclude").on("click", () => this.addGroup([], true));
+        this.$root.find(".rs-add-pick").on("click", () => this.pickerDialog());
         this.$root.find(".rs-add-segment").on("click", () => this.segmentDialog());
         this.$root.find(".rs-add-related").on("click", () => this.relatedDialog());
         this.$root.find(".rs-add-activity").on("click", () => this.activityDialog());
@@ -118,7 +119,7 @@ class ReachSegmentBuilder {
     }
     addGroup(filters, excluded, match="AND", parent=null, nodes=[]) {
         const items = excluded ? this.exclusions : parent ? parent.children : this.groups;
-        const $group = $(`<div class="rs-rule"><div class="rs-rule-head"><select class="form-control rs-rule-match" aria-label="${__("Match conditions")}"><option value="AND">${__("All conditions")}</option><option value="OR">${__("Any condition")}</option></select><button type="button" class="btn btn-default btn-sm rs-remove-group">${__("Remove")}</button></div><div class="rs-rule-body"></div><div class="rs-group-specials"></div><div class="rs-children"></div>${excluded ? "" : `<div class="rs-special-actions"><button type="button" class="btn btn-default btn-xs rs-group-segment">${__("Segment condition")}</button><button type="button" class="btn btn-default btn-xs rs-group-related">${__("Connected object")}</button><button type="button" class="btn btn-default btn-xs rs-group-activity">${__("Activity")}</button><button type="button" class="btn btn-default btn-xs rs-subgroup">${__("Add subgroup")}</button></div>`}</div>`);
+        const $group = $(`<div class="rs-rule"><div class="rs-rule-head"><select class="form-control rs-rule-match" aria-label="${__("Match conditions")}"><option value="AND">${__("All conditions")}</option><option value="OR">${__("Any condition")}</option></select><button type="button" class="btn btn-default btn-sm rs-remove-group">${__("Remove")}</button></div><div class="rs-rule-body"></div><div class="rs-group-specials"></div><div class="rs-children"></div>${excluded ? "" : `<div class="rs-special-actions"><button type="button" class="btn btn-primary btn-xs rs-group-pick">${__("Add condition")}</button><button type="button" class="btn btn-default btn-xs rs-group-segment">${__("Segment condition")}</button><button type="button" class="btn btn-default btn-xs rs-group-related">${__("Connected object")}</button><button type="button" class="btn btn-default btn-xs rs-group-activity">${__("Activity")}</button><button type="button" class="btn btn-default btn-xs rs-subgroup">${__("Add subgroup")}</button></div>`}</div>`);
         (parent ? parent.$group.find(".rs-children") : this.$root.find(excluded ? ".rs-exclude" : ".rs-include")).append($group);
         const item = {match, $group, children:[], specials:[]};
         item.filter = new frappe.ui.FilterGroup({parent: $group.find(".rs-rule-body"), doctype: this.doctype, on_change: () => this.changed()});
@@ -126,6 +127,7 @@ class ReachSegmentBuilder {
         const initialized = filters.length ? item.filter.add_filters(filters).then(() => item.filter.toggle_empty_filters(false)) : Promise.resolve();
         $group.find(".rs-rule-match").val(match).prop("disabled", excluded || !this.canWrite).on("change", e => { item.match = e.target.value; this.changed(); });
         $group.find(".rs-remove-group").prop("disabled", !this.canWrite).on("click", () => { items.splice(items.indexOf(item), 1); $group.remove(); this.changed(); });
+        $group.find(".rs-group-pick").prop("disabled",!this.canWrite).on("click",()=>this.pickerDialog(item));
         $group.find(".rs-group-segment").prop("disabled",!this.canWrite).on("click",()=>this.segmentDialog(item));
         $group.find(".rs-group-related").prop("disabled",!this.canWrite).on("click",()=>this.relatedDialog(item));
         $group.find(".rs-group-activity").prop("disabled",!this.canWrite).on("click",()=>this.activityDialog(item));
@@ -139,29 +141,32 @@ class ReachSegmentBuilder {
         const items = group ? group.specials : this.specials;
         items.push(condition);
         const escape = frappe.utils.escape_html;
-        const title = condition.kind === "segment" ? `${condition.operator}: ${condition.segment}` : condition.kind === "related" ? `${condition.quantifier}: ${condition.doctype}` : `${condition.event}: ${condition.days} ${__("days")}`;
+        const title = condition.kind === "subscription" ? `${condition.topic}: ${__(condition.status || "Subscribed")}` : condition.kind === "segment" ? `${condition.operator}: ${condition.segment}` : condition.kind === "related" ? `${condition.quantifier}: ${condition.doctype}` : `${condition.event}: ${condition.days} ${__("days")}`;
         const $row = $(`<div class="rs-rule rs-special-rule"><strong>${escape(title)}</strong><button type="button" class="btn btn-default btn-sm">${__("Remove")}</button></div>`);
         (group ? group.$group.find(".rs-group-specials") : this.$root.find(".rs-specials")).append($row);
         $row.find("button").prop("disabled", !this.canWrite).on("click", () => { items.splice(items.indexOf(condition),1); $row.remove(); this.changed(); });
         this.changed();
     }
-    segmentDialog(group=null) {
+    segmentDialog(group=null, operator="in") {
         frappe.prompt([
             {fieldname:"segment",fieldtype:"Link",options:"Reach Segment",label:__("Segment"),reqd:1,get_query:()=>({filters:{audience_doctype:this.doctype,archived:0,name:["!=",this.frm.doc.name]}})},
-            {fieldname:"operator",fieldtype:"Select",options:"in\nnot in",label:__("Membership"),default:"in",reqd:1}
+            {fieldname:"operator",fieldtype:"Select",options:"in\nnot in",label:__("Membership"),default:operator,reqd:1}
         ], values => this.addSpecial({kind:"segment",...values},group));
     }
-    activityDialog(group=null) {
+    activityDialog(group=null, event="Opened") {
         frappe.prompt([
-            {fieldname:"event",fieldtype:"Select",options:"Opened\nClicked\nReplied\nSent\nUnsubscribed\nWebsite visit\nWebinar attended\nStore purchase",label:__("Event"),reqd:1,default:"Opened"},
+            {fieldname:"event",fieldtype:"Select",options:"Opened\nClicked\nReplied\nSent\nUnsubscribed\nWebsite visit\nWebinar attended\nStore purchase",label:__("Event"),reqd:1,default:event},
             {fieldname:"days",fieldtype:"Int",label:__("In the last days"),default:30,reqd:1},
             {fieldname:"campaign",fieldtype:"Link",options:"Campaign",label:__("Campaign (optional)")},
             {fieldname:"site",fieldtype:"Int",label:__("Tracking site ID (optional)")}
         ], values => this.addSpecial({kind:"activity",...values},group));
     }
-    relatedDialog(group=null) {
-        const targets = ["Opportunity","Sales Order"].includes(this.doctype) ? "Customer" : this.doctype === "Lead" ? "Customer\nOpportunity" : this.doctype === "Contact" ? "Customer\nOpportunity\nSales Order" : "Opportunity\nSales Order";
-        frappe.prompt({fieldname:"doctype",fieldtype:"Select",options:targets,label:__("Connected object"),reqd:1}, ({doctype}) => {
+    relatedTargets() {
+        return ["Opportunity","Sales Order"].includes(this.doctype) ? ["Customer"] : this.doctype === "Lead" ? ["Customer","Quotation","Opportunity"]
+            : this.doctype === "Contact" ? ["Customer","Quotation","Opportunity","Sales Order"] : ["Quotation","Opportunity","Sales Order"];
+    }
+    relatedDialog(group=null, preset=null) {
+        const open = ({doctype}) => {
             frappe.model.with_doctype(doctype, () => {
                 const dialog = new frappe.ui.Dialog({title:__("Connected object filters"),fields:[
                     {fieldname:"quantifier",fieldtype:"Select",options:"any\nall",default:"any",label:__("Matching related records")},
@@ -174,8 +179,59 @@ class ReachSegmentBuilder {
                 const filter = new frappe.ui.FilterGroup({parent:dialog.fields_dict.rules.$wrapper,doctype});
                 filter.update_filter_button=()=>{};
                 dialog.show();
+                if (preset?.field) filter.add_filter(doctype, preset.field);
             });
-        });
+        };
+        if (preset?.doctype) return open({doctype: preset.doctype});
+        frappe.prompt({fieldname:"doctype",fieldtype:"Select",options:this.relatedTargets().join("\n"),label:__("Connected object"),reqd:1}, open);
+    }
+    async subscriptionDialog(group, topic) {
+        frappe.prompt({fieldname:"status",fieldtype:"Select",label:__("Status for {0}", [topic]),reqd:1,default:"Subscribed",
+            options:"Subscribed\nNot subscribed\nUnsubscribed\nPending"}, ({status}) => this.addSpecial({kind:"subscription",topic,status},group));
+    }
+    async pickerDialog(group=null) {
+        // Briefing 4.6 / SEG-13: one searchable field picker, grouped like the prototype.
+        const target = group || this.groups[0];
+        const fieldsOf = doctype => frappe.meta.get_docfields(doctype).filter(f => f.label && !frappe.model.no_value_type.includes(f.fieldtype) && !f.hidden);
+        const linkLabel = {Customer:__("Linked company (Customer)"), Quotation:__("Linked quotations"), "Sales Order":__("Linked sales orders"), Opportunity:__("Linked opportunities")};
+        const targets = this.relatedTargets();
+        await Promise.all(targets.map(dt => frappe.model.with_doctype(dt).catch(() => null)));
+        let topics = [];
+        if (["Lead","Contact","Customer"].includes(this.doctype)) {
+            try { topics = await frappe.db.get_list("Subscription Topic", {filters:{disabled:0, category:["!=","System"]}, fields:["name","category"], limit:100}); } catch (e) { topics = []; }
+        }
+        const items = [];
+        for (const f of fieldsOf(this.doctype)) items.push({group:__("{0} fields", [__(this.doctype)]), label:__(f.label), run:() => this.addField(target, f.fieldname)});
+        for (const t of topics) items.push({group:__("Subscriptions"), label:`${t.name}${t.category === "Topic" ? " · " + __("Topic") : ""}`, run:() => this.subscriptionDialog(group, t.name)});
+        for (const dt of targets) for (const f of (frappe.meta.docfield_list[dt] ? fieldsOf(dt) : [])) items.push({group:linkLabel[dt], label:__(f.label), run:() => this.relatedDialog(group, {doctype:dt, field:f.fieldname})});
+        for (const e of ["Opened","Clicked","Replied","Sent","Unsubscribed"]) items.push({group:__("Email activity"), label:__("Email {0}", [__(e).toLowerCase()]), run:() => this.activityDialog(group, e)});
+        for (const e of ["Website visit","Store purchase","Webinar attended"]) items.push({group:__("Website & forms"), label:__(e), run:() => this.activityDialog(group, e)});
+        items.push({group:__("Segment membership"), label:__("Is member of segment"), run:() => this.segmentDialog(group, "in")});
+        items.push({group:__("Segment membership"), label:__("Is not member of segment"), run:() => this.segmentDialog(group, "not in")});
+        const escape = frappe.utils.escape_html;
+        const dialog = new frappe.ui.Dialog({title:__("Add condition"), fields:[{fieldname:"search",fieldtype:"Data",label:__("Search fields")},{fieldname:"list",fieldtype:"HTML"}]});
+        const $list = dialog.fields_dict.list.$wrapper.addClass("rs-picker");
+        const render = () => {
+            const q = (dialog.get_value("search") || "").toLowerCase();
+            const shown = items.map((item, index) => ({...item, index})).filter(item => !q || item.label.toLowerCase().includes(q) || item.group.toLowerCase().includes(q));
+            let html = "", last = null;
+            for (const item of shown.slice(0, 300)) {
+                if (item.group !== last) { html += `<div class="rs-picker-group">${escape(item.group)}</div>`; last = item.group; }
+                html += `<button type="button" class="btn btn-default btn-xs rs-picker-item" data-pick="${item.index}">${escape(item.label)}</button>`;
+            }
+            $list.html(html || `<p class="text-muted">${__("No field found")}</p>`);
+        };
+        $list.on("click", "[data-pick]", e => { const item = items[+$(e.currentTarget).attr("data-pick")]; dialog.hide(); item.run(); });
+        dialog.fields_dict.search.$input.on("input", render);
+        render();
+        dialog.show();
+        setTimeout(() => dialog.fields_dict.search.$input.trigger("focus"), 100);
+    }
+    async addField(group, fieldname) {
+        const item = group || this.groups[0] || null;
+        if (!item) { await this.addGroup([[this.doctype, fieldname, "=", ""]], false); return; }
+        await item.filter.add_filter(this.doctype, fieldname);
+        this.changed();
     }
     groupDefinition(item) {
         const conditions = [...item.filter.get_filters(), ...item.specials,

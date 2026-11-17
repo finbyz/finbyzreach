@@ -99,7 +99,7 @@ def expression_condition(doctype, expression, seen=()):
 
 def related_condition(doctype, node):
     target = node.get('doctype')
-    if target not in ('Customer', 'Opportunity', 'Sales Order'):
+    if target not in ('Customer', 'Opportunity', 'Sales Order', 'Quotation'):
         frappe.throw(_('Unsupported connected object'))
     frappe.has_permission(target, 'read', throw=True)
     table = frappe.qb.DocType(doctype)
@@ -123,6 +123,11 @@ def related_condition(doctype, node):
         key = related.contact_person
     elif target == 'Sales Order' and doctype == 'Customer':
         key = related.customer
+    elif target == 'Quotation' and doctype in ('Lead', 'Customer'):
+        key = related.party_name
+        base = base.where(related.quotation_to == doctype)
+    elif target == 'Quotation' and doctype == 'Contact':
+        key = related.contact_person
     else:
         frappe.throw(_('This object relationship is not supported'))
     base = base.where(key.isnotnull())
