@@ -3,7 +3,14 @@ frappe.provide("frappe.builder_list_navigation");
 
 (() => {
     const preference = "open_in_builder";
-    const enabled = doctype => frappe.get_user_settings(doctype)[preference] !== false;
+    // The choice applies at once in this browser; the server save follows. Rows are links built
+    // when they render, so waiting for the save left old links behind and the first click after
+    // switching still opened the previous target.
+    const pending = {};
+    const enabled = doctype => doctype in pending ? pending[doctype] : frappe.get_user_settings(doctype)[preference] !== false;
+    const rerender = listview => {
+        if (typeof listview.render === "function" && Array.isArray(listview.data)) listview.render();
+    };
 
     function injectStyle() {
         if (typeof document === "undefined" || document.getElementById("builder-nav-toggle-style")) return;
@@ -25,12 +32,18 @@ frappe.provide("frappe.builder_list_navigation");
         if (listview._builder_navigation_button) return;
         const doctype = listview.doctype;
         const button = listview.page.add_inner_button(__("Open in builder"), async () => {
+            const next = !enabled(doctype);
+            pending[doctype] = next;
+            update();
+            rerender(listview);
             button.prop("disabled", true);
             try {
-                await frappe.model.user_settings.save(doctype, preference, !enabled(doctype));
-                update();
+                await frappe.model.user_settings.save(doctype, preference, next);
                 await listview.refresh();
             } catch (error) {
+                pending[doctype] = !next;
+                update();
+                rerender(listview);
                 frappe.msgprint(__("Could not update the builder preference. Please try again."));
             } finally {
                 button.prop("disabled", false);

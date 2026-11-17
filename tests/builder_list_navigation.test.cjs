@@ -71,3 +71,24 @@ for (const [doctype, file, builder] of [
         assert.equal(env.messages(), 1);
     });
 }
+
+test('rows switch target immediately, before the preference save finishes', async () => {
+    const env = environment();
+    let finishSave;
+    env.frappe.model.user_settings.save = () => new Promise(resolve => { finishSave = resolve; });
+    vm.runInNewContext(fs.readFileSync(path.join(root, 'doctype_list_js', 'email_template_list.js'), 'utf8'), env.context);
+    const settings = env.frappe.listview_settings['Email Template'];
+    let click, renders = 0;
+    const button = {attrs: {}, classes: new Set(), html() { return this; }, addClass() { return this; },
+        toggleClass() { return this; }, attr(key, value) { this.attrs[key] = value; return this; }, prop() { return this; }};
+    const list = {doctype: 'Email Template', data: [{name: 'TEST'}], render() { renders++; }, async refresh() {},
+        page: {add_inner_button(label, action) { click = action; return button; }}};
+    env.frappe.builder_list_navigation.mount(list);
+    const saving = click();
+    // The save has not finished, yet a click on a row must already follow the new choice.
+    assert.equal(settings.get_form_link({name: 'TEST'}), '/desk/email-template/TEST');
+    assert.equal(renders, 1);
+    assert.equal(button.attrs['aria-checked'], 'false');
+    finishSave();
+    await saving;
+});
