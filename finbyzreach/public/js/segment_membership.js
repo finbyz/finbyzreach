@@ -12,6 +12,18 @@ frappe.reach_segment_membership.setup_list = function(doctype) {
     if (previous._reachSegmentActions) return;
     frappe.listview_settings[doctype] = {...previous, _reachSegmentActions:true, onload(list) {
         previous.onload?.(list);
+        if (frappe.model.can_read("Reach Segment")) {
+            // SEG-46: filter this List / Report View (and reports saved from it) by segment.
+            list.page.add_menu_item(__("Filter by segment"), () => {
+                frappe.prompt({fieldname:"segment",fieldtype:"Link",options:"Reach Segment",label:__("Segment"),reqd:1,
+                    get_query:()=>({filters:{audience_doctype:doctype,archived:0}})}, async values => {
+                    const {message} = await frappe.call({method:"finbyzreach.segments.segment_filter_names",type:"GET",args:{segment_name:values.segment}});
+                    await list.filter_area.remove("name");
+                    await list.filter_area.add([[doctype, "name", "in", message.names]]);
+                    frappe.show_alert({message:__("Showing {0} members of {1}", [message.count, frappe.utils.escape_html(values.segment)]), indicator:"blue"});
+                }, __("Filter by segment"), __("Apply"));
+            });
+        }
         if (!frappe.model.can_write("Reach Segment")) return;
         list.page.add_action_item(__("Create segment from selection"), () => {
             const records = list.get_checked_items().map(row => row.name);

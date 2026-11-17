@@ -587,3 +587,27 @@ def create_workflow_for_segment(segment_name):
         'event_filter': {'kind': 'predicate', 'field': 'segment', 'operator': 'eq', 'value': doc.name}}}]}
     save_workflow_draft(created['workflow'], created['draft_revision'], graph)
     return created['workflow']
+
+
+SEGMENT_FILTER_LIMIT = 2000
+NO_MEMBERS = '__reach_segment_has_no_members__'
+
+
+@frappe.whitelist(methods=['GET'])
+def segment_filter_names(segment_name):
+    """SEG-46: record names for a List / Report View filter "ID in segment".
+
+    Desk filters travel in the URL and saved report settings, so this is bounded;
+    larger segments use the Reach Segment Members report or the export.
+    """
+    from finbyzreach.segment_service import member_names
+    doc = _segment(segment_name)
+    require_ready(doc)
+    if doc.archived:
+        frappe.throw(_('Restore the segment before using it as a filter'))
+    names = member_names(doc, limit=SEGMENT_FILTER_LIMIT + 1)
+    if len(names) > SEGMENT_FILTER_LIMIT:
+        frappe.throw(_('{0} has more than {1} members. Open the Reach Segment Members report or export the segment instead.')
+                     .format(frappe.bold(doc.name), SEGMENT_FILTER_LIMIT), title=_('Segment too large for a list filter'))
+    # An empty IN list is ignored by Desk filters and would show every record.
+    return dict(doctype=doc.audience_doctype, names=names or [NO_MEMBERS], count=len(names))

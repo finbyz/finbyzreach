@@ -30,9 +30,10 @@ test('record membership form actions send GET to the read-only endpoint', async 
 test('native list reload preserves onload and installs segment actions once', () => {
     let nativeLoads = 0;
     const actions = [];
+    const menu = [];
     const frappe = {
         ui: { form: { on: () => {} } },
-        model: { can_write: () => true },
+        model: { can_read: () => true, can_write: () => true },
         listview_settings: {}, realtime: { on: () => {} }
     };
     const context = { frappe, __: text => text };
@@ -41,8 +42,9 @@ test('native list reload preserves onload and installs segment actions once', ()
     frappe.listview_settings.Contact = { onload() { nativeLoads++; }, hide_name_column: true };
     frappe.reach_segment_membership.setup_list('Contact');
     frappe.reach_segment_membership.setup_list('Contact');
-    frappe.listview_settings.Contact.onload({page: {add_action_item(label) { actions.push(label); }}});
+    frappe.listview_settings.Contact.onload({page: {add_action_item(label) { actions.push(label); }, add_menu_item(label) { menu.push(label); }}});
     assert.equal(nativeLoads, 1);
+    assert.deepEqual(menu, ['Filter by segment']);
     assert.equal(frappe.listview_settings.Contact.hide_name_column, true);
     assert.deepEqual(actions, ['Create segment from selection', 'Add to segment', 'Remove from segment']);
 });
