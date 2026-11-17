@@ -342,6 +342,8 @@ AI_AGENTS = [{'agent_type': 'LangChain Chain',
 
 
 def after_install():
+	from finbyzreach.patches.v1_0.restore_campaign_utm_link import execute as setup_campaign_utm
+	setup_campaign_utm()
 	create_ai_agents()
 	setup_email_template_library()
 	from finbyzreach.patches.v1_0.add_segment_main_customer import execute as setup_main_customer

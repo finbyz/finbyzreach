@@ -14,3 +14,5 @@ finbyzreach.patches.v1_0.complete_segment_membership
 finbyzreach.patches.v1_0.add_list_folder_sidebar
 
 finbyzreach.patches.v1_0.add_consent_policy
+
+finbyzreach.patches.v1_0.restore_campaign_utm_link
