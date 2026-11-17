@@ -45,8 +45,22 @@ for (const doctype of ["Lead", "Contact", "Customer", "Opportunity", "Sales Orde
     frappe.ui.form.on(doctype, {
         refresh(frm) {
             if (frm.is_new() || !frappe.model.can_read("Reach Segment")) return;
+            const recordName = frm.doc.name;
+            if (frappe.model.can_write("Reach Segment")) {
+                frm.add_custom_button(__("Add to segment"), () => {
+                    frappe.prompt({fieldname:"segment", fieldtype:"Link", options:"Reach Segment", label:__("Static segment"), reqd:1,
+                        description:__("Add this record manually. Existing exclusions still take precedence."),
+                        get_query:()=>({filters:{audience_doctype:doctype, segment_type:"Static", archived:0}})}, async values => {
+                        const {message} = await frappe.call({method:"finbyzreach.segments.change_segment_members", type:"POST",
+                            args:{segment_name:values.segment, records:JSON.stringify([recordName]), action:"add"}});
+                        frappe.reach_segment_membership.report("add", message?.still_excluded || 0, values.segment);
+                        if (frm.doc.name === recordName) await load();
+                    }, __("Add to segment"), __("Add"));
+                });
+            }
             const load = async after => {
-                const {message} = await frappe.call({method:"finbyzreach.segments.record_segments",type:"GET",args:{doctype,name:frm.doc.name,after,paginated:1}});
+                const {message} = await frappe.call({method:"finbyzreach.segments.record_segments",type:"GET",args:{doctype,name:recordName,after,paginated:1}});
+                if (frm.doc.name !== recordName) return;
                 for (const segment of message.segments || []) frm.add_custom_button(segment,()=>frappe.set_route("Form","Reach Segment",segment),__("Segments"));
                 if (message.next_cursor) frm.add_custom_button(__("Load more segments"),()=>{
                     frm.remove_custom_button(__("Load more segments"),__("Segments"));load(message.next_cursor);
