@@ -6,14 +6,14 @@ const path = require('node:path');
 
 function composer() {
 	const messages = [], routes = [];
-	const context = {frappe: {pages: {'email-campaign-studio': {}}, msgprint: text => messages.push(text),
+	const context = {clearTimeout, setTimeout, frappe: {pages: {'email-campaign-studio': {}}, msgprint: text => messages.push(text),
 		show_alert() {}, set_route: (...route) => routes.push(route)}, __: text => text};
 	vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../finbyzreach/finbyzreach/page/email_campaign_studio/email_campaign_studio.js'), 'utf8') + '\nglobalThis.Studio = EmailCampaignStudio;', context);
 	const studio = Object.create(context.Studio.prototype);
 	Object.assign(studio, {wizardStep: 'what', wizardUsage: 'segment', editable: true,
 		contentForm: {get_value: name => ({campaign_title: 'Newsletter', subscription_topic: 'News', email_template: 'Winter'})[name]},
-		renderWizard() {}, loadWizardDesign: async () => true});
-	return {studio, messages, routes};
+		renderWizard() {}, checkCampaignTitle: async () => true, loadWizardDesign: async () => true});
+	return {studio, messages, routes, frappe: context.frappe};
 }
 
 test('Back and Next preserve audience, content and delivery objects; workflow skips audience/time', async () => {
@@ -75,4 +75,54 @@ test('segment final action reuses scheduling preflight; workflow saves email wit
 	studio.wizardUsage = 'workflow';
 	studio.createCampaign = () => { throw Error('Workflow must not schedule'); };
 	await studio.advanceWizard(); assert.equal(reviewed, 1); assert.deepEqual(routes, [['List', 'Email Template']]);
+});
+
+
+test('sender is a separate campaign step and requires its own fields', async () => {
+    const {studio} = composer();
+    assert.deepEqual(Array.from(studio.wizardSteps()), ['what', 'design', 'sender', 'who', 'when', 'check']);
+    studio.wizardStep = 'design';
+    await studio.advanceWizard();
+    assert.equal(studio.wizardStep, 'sender');
+    studio.formValues = () => null;
+    await studio.advanceWizard();
+    assert.equal(studio.wizardStep, 'sender');
+    studio.formValues = () => ({email_account: 'Outbound'});
+    await studio.advanceWizard();
+    assert.equal(studio.wizardStep, 'who');
+});
+
+test('duplicate title blocks What before loading the designer', async () => {
+    const {studio} = composer();
+    studio.checkCampaignTitle = async () => false;
+    studio.loadWizardDesign = () => { throw Error('Cannot advance duplicate title'); };
+    await studio.advanceWizard();
+    assert.equal(studio.wizardStep, 'what');
+});
+
+test('title checks ignore stale responses after typing or switching routes', async () => {
+    const {studio, frappe} = composer();
+    let title = 'First', resolve;
+    const states = [];
+    studio.contentForm.get_field = () => ({$input: {val: () => title}});
+    studio.routeKey = 'new:1';
+    studio.showCampaignTitleState = state => states.push(state);
+    delete studio.checkCampaignTitle;
+    frappe.call = () => new Promise(done => { resolve = done; });
+    const pending = studio.checkCampaignTitle();
+    title = 'Second';
+    resolve({message: {available: false}});
+    assert.equal(await pending, false);
+    assert.deepEqual(states, ['checking']);
+    const staleRoute = studio.checkCampaignTitle();
+    studio.routeKey = 'new:2';
+    resolve({message: {available: false}});
+    assert.equal(await staleRoute, false);
+    assert.deepEqual(states, ['checking', 'checking']);
+    frappe.call = async () => ({message: {available: true}});
+    assert.equal(await studio.checkCampaignTitle(), true);
+    assert.equal(states.at(-1), 'available');
+    frappe.call = async () => { throw Error('Offline'); };
+    assert.equal(await studio.checkCampaignTitle(), false);
+    assert.equal(states.at(-1), 'error');
 });
