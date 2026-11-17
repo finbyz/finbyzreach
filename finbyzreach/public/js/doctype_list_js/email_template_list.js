@@ -210,6 +210,18 @@ frappe.listview_settings["Email Template"] = frappe.listview_settings["Email Tem
 			}
 			frappe.email_template_library.create_master_from_email(selected[0].name);
 		});
+        listview.page.add_action_item(__("Add language version…"), () => {
+            const selected = listview.get_checked_items();
+            if (selected.length !== 1) return frappe.msgprint(__("Select one email first."));
+            frappe.prompt([
+                {fieldname:"language", fieldtype:"Select", options:"de\nfr\nit\nen", label:__("New language"), reqd:1},
+                {fieldname:"new_name", fieldtype:"Data", label:__("Email name"), reqd:1},
+                {fieldname:"master_name", fieldtype:"Link", options:"Email Template Master", label:__("Start from master (optional)"), description:__("Leave empty to copy the existing version's content.")}
+            ], async values => {
+                const {message} = await frappe.call({method:"finbyzreach.email_template_builder.languages.add_language_version", type:"POST", args:{template_name:selected[0].name, ...values}});
+                open_builder(message.name);
+            }, __("Add language version"));
+        });
 		listview._visual_builder_actions_added = true;
 	};
 })();
