@@ -175,6 +175,7 @@ extend_doctype_class = {
 # Hook on document methods and events
 
 doc_events = {
+    "Email Subscription Preference": {"on_update": "finbyzreach.segment_automation.capture_change"},
     "Communication": {
         "after_insert": [
             "finbyzreach.doc_events.communication.after_insert",

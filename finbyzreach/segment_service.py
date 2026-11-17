@@ -71,6 +71,9 @@ def expression_condition(doctype, expression, seen=()):
             return _group_condition(doctype, [node])
         if not isinstance(node, dict):
             frappe.throw(_('Invalid segment condition'))
+        if node.get('kind') == 'subscription':
+            from finbyzreach.subscriber_segments import subscription_condition
+            return subscription_condition(doctype, node)
         if node.get('kind') == 'related':
             return related_condition(doctype, node)
         if node.get('kind') == 'activity':

@@ -71,9 +71,9 @@ def sync_record(doctype, name):
 
 def capture_change(doc, method=None, enqueue=True):
     from finbyzreach.segment_service import AUDIENCE_TYPES
-    if doc.doctype not in AUDIENCE_TYPES or not frappe.db.table_exists('Reach Segment Pending Record'):
+    if doc.doctype not in (*AUDIENCE_TYPES, 'Email Subscription Preference') or not frappe.db.table_exists('Reach Segment Pending Record'):
         return
-    if not frappe.db.exists('Reach Segment', {'audience_doctype': doc.doctype, 'archived': 0}):
+    if not frappe.db.exists('Reach Segment', {'archived': 0} if doc.doctype == 'Email Subscription Preference' else {'audience_doctype': doc.doctype, 'archived': 0}):
         return
     from hashlib import sha256
     from frappe.utils import now_datetime
@@ -138,7 +138,11 @@ def drain_changes():
             if not frappe.db.exists('Reach Segment Pending Record', row.name):
                 continue
             frappe.get_doc('Reach Segment Pending Record', row.name, for_update=True)
-            affected.update(sync_record(row.record_doctype, row.record_name))
+            if row.record_doctype == 'Email Subscription Preference':
+                from finbyzreach.subscriber_segments import queue_subscription_records
+                queue_subscription_records(row.record_name)
+            else:
+                affected.update(sync_record(row.record_doctype, row.record_name))
             frappe.db.delete('Reach Segment Pending Record', {'name':row.name})
         from finbyzreach.segment_service import count_members
         for name in affected:
