@@ -38,7 +38,10 @@ class ReachSegmentBuilder {
                 <div class="rs-results"></div><div class="rs-pagination">
                 <button type="button" class="btn btn-default btn-sm rs-prev">${__("Previous")}</button>
                 <span class="rs-page"></span><button type="button" class="btn btn-default btn-sm rs-next">${__("Next")}</button></div>
-            </div><div class="rs-excluded-view" hidden><div class="rs-excluded-results"></div><div class="rs-pagination">
+            </div><div class="rs-excluded-view" hidden><div class="rs-toolbar">
+                <strong class="rs-excluded-count"></strong><input type="search" class="form-control rs-excluded-search" aria-label="${escape(__("Search excluded records"))}" placeholder="${escape(__("Search excluded records"))}">
+                <button type="button" class="btn btn-default btn-sm rs-excluded-columns">${__("Columns")}</button>
+                <button type="button" class="btn btn-default btn-sm rs-excluded-export">${__("Export")}</button></div><div class="rs-excluded-results"></div><div class="rs-pagination">
                 <button type="button" class="btn btn-default btn-sm rs-excluded-prev">${__("Previous")}</button><span class="rs-excluded-page"></span>
                 <button type="button" class="btn btn-default btn-sm rs-excluded-next">${__("Next")}</button>
             </div></div><div class="rs-used-view" hidden><div class="rs-used-results"></div></div><div class="rs-history-view" hidden><div class="rs-chart"></div><div class="rs-history-results"></div>
@@ -50,6 +53,9 @@ class ReachSegmentBuilder {
         this.$root.find(".rs-excluded-next").on("click",()=>{this.excludedPage++;this.loadExcluded();});
         this.$root.find(".rs-excluded-results").on("click","[data-restore]",e=>this.mutate([$(e.currentTarget).attr("data-restore")],"restore"));
         this.$root.find(".rs-history-next").on("click",()=>this.loadHistory(this.historyCursor));
+        this.$root.find(".rs-excluded-search").on("input",()=>{ clearTimeout(this.excludedTimer); this.excludedTimer=setTimeout(()=>{this.excludedPage=0;this.loadExcluded();},400); });
+        this.$root.find(".rs-excluded-columns").on("click",()=>this.columnsDialog());
+        this.$root.find(".rs-excluded-export").on("click",()=>this.exportDialog("xlsx","excluded"));
         this.$root.find(".rs-add").on("click", () => this.addGroup([], false));
         this.$root.find(".rs-add-exclude").on("click", () => this.addGroup([], true));
         this.$root.find(".rs-add-segment").on("click", () => this.segmentDialog());
@@ -285,10 +291,20 @@ class ReachSegmentBuilder {
         const sequence = ++this.sequence;
         this.frm._segment_excluded_page = this.excludedPage;
         const {message:data} = await frappe.call({method:"finbyzreach.segments.excluded_segment_records",type:"GET",
-            args:{segment_name:this.frm.doc.name,start:this.excludedPage*50,with_paging:1}});
+            args:{segment_name:this.frm.doc.name,start:this.excludedPage*50,with_paging:1,search:this.$root.find(".rs-excluded-search").val() || ""}});
         if (this.disposed || sequence !== this.sequence) return;
         const escape = frappe.utils.escape_html;
-        this.$root.find(".rs-excluded-results").html(`<table class="table table-bordered"><thead><tr><th>${__("Record")}</th><th>${__("Reason")}</th><th>${__("By")}</th><th>${__("When")}</th><th></th></tr></thead><tbody>${data.rows.map(row=>`<tr><td>${escape(row.record_name)}</td><td>${escape(row.reason || "")}</td><td>${escape(row.owner || "")}</td><td>${escape(String(row.creation || ""))}</td><td>${row.manual && this.canWrite ? `<button type="button" class="btn btn-default btn-xs" data-restore="${escape(row.record_name)}">${__("Restore")}</button>`:""}</td></tr>`).join("")}</tbody></table>`);
+        const columns = data.columns || ["name"];
+        const label = c => c === "name" ? __("ID") : __(frappe.meta.get_docfield(this.doctype, c)?.label || c);
+        const cell = (row, c) => {
+            const value = escape(String((c === "name" ? row.record_name : row.values?.[c]) ?? ""));
+            return c === "name" ? `<a href="/app/${frappe.router.slug(this.doctype)}/${encodeURIComponent(row.record_name)}">${value}</a>` : value;
+        };
+        const canExport = frappe.model.can_export?.("Reach Segment", this.frm);
+        this.$root.find(".rs-excluded-export").prop("hidden", !canExport);
+        this.$root.find(".rs-excluded-columns").prop("hidden", !this.canWrite);
+        this.$root.find(".rs-excluded-count").text(__("{0} excluded", [this.frm.doc.excluded_count || 0]));
+        this.$root.find(".rs-excluded-results").html(data.rows.length ? `<table class="table table-bordered"><thead><tr>${columns.map(c=>`<th>${escape(label(c))}</th>`).join("")}<th>${__("Reason")}</th><th>${__("By")}</th><th>${__("When")}</th><th></th></tr></thead><tbody>${data.rows.map(row=>`<tr>${columns.map(c=>`<td>${cell(row,c)}</td>`).join("")}<td>${escape(row.reason || "")}</td><td>${escape(row.owner || "")}</td><td>${escape(String(row.creation || ""))}</td><td>${row.manual && this.canWrite ? `<button type="button" class="btn btn-default btn-xs" data-restore="${escape(row.record_name)}">${__("Restore")}</button>`:""}</td></tr>`).join("")}</tbody></table>` : `<p>${__("No excluded records")}</p>`);
         this.$root.find(".rs-excluded-prev").prop("disabled",!this.excludedPage);
         this.$root.find(".rs-excluded-next").prop("disabled",!data.has_more);
         this.$root.find(".rs-excluded-page").text(__("Page {0}",[this.excludedPage+1]));
@@ -345,16 +361,24 @@ class ReachSegmentBuilder {
         const hidden = usage.hidden_campaigns + usage.hidden_segments;
         this.$root.find(".rs-used-results").html(rows.length || hidden ? `<table class="table table-bordered"><thead><tr><th>${__("Type")}</th><th>${__("Name")}</th><th>${__("Status")}</th><th>${__("Effect")}</th></tr></thead><tbody>${rows.map(r => `<tr><td>${escape(r[0])}</td><td><a href="${r[1]}">${escape(r[2])}</a></td><td>${escape(r[3])}</td><td>${r[4] ? __("Cannot be deleted or archived while live") : __("Editing possible")}</td></tr>`).join("")}</tbody></table>${hidden ? `<p class="text-muted">${__("{0} more items you do not have access to.", [hidden])}</p>` : ""}` : `<p>${__("Not used yet")}</p>`);
     }
-    async exportDialog(format) {
+    async exportDialog(format, scope="members") {
         const {message:data} = await frappe.call({method:"finbyzreach.segments.segment_columns",type:"GET",args:{segment_name:this.frm.doc.name}});
-        const dialog = new frappe.ui.Dialog({title:__("Export columns"),fields:[{fieldname:"columns",fieldtype:"MultiSelectList",label:__("Columns"),reqd:1,
+        const dialog = new frappe.ui.Dialog({title:scope === "excluded" ? __("Export excluded records") : __("Export columns"),fields:[{fieldname:"columns",fieldtype:"MultiSelectList",label:__("Columns"),reqd:1,
             get_data:txt=>data.fields.filter(field=>(field.description || field.value).toLowerCase().includes((txt || "").toLowerCase()))},
             {fieldname:"header_language",fieldtype:"Select",label:__("Column headers"),options:[{value:"",label:__("Field names")},{value:"DE",label:"DE"},{value:"FR",label:"FR"},{value:"IT",label:"IT"},{value:"EN",label:"EN"}],default:"EN"}],
             primary_action_label:__("Export"),primary_action:async values=>{
-                await frappe.call({method:"finbyzreach.segments.request_segment_export",args:{segment_name:this.frm.doc.name,file_format:format,columns:JSON.stringify(values.columns),header_language:values.header_language || ""}});
+                await frappe.call({method:"finbyzreach.segments.request_segment_export",args:{segment_name:this.frm.doc.name,file_format:format,columns:JSON.stringify(values.columns),header_language:values.header_language || "",scope}});
                 dialog.hide();frappe.show_alert(__("Preparing export in the background"));
             }});
         dialog.show();dialog.set_value("columns",data.columns);
+    }
+    columnsDialog() {
+        if (!this.canWrite) return;
+        const fields = frappe.meta.get_docfields(this.doctype).filter(f => !frappe.model.no_value_type.includes(f.fieldtype));
+        const current = frappe.utils.parse_json(this.frm.doc.columns_json || "[]");
+        // Searchable list: doctypes have many fields (SEG-37).
+        const dialog = new frappe.ui.Dialog({title: __("Visible and exported columns"), fields: [{fieldname: "columns", fieldtype: "MultiSelectList", label: __("Columns"), get_data: txt => fields.filter(f => (f.label || f.fieldname).toLowerCase().includes((txt || "").toLowerCase())).map(f => ({value: f.fieldname, description: f.label}))}], primary_action_label: __("Save"), primary_action: async values => { await this.frm.set_value("columns_json", JSON.stringify(values.columns)); dialog.hide(); await this.frm.save(); }});
+        dialog.show(); dialog.set_value("columns", current);
     }
     actions() {
         if (this.frm.is_new()) return;
@@ -389,12 +413,7 @@ class ReachSegmentBuilder {
                 dialog.show();
             });
         }
-        this.frm.add_custom_button(__("Columns"), () => {
-            const fields = frappe.meta.get_docfields(this.doctype).filter(f => !frappe.model.no_value_type.includes(f.fieldtype));
-            const current = frappe.utils.parse_json(this.frm.doc.columns_json || "[]");
-            const dialog = new frappe.ui.Dialog({title: __("Visible and exported columns"), fields: [{fieldname: "columns", fieldtype: "MultiSelectList", label: __("Columns"), get_data: txt => fields.filter(f => (f.label || f.fieldname).toLowerCase().includes((txt || "").toLowerCase())).map(f => ({value: f.fieldname, description: f.label}))}], primary_action_label: __("Save"), primary_action: async values => { await this.frm.set_value("columns_json", JSON.stringify(values.columns)); dialog.hide(); await this.frm.save(); }});
-            dialog.show(); dialog.set_value("columns", current);
-        });
+        this.frm.add_custom_button(__("Columns"), () => this.columnsDialog());
         this.frm.add_custom_button(__("Duplicate"), () => frappe.prompt([{fieldname: "new_name", fieldtype: "Data", label: __("New name"), reqd: 1}, {fieldname: "copy_members", fieldtype: "Check", label: __("Copy current static members")}], async values => {
             const {message} = await frappe.call({method: "finbyzreach.segments.duplicate_segment", args: {segment_name: this.frm.doc.name, ...values}});
             frappe.set_route("Form", "Reach Segment", message);

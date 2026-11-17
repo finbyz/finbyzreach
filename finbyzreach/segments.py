@@ -324,38 +324,65 @@ def change_segment_members(segment_name, records, action):
     return dict(member_count=doc.member_count, excluded_count=doc.excluded_count, still_excluded=still_excluded)
 
 
-@frappe.whitelist(methods=['GET'])
-def excluded_segment_records(segment_name, start=0, with_paging=0):
-    from frappe.utils import cint
-    from finbyzreach.segment_service import EXCLUSION, member_query, parsed_list
-    doc = _segment(segment_name)
+def excluded_query(doc, search=None):
+    """Records that would be members but are excluded (rules or manual), visible to the user."""
+    from finbyzreach.segment_service import EXCLUSION, member_query
     table = frappe.qb.DocType(doc.audience_doctype)
     manual = frappe.qb.DocType(EXCLUSION)
     visible = frappe.qb.get_query(doc.audience_doctype, fields=['name'], ignore_permissions=False)
     candidates = member_query(doc, apply_exclusions=False).select(table.name)
     included = member_query(doc).select(table.name)
     manual_names = frappe.qb.from_(manual).select(manual.record_name).where(manual.segment == doc.name)
-    excluded = (frappe.qb.from_(table).select(table.name)
+    query = (frappe.qb.from_(table).select(table.name)
         .where(table.name.isin(visible)).where(table.name.notin(included))
-        .where(table.name.isin(candidates) | table.name.isin(manual_names))
-        .orderby(table.name).offset(max(0,cint(start))).limit(51))
-    all_names = [row[0] for row in excluded.run()]
-    names = all_names[:50]
-    details = {row.record_name:row for row in frappe.get_all(EXCLUSION,
-        filters={'segment':doc.name,'record_name':['in',names]}, fields=['record_name','owner','creation'])} if names else {}
-    result = []
+        .where(table.name.isin(candidates) | table.name.isin(manual_names)))
+    if search:
+        needle = '%' + str(search)[:140] + '%'
+        query = query.where(table.name.like(needle) | table[_label_field(doc.audience_doctype)].like(needle))
+    return query.orderby(table.name)
+
+
+def _label_field(doctype):
+    return {'Lead': 'lead_name', 'Contact': 'full_name', 'Customer': 'customer_name',
+            'Opportunity': 'title', 'Sales Order': 'customer_name'}[doctype]
+
+
+def _exclusion_reasons(doc, names, detailed=True):
+    from finbyzreach.segment_service import EXCLUSION, member_query, parsed_list
+    table = frappe.qb.DocType(doc.audience_doctype)
+    details = {row.record_name: row for row in frappe.get_all(EXCLUSION,
+        filters={'segment': doc.name, 'record_name': ['in', names]}, fields=['record_name', 'owner', 'creation'])} if names else {}
+    by_segment = {}
+    if detailed and names:
+        # One query per excluded segment for the whole page, not per record.
+        for other_name in parsed_list(doc.get('exclude_segments_json')):
+            other = frappe.get_doc('Reach Segment', other_name)
+            for row in member_query(other).select(table.name).where(table.name.isin(names)).run():
+                by_segment.setdefault(row[0], []).append(other_name)
+    result = {}
     for name in names:
         if name in details:
-            result.append(dict(details[name],reason=_('Manual exclusion'),manual=True))
-            continue
-        reasons = []
-        for other_name in parsed_list(doc.get('exclude_segments_json')):
-            other = frappe.get_doc('Reach Segment',other_name)
-            if member_query(other).select(table.name).where(table.name == name).limit(1).run():
-                reasons.append(other_name)
-        result.append(dict(record_name=name,owner='',creation='',manual=False,
-                           reason=_('Excluded by segment: {0}').format(', '.join(reasons)) if reasons else _('Exclusion filters or Email Group')))
-    return dict(rows=result,has_more=len(all_names)>50) if cint(with_paging) else result
+            result[name] = dict(details[name], reason=_('Manual exclusion'), manual=True)
+        else:
+            reasons = by_segment.get(name)
+            result[name] = dict(record_name=name, owner='', creation='', manual=False,
+                reason=_('Excluded by segment: {0}').format(', '.join(reasons)) if reasons else _('Exclusion filters or Email Group'))
+    return result
+
+
+@frappe.whitelist(methods=['GET'])
+def excluded_segment_records(segment_name, start=0, with_paging=0, search=None):
+    """Excluded tab: search, the segment's columns, reason, who and when."""
+    from frappe.utils import cint
+    doc = _segment(segment_name)
+    all_names = [row[0] for row in excluded_query(doc, search).offset(max(0, cint(start))).limit(51).run()]
+    names = all_names[:50]
+    reasons = _exclusion_reasons(doc, names)
+    columns = effective_columns(doc)
+    values = {row.name: row for row in frappe.get_list(doc.audience_doctype, filters={'name': ['in', names]},
+              fields=columns, limit_page_length=50)} if names else {}
+    result = [dict(reasons[name], values=values.get(name) or {}) for name in names]
+    return dict(rows=result, has_more=len(all_names) > 50, columns=columns) if cint(with_paging) else result
 
 
 @frappe.whitelist(methods=['POST'])
@@ -420,24 +447,35 @@ def record_segments(doctype, name, after=None, paginated=0):
 
 
 @frappe.whitelist(methods=['GET'])
-def export_segment(segment_name, file_format='csv', columns=None, header_language=None):
+def export_segment(segment_name, file_format='csv', columns=None, header_language=None, scope='members'):
     from finbyzreach.segment_service import member_names, parsed_list
     from frappe.model import get_permitted_fields
     from frappe.utils.csvutils import to_csv
     doc = _segment(segment_name)
     doc.check_permission('export')
     require_ready(doc)
+    if scope not in ('members', 'excluded'):
+        frappe.throw(_('Choose members or excluded records'))
     columns = effective_columns(doc, columns)
-    data = [export_headers(doc.audience_doctype, columns, header_language)]
+    data = [export_headers(doc.audience_doctype, columns, header_language) + ([_('Reason')] if scope == 'excluded' else [])]
+    table = frappe.qb.DocType(doc.audience_doctype)
     cursor = None
+    clean = lambda value: "'"+value if isinstance(value, str) and value.startswith(('=', '+', '-', '@', '\t', '\r')) else value
     while True:
-        names = member_names(doc, after=cursor, limit=500)
+        if scope == 'excluded':
+            page = excluded_query(doc)
+            if cursor:
+                page = page.where(table.name > cursor)
+            names = [row[0] for row in page.limit(500).run()]
+        else:
+            names = member_names(doc, after=cursor, limit=500)
         if not names:
             break
         rows = frappe.get_list(doc.audience_doctype, filters={'name': ['in', names]}, fields=columns, order_by='name asc', limit_page_length=500)
+        reasons = _exclusion_reasons(doc, names, detailed=False) if scope == 'excluded' else {}
         # Prevent spreadsheet formula execution from untrusted CRM text.
-        data.extend([["'"+value if isinstance(value, str) and value.startswith(('=', '+', '-', '@', '\t', '\r')) else value
-                      for value in (row.get(field) for field in columns)] for row in rows])
+        data.extend([[clean(row.get(field)) for field in columns] + ([reasons[row.name]['reason']] if scope == 'excluded' else [])
+                     for row in rows])
         cursor = names[-1]
     if file_format == 'xlsx':
         from frappe.utils.xlsxutils import make_xlsx
@@ -448,7 +486,8 @@ def export_segment(segment_name, file_format='csv', columns=None, header_languag
         frappe.response['type'] = 'download'
     else:
         frappe.throw(_('Choose csv or xlsx'))
-    frappe.response['filename'] = f'{frappe.scrub(doc.name)}.{file_format}'
+    suffix = '_excluded' if scope == 'excluded' else ''
+    frappe.response['filename'] = f'{frappe.scrub(doc.name)}{suffix}.{file_format}'
 
 
 EXPORT_LANGUAGES = {'DE': 'de', 'FR': 'fr', 'IT': 'it', 'EN': 'en'}
@@ -470,28 +509,30 @@ def export_headers(doctype, columns, header_language=None):
 
 
 @frappe.whitelist(methods=['POST'])
-def request_segment_export(segment_name, file_format='csv', columns=None, header_language=None):
+def request_segment_export(segment_name, file_format='csv', columns=None, header_language=None, scope='members'):
     doc = _segment(segment_name)
     doc.check_permission('export')
     require_ready(doc)
     columns = effective_columns(doc, columns)
     if file_format not in ('csv','xlsx'):
         frappe.throw(_('Choose csv or xlsx'))
+    if scope not in ('members', 'excluded'):
+        frappe.throw(_('Choose members or excluded records'))
     if header_language and str(header_language).upper() not in EXPORT_LANGUAGES:
         frappe.throw(_('Choose DE, FR, IT or EN for the column headers'))
     job_id = f'reach-export:{frappe.generate_hash(length=20)}'
     frappe.enqueue('finbyzreach.segments.build_segment_export', segment_name=segment_name,
         file_format=file_format, columns=json.dumps(columns), requesting_user=frappe.session.user, queue='long',
-        job_id=job_id, enqueue_after_commit=True, header_language=header_language)
+        job_id=job_id, enqueue_after_commit=True, header_language=header_language, scope=scope)
     return {'job_id':job_id}
 
 
-def build_segment_export(segment_name, file_format, requesting_user, columns=None, header_language=None):
+def build_segment_export(segment_name, file_format, requesting_user, columns=None, header_language=None, scope='members'):
     from frappe.utils.file_manager import save_file
     # Enqueue captures the user's identity; recheck access when the job runs.
     if frappe.session.user != requesting_user:
         frappe.throw(_('Export identity changed'), frappe.PermissionError)
-    export_segment(segment_name, file_format, columns, header_language)
+    export_segment(segment_name, file_format, columns, header_language, scope)
     content = frappe.response.pop('filecontent')
     filename = frappe.response.pop('filename')
     frappe.response.pop('type', None)

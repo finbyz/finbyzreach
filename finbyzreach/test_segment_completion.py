@@ -45,7 +45,8 @@ class SegmentCompletionSQLTest(TestCase):
             sql.insert(name)
             sql.database.connection.execute('INSERT INTO "tabReach Segment Exclusion" (name,segment,record_name) VALUES (?,?,?)',(name,'Bern',name))
         doc = sql.segment()
-        with patch.object(segments,'_segment',return_value=doc),patch.object(frappe,'get_all',return_value=[]):
+        with patch.object(segments,'_segment',return_value=doc),patch.object(frappe,'get_all',return_value=[]), \
+                patch.object(segments,'effective_columns',return_value=['name']),patch.object(frappe,'get_list',return_value=[]):
             first = segments.excluded_segment_records(doc.name,with_paging=1)
             second = segments.excluded_segment_records(doc.name,start=50,with_paging=1)
         self.assertEqual(len(first['rows']),50)
