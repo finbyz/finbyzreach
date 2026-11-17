@@ -1,4 +1,12 @@
 frappe.reach_segment_membership = frappe.reach_segment_membership || {};
+frappe.reach_segment_membership.report = function(action, excluded, segment) {
+    if (action === "add" && excluded) {
+        frappe.msgprint(__("{0} record(s) were not added because they are excluded from {1}. Undo the exclusion in the segment's Excluded tab first.",
+            [excluded, frappe.utils.escape_html(segment)]));
+        return;
+    }
+    frappe.show_alert({message:__(action === "add" ? "Members added" : "Members removed"), indicator:"green"});
+};
 frappe.reach_segment_membership.setup_list = function(doctype) {
     const previous = frappe.listview_settings[doctype] || {};
     if (previous._reachSegmentActions) return;
@@ -20,9 +28,13 @@ frappe.reach_segment_membership.setup_list = function(doctype) {
                 if (!records.length) return frappe.msgprint(__("Select records first"));
                 frappe.prompt({fieldname:"segment",fieldtype:"Link",options:"Reach Segment",label:__("Static segment"),reqd:1,
                     get_query:()=>({filters:{audience_doctype:doctype,segment_type:"Static",archived:0}})},async values=>{
-                    for (let start=0;start<records.length;start+=500) await frappe.call({method:"finbyzreach.segments.change_segment_members",
-                        args:{segment_name:values.segment,records:JSON.stringify(records.slice(start,start+500)),action}});
-                    frappe.show_alert(__(action === "add" ? "Members added" : "Members removed"));
+                    let excluded = 0;
+                    for (let start=0;start<records.length;start+=500) {
+                        const {message} = await frappe.call({method:"finbyzreach.segments.change_segment_members",
+                            args:{segment_name:values.segment,records:JSON.stringify(records.slice(start,start+500)),action}});
+                        excluded += message?.still_excluded || 0;
+                    }
+                    frappe.reach_segment_membership.report(action, excluded, values.segment);
                 });
             });
         }

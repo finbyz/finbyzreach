@@ -319,7 +319,9 @@ def change_segment_members(segment_name, records, action):
         member = frappe.qb.DocType(MEMBER)
         frappe.qb.update(member).set(member.is_current,1).where(member.segment == doc.name).where(member.record_name.isin(list(current_members))).run()
     schedule_reconciliation(doc.name)
-    return dict(member_count=doc.member_count, excluded_count=doc.excluded_count)
+    # Exclusions win over manual additions; tell the caller instead of reporting success silently.
+    still_excluded = frappe.db.count(EXCLUSION, {'segment': doc.name, 'record_name': ['in', list(set(records))]}) if action == 'add' else 0
+    return dict(member_count=doc.member_count, excluded_count=doc.excluded_count, still_excluded=still_excluded)
 
 
 @frappe.whitelist(methods=['GET'])

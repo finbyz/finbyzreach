@@ -270,7 +270,8 @@ class ReachSegmentBuilder {
     }
     async mutate(records, action) {
         if (this.frm.is_dirty()) return frappe.msgprint(__("Save the segment before changing members."));
-        await frappe.call({method: "finbyzreach.segments.change_segment_members", args: {segment_name: this.frm.doc.name, records: JSON.stringify(records), action}});
+        const {message} = await frappe.call({method: "finbyzreach.segments.change_segment_members", args: {segment_name: this.frm.doc.name, records: JSON.stringify(records), action}});
+        if (action === "add" && message?.still_excluded) frappe.reach_segment_membership?.report("add", message.still_excluded, this.frm.doc.name);
         this.frm.reload_doc();
     }
     setTab(tab, load=true) {
@@ -384,7 +385,7 @@ class ReachSegmentBuilder {
         });
         if (this.frm.doc.segment_type === "Static") {
             this.frm.add_custom_button(__("Add members"), () => {
-                const dialog = new frappe.ui.Dialog({title: __("Add members"), fields: [{fieldname: "records", fieldtype: "MultiSelectList", label: __("Records"), get_data: txt => frappe.db.get_link_options(this.doctype, txt)}], primary_action_label: __("Add"), primary_action: values => { dialog.hide(); this.mutate(values.records, "add"); }});
+                const dialog = new frappe.ui.Dialog({title: __("Add members"), fields: [{fieldname: "records", fieldtype: "MultiSelectList", label: __("Records"), get_data: txt => frappe.db.get_link_options(this.doctype, txt)}], primary_action_label: __("Add"), primary_action: values => { if (!values.records?.length) return frappe.msgprint(__("Choose at least one record")); dialog.hide(); this.mutate(values.records, "add"); }});
                 dialog.show();
             });
         }
