@@ -296,7 +296,13 @@ class EmailCampaignStudio {
 			{ fieldtype: "Column Break" },
 			{ fieldname: "window_start", label: __("Starts At"), fieldtype: "Time", depends_on: "eval:doc.restrict_sending_window", description: __("Earliest time of day when a due batch may be released."), change },
 			{ fieldtype: "Column Break" },
-			{ fieldname: "window_end", label: __("Ends At"), fieldtype: "Time", depends_on: "eval:doc.restrict_sending_window", description: __("Latest time of day when a due batch may be released."), change },
+			{ fieldname: "window_end", label: __("Ends At"), fieldtype: "Time", depends_on: "eval:doc.restrict_sending_window", description: __("Latest time of day when a due batch may be released. An end before the start sends overnight, e.g. 22:00 to 06:00."), change },
+			{ fieldtype: "Section Break" },
+			// Rule 4.5 / EM-24: one-click windows, including one across midnight.
+			{ fieldname: "window_presets", fieldtype: "HTML", options: "<div class='ecs-window-presets'><span class='text-muted small'>" + __("Presets") + "</span>"
+				+ [["08:00:00", "17:00:00", __("Office 08–17")], ["18:00:00", "22:00:00", __("Evening 18–22")], ["22:00:00", "06:00:00", __("Night 22–06")]]
+					.map(([start, end, label]) => "<button type='button' class='btn btn-default btn-xs' data-window-preset='" + start + "|" + end + "'>" + label + "</button>").join(" ")
+				+ " <span class='text-muted small'>" + __("Times are Europe/Zurich.") + "</span></div>" },
 		]);
 		this.trackingForm = this.makeForm("#ecs-tracking-form", [
 			{ fieldname: "tracking_note", fieldtype: "HTML", options: "<div class='ecs-tracking-note'><strong>" + __("Built-in attribution") + "</strong><span>" + __("Every eligible website link receives your UTM values automatically. Signed redirect links measure individual clicks safely.") + "</span></div>" },
@@ -440,6 +446,7 @@ class EmailCampaignStudio {
 				});
 			});
 		};
+		this.syncOptionToggles = sync;
 		this.$root.off("click.ecs-toggles", ".ecs-toggle-card").on("click.ecs-toggles", ".ecs-toggle-card", (event) => {
 			const $button = $(event.currentTarget);
 			const group = groups[$button.data("option-group")];
@@ -470,6 +477,14 @@ class EmailCampaignStudio {
 		this.$root.on("click", "#ecs-add-or-group", () => this.addIncludeFilterGroup());
 		this.$root.on("click", "#ecs-add-exclude-or-group", () => this.addExcludeFilterGroup());
 		this.$root.on("click", "#ecs-save-segment-btn", () => this.showSaveSegmentDialog());
+		this.$root.on("click", "[data-window-preset]", (event) => {
+			if (!this.editable) return;
+			const [start, end] = String($(event.currentTarget).attr("data-window-preset")).split("|");
+			Promise.resolve(this.scheduleForm.set_value("restrict_sending_window", 1))
+				.then(() => this.scheduleForm.set_value("window_start", start))
+				.then(() => this.scheduleForm.set_value("window_end", end))
+				.then(() => { this.syncOptionToggles?.(); this.updateSummary?.(); });
+		});
 		this.$root.on("click", "#ecs-health-btn", () => this.showAudienceHealth());
 		this.$root.on("click", "#ecs-report-refresh", () => this.loadCampaignMetrics(this.sourceCampaign));
 		this.$root.on("change", "#ecs-report-period", () => this.loadCampaignMetrics(this.sourceCampaign));

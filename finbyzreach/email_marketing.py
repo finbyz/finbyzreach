@@ -350,8 +350,9 @@ def validate_campaign(doc, require_ready=False, skip_queued_check=False):
 	if cint(doc.custom_restrict_sending_window):
 		if not doc.custom_window_start or not doc.custom_window_end:
 			frappe.throw(_("Both start and end times are required for a sending window"))
-		if get_time(doc.custom_window_start) >= get_time(doc.custom_window_end):
-			frappe.throw(_("The sending window end must be later than its start"))
+		if get_time(doc.custom_window_start) == get_time(doc.custom_window_end):
+			# An end before the start is an overnight window, e.g. 22:00 to 06:00 (rule 4.5).
+			frappe.throw(_("The sending window start and end must be different"))
 
 	if doc.custom_email_account:
 		account = frappe.get_cached_doc("Email Account", doc.custom_email_account)
@@ -856,44 +857,45 @@ def _normalize_local_datetime(value, timezone):
 	return value.astimezone(UTC).astimezone(timezone)
 
 
+def window_allows(local_dt, allowed_days, window_start=None, window_end=None):
+	"""True when a local datetime may send. An end before the start is an overnight
+	window: hours after midnight belong to the evening the window opened, so the
+	weekday check uses that evening's day (22:00-06:00 on Friday includes Sat 03:00)."""
+	if window_start is None or window_end is None:
+		return local_dt.weekday() in allowed_days
+	moment = local_dt.time().replace(tzinfo=None)
+	if window_start < window_end:
+		return local_dt.weekday() in allowed_days and window_start <= moment <= window_end
+	if moment >= window_start:
+		return local_dt.weekday() in allowed_days
+	if moment <= window_end:
+		return (local_dt - timedelta(days=1)).weekday() in allowed_days
+	return False
+
+
 def _next_valid_slot(value, campaign, timezone):
 	allowed_days = _selected_weekdays(campaign)
-	window_start = (
-		get_time(campaign.custom_window_start)
-		if cint(campaign.custom_restrict_sending_window)
-		else None
-	)
-	window_end = (
-		get_time(campaign.custom_window_end)
-		if cint(campaign.custom_restrict_sending_window)
-		else None
-	)
+	restricted = cint(campaign.custom_restrict_sending_window)
+	window_start = get_time(campaign.custom_window_start) if restricted else None
+	window_end = get_time(campaign.custom_window_end) if restricted else None
 	value = _normalize_local_datetime(value, timezone)
+	if window_allows(value, allowed_days, window_start, window_end):
+		return value
+	if window_start is None:
+		# No time window: the next allowed weekday at the same time of day.
+		for days in range(1, 8):
+			candidate = _normalize_local_datetime((value + timedelta(days=days)).replace(second=0, microsecond=0), timezone)
+			if candidate.weekday() in allowed_days:
+				return candidate
+		frappe.throw(_("Could not calculate a valid sending slot"))
+	# Otherwise the next time the window opens on an allowed weekday.
+	opening = value.replace(hour=window_start.hour, minute=window_start.minute, second=0, microsecond=0)
+	if opening <= value:
+		opening += timedelta(days=1)
 	for _unused in range(15):
-		if value.weekday() not in allowed_days:
-			value = (value + timedelta(days=1)).replace(
-				hour=window_start.hour if window_start else value.hour,
-				minute=window_start.minute if window_start else value.minute,
-				second=0,
-				microsecond=0,
-			)
-			continue
-		if window_start and value.time().replace(tzinfo=None) < window_start:
-			value = value.replace(
-				hour=window_start.hour,
-				minute=window_start.minute,
-				second=0,
-				microsecond=0,
-			)
-		if window_end and value.time().replace(tzinfo=None) > window_end:
-			value = (value + timedelta(days=1)).replace(
-				hour=window_start.hour,
-				minute=window_start.minute,
-				second=0,
-				microsecond=0,
-			)
-			continue
-		return _normalize_local_datetime(value, timezone)
+		if opening.weekday() in allowed_days:
+			return _normalize_local_datetime(opening, timezone)
+		opening += timedelta(days=1)
 	frappe.throw(_("Could not calculate a valid sending slot"))
 
 
