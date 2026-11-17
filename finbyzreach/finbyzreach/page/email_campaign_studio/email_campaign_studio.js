@@ -215,6 +215,9 @@ class EmailCampaignStudio {
 					}
 				},
 			},
+			// EM-19: send to several segments and exclude whole segments.
+			this.segmentListField("segment_names", __("Also send to segments"), __("Optional. Members of these segments are added to the audience.")),
+			this.segmentListField("exclude_segment_names", __("Exclude segments"), __("Members of these segments never receive this email.")),
 		]);
 		this.contentForm = this.makeForm("#ecs-content-form", [
 			{ fieldname: "campaign_title", label: __("Campaign Title"), fieldtype: "Data", reqd: 1, description: __("An internal name used to identify this campaign in lists and reports."), change },
@@ -1148,7 +1151,7 @@ class EmailCampaignStudio {
 			}));
 			this.syncAudienceControls();
 			await this.runBootstrapStep(__("Loading campaign segment"), () => this.setBootstrapFormValues(this.segmentForm, {
-				segment_name: "",
+				segment_name: "", segment_names: [], exclude_segment_names: [],
 			}));
 			await this.runBootstrapStep(__("Loading campaign content"), () => this.setBootstrapFormValues(this.contentForm, {
 				campaign_title: "",
@@ -1225,6 +1228,8 @@ class EmailCampaignStudio {
 			this.syncAudienceControls();
 			await this.runBootstrapStep(__("Loading campaign segment"), () => this.setBootstrapFormValues(this.segmentForm, {
 				segment_name: campaign.segment_name || "",
+				segment_names: campaign.segment_names || [],
+				exclude_segment_names: campaign.exclude_segment_names || [],
 			}));
 			await this.runBootstrapStep(__("Loading campaign content"), () => this.setBootstrapFormValues(this.contentForm, {
 				campaign_title: campaign.campaign_title || "",
@@ -1426,6 +1431,34 @@ class EmailCampaignStudio {
 		this.updateSummary();
 	}
 
+	segmentListField(fieldname, label, description) {
+		return {
+			fieldname, label, description, fieldtype: "MultiSelectList",
+			get_data: (txt) => frappe.db.get_link_options("Reach Segment", txt, { audience_doctype: this.audienceDoctype(), archived: 0 }),
+			change: () => {
+				if (this.applyingBootstrap) return;
+				this.updateFilterCount();
+				this.queuePreview();
+			},
+		};
+	}
+
+	segmentList(fieldname) {
+		const value = this.segmentForm ? this.segmentForm.get_value(fieldname) : [];
+		return Array.isArray(value) ? value.filter(Boolean) : [];
+	}
+
+	hasSegmentAudience() {
+		return Boolean((this.segmentForm && this.segmentForm.get_value("segment_name")) || this.segmentList("segment_names").length);
+	}
+
+	segmentPayload() {
+		return {
+			segment_names: JSON.stringify(this.segmentList("segment_names")),
+			exclude_segment_names: JSON.stringify(this.segmentList("exclude_segment_names")),
+		};
+	}
+
 	getFilters() {
 		if (this.presetFilters !== null) {
 			return this.presetFilters.map((group) => group.map((filter) => filter.slice()));
@@ -1457,11 +1490,11 @@ class EmailCampaignStudio {
 		const excludeGroups = this.getExcludeFilters();
 		const excludeCount = excludeGroups.reduce((total, group) => total + group.length, 0);
 		const emailGroupCount = (this.exclude_email_groups || []).length;
-		const totalExclusions = excludeCount + emailGroupCount;
+		const totalExclusions = excludeCount + emailGroupCount + this.segmentList("exclude_segment_names").length;
 		const displayCount = this.activeStaticSegment ? 0 : count;
 		this.$root.find("#ecs-filter-count").text(displayCount + " " + (displayCount === 1 ? __("filter") : __("filters")));
 		this.$root.find("#ecs-exclude-filter-count").text(totalExclusions + " " + (totalExclusions === 1 ? __("rule") : __("rules")));
-		const hasAudience = count > 0 || this.activeStaticSegment;
+		const hasAudience = count > 0 || this.activeStaticSegment || this.hasSegmentAudience();
 		this.$root.find("#ecs-preview-btn").prop("disabled", !hasAudience);
 		this.$root.find("#ecs-health-btn").prop("disabled", !hasAudience);
 		this.$root.find("#ecs-filter-builder").toggle(!this.activeStaticSegment);
@@ -1483,7 +1516,7 @@ class EmailCampaignStudio {
 		const filters = this.getFilters();
 		const segmentName = this.segmentForm ? (this.segmentForm.get_value("segment_name") || "") : "";
 		const frozenCampaign = !this.editable && Boolean(this.sourceCampaign);
-		if (!filters.length && !segmentName && !frozenCampaign) return null;
+		if (!filters.length && !this.hasSegmentAudience() && !frozenCampaign) return null;
 		const blacklist = this.getBlacklistValues();
 		const pageState = pagination || {};
 		const searchText = String(pageState.search_text ?? pageState.searchText ?? "").trim().slice(0, 140);
@@ -1492,6 +1525,7 @@ class EmailCampaignStudio {
 			audience_doctype: this.audienceDoctype(),
 			contact_mode: this.audienceForm.get_value("contact_mode") || "Primary Contact",
 			segment_name: segmentName,
+			...this.segmentPayload(),
 			exclude_filters: JSON.stringify(blacklist.exclude_filters),
 			exclude_email_groups: JSON.stringify(blacklist.exclude_email_groups),
 			subscription_topic: this.contentForm.get_value("subscription_topic"),
@@ -1875,7 +1909,7 @@ class EmailCampaignStudio {
 			return null;
 		}
 		const filters = this.getFilters();
-		if (requireReady && !filters.length) {
+		if (requireReady && !filters.length && !this.hasSegmentAudience()) {
 			frappe.msgprint(__("Add at least one {0} filter before continuing.", [this.audienceDoctype()]));
 			return null;
 		}
@@ -1885,6 +1919,8 @@ class EmailCampaignStudio {
 			personalization_doctype: this.personalizationDoctype(),
 			filters: filters,
 			segment_name: this.segmentForm ? (this.segmentForm.get_value("segment_name") || "") : "",
+			segment_names: this.segmentList("segment_names"),
+			exclude_segment_names: this.segmentList("exclude_segment_names"),
 			source_campaign: this.sourceCampaign || "",
 		});
 	}

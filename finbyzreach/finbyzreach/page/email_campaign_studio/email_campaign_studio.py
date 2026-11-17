@@ -116,14 +116,77 @@ def _lead_names(filters_json, audience_doctype="Lead"):
 	return email_marketing._lead_names_from_filter_groups(filters_json, audience_doctype=audience_doctype)
 
 
+SEGMENT_MARKER_VALUES = ("#REACH_SEGMENT#", "#STATIC_SEGMENT#")
+
+
+def _segment_name_list(value):
+	"""Accept a JSON list, a Python list or one name; return unique, non-empty names in order."""
+	if not value:
+		return []
+	if isinstance(value, str):
+		value = value.strip()
+		value = frappe.parse_json(value) if value.startswith("[") else ([value] if value else [])
+	if not isinstance(value, (list, tuple)):
+		frappe.throw(_("Segments must be a list of segment names"))
+	return list(dict.fromkeys(str(name or "").strip() for name in value if str(name or "").strip()))
+
+
+def _mailing_segment(name, audience_doctype):
+	segment = frappe.get_doc("Reach Segment", name)
+	segment.check_permission("read")
+	if (segment.get("audience_doctype") or "Lead") != audience_doctype:
+		frappe.throw(_("Segment {0} targets a different audience type").format(segment.name))
+	if segment.get("archived"):
+		frappe.throw(_("Archived segments cannot be used for mailings"))
+	return segment
+
+
+def _segment_marker_group(audience_doctype, name):
+	return [[audience_doctype, "name", "in", ["#REACH_SEGMENT#", name]]]
+
+
+def split_segment_groups(groups):
+	"""Split stored filter groups into plain rule groups and the segment names used as markers."""
+	plain, names = [], []
+	for group in groups or []:
+		if (isinstance(group, list) and len(group) == 1 and isinstance(group[0], list) and len(group[0]) == 4
+			and group[0][1:3] == ["name", "in"] and isinstance(group[0][3], list) and len(group[0][3]) == 2
+			and group[0][3][0] in SEGMENT_MARKER_VALUES):
+			names.append(group[0][3][1])
+		else:
+			plain.append(group)
+	return plain, list(dict.fromkeys(names))
+
+
+def _campaign_audience_fields(campaign):
+	include, include_segments = split_segment_groups(frappe.parse_json(campaign.custom_lead_filters_json or "[]"))
+	exclude, exclude_segments = split_segment_groups(frappe.parse_json(campaign.custom_exclude_filters_json or "[]"))
+	return {
+		"filters": include,
+		"exclude_filters": exclude,
+		"segment_name": include_segments[0] if include_segments else "",
+		"segment_names": include_segments[1:],
+		"exclude_segment_names": exclude_segments,
+	}
+
+
 def _audience_context(
 	filters, exclude_filters=None, exclude_email_groups=None, require_filters=True,
 	segment_name=None, audience_doctype="Lead", contact_mode="Primary Contact", resolve_names=True,
+	segment_names=None, exclude_segment_names=None,
 ):
 	def filter_payload(value):
 		return value if isinstance(value, str) else json.dumps(value or [])
 
+	def group_list(value):
+		value = frappe.parse_json(value) if isinstance(value, str) and value.strip() else (value or [])
+		return list(value) if isinstance(value, list) else []
+
 	segment_name = str(segment_name or "").strip()
+	# EM-19: one or several segments to send to, plus segments to exclude. Each one
+	# becomes a marker group, so the audience is resolved again at send time.
+	extra_segments = [name for name in _segment_name_list(segment_names) if name != segment_name]
+	excluded_segments = _segment_name_list(exclude_segment_names)
 	static_leads = None
 	if segment_name:
 		segment = frappe.get_doc("Reach Segment", segment_name)
@@ -140,6 +203,22 @@ def _audience_context(
 		exclude_email_groups = list(dict.fromkeys(
 			[*saved_groups, *_parse_json_list(exclude_email_groups, _("blacklist email groups"))]
 		))
+	if extra_segments:
+		groups = group_list(filters)
+		saved_groups = []
+		for name in extra_segments:
+			segment = _mailing_segment(name, audience_doctype)
+			groups.append(_segment_marker_group(audience_doctype, segment.name))
+			saved_groups.extend(_parse_json_list(segment.exclude_email_groups_json, _("blacklist email groups")))
+		filters = groups
+		exclude_email_groups = list(dict.fromkeys(
+			[*_parse_json_list(exclude_email_groups, _("blacklist email groups")), *saved_groups]
+		))
+	if excluded_segments:
+		groups = group_list(exclude_filters)
+		for name in excluded_segments:
+			groups.append(_segment_marker_group(audience_doctype, _mailing_segment(name, audience_doctype).name))
+		exclude_filters = groups
 	include_filters_json = email_marketing.validate_lead_filter_groups(
 		filter_payload(filters), require_filters=require_filters, audience_doctype=audience_doctype
 	)
@@ -554,8 +633,7 @@ def _campaign_for_studio(campaign_name):
 		"email_account": campaign.custom_email_account,
 		"sender_name": campaign.custom_sender_name,
 		"reply_to": campaign.custom_reply_to,
-		"filters": frappe.parse_json(campaign.custom_lead_filters_json or "[]"),
-		"exclude_filters": frappe.parse_json(campaign.custom_exclude_filters_json or "[]"),
+		**_campaign_audience_fields(campaign),
 		"exclude_email_groups": frappe.parse_json(campaign.custom_exclude_email_groups_json or "[]"),
 		"start_date": start_on.strftime("%Y-%m-%d") if start_on else "",
 		"start_time": start_on.strftime("%H:%M:%S") if start_on else "",
@@ -657,6 +735,8 @@ def preview_audience(
 	subscription_topic=None,
 	content_topic=None,
 	segment_name=None,
+	segment_names=None,
+	exclude_segment_names=None,
 	eligible_page=1,
 	eligible_page_length=8,
 	excluded_page=1,
@@ -678,6 +758,7 @@ def preview_audience(
 	context = _audience_context(
 		filters, exclude_filters, exclude_email_groups, segment_name=segment_name,
 		audience_doctype=audience_doctype, contact_mode=contact_mode,
+		segment_names=segment_names, exclude_segment_names=exclude_segment_names,
 	)
 	return _preview_response(
 		_resolved_studio_audience(context, subscription_topic, content_topic),
@@ -899,6 +980,8 @@ def create_campaign(payload=None, launch="schedule"):
 		segment_name=payload.get("segment_name"),
 		audience_doctype=audience_doctype,
 		contact_mode=payload.get("contact_mode") or "Primary Contact", resolve_names=False,
+		segment_names=payload.get("segment_names"),
+		exclude_segment_names=payload.get("exclude_segment_names"),
 	)
 	# Audience eligibility and exact counts are calculated by the resumable worker.
 	preview = None
