@@ -222,6 +222,9 @@ def _ensure_public_subscriber_lead(email):
 
 def confirm(preference, token):
 	doc = frappe.get_doc(PREFERENCE_DOCTYPE, preference, for_update=True)
+	if doc.status == "Subscribed" and doc.confirmed_on:
+		# Opening the link again (or a second tab) after confirming is not an error.
+		return doc.email
 	if doc.status != "Pending" or not doc.confirmation_hash or not doc.confirmation_expires_on:
 		frappe.throw(_("This confirmation link is no longer valid"), frappe.PermissionError)
 	if now_datetime() > get_datetime(doc.confirmation_expires_on) or not hmac.compare_digest(
@@ -287,7 +290,8 @@ def topic_rows(email, language="en"):
 	language = language if language in LANGUAGES else "en"
 	state = statuses(email) if email else {}
 	rows = []
-	for topic in frappe.get_all("Subscription Topic", filters={"disabled": 0, "category": ["in", ["Mailing Type", "Topic"]]}, fields=["name", "description", "category"], order_by="category asc, name asc", limit_page_length=0):
+	doi_field = ["double_opt_in"] if frappe.db.has_column("Subscription Topic", "double_opt_in") else []
+	for topic in frappe.get_all("Subscription Topic", filters={"disabled": 0, "category": ["in", ["Mailing Type", "Topic"]]}, fields=["name", "description", "category", *doi_field], order_by="category asc, name asc", limit_page_length=0):
 		translation = frappe.db.get_value("Subscription Topic Translation", {"parent": topic.name, "language": language}, ["label", "description"], as_dict=True)
 		rows.append({
 			"name": topic.name,
@@ -295,6 +299,8 @@ def topic_rows(email, language="en"):
 			"description": translation.description if translation and translation.description else topic.description,
 			"category": topic.category or "Mailing Type",
 			"status": state.get(topic.name, "Unknown"),
+			# Subscribing to these sends a confirmation email, so Desk asks for its language first.
+			"double_opt_in": int((topic.category or "Mailing Type") == "Mailing Type" and frappe.utils.cint(topic.get("double_opt_in"))),
 		})
 	return rows
 
@@ -331,11 +337,17 @@ def get_person_preferences(doctype, name, email=None):
 	chosen = normalize_email(email) if email else (emails[0] if emails else None)
 	if chosen and chosen not in emails:
 		frappe.throw(_("Email is not on this record"), frappe.PermissionError)
-	return {"email": chosen, "emails": emails, "topics": topic_rows(chosen) if chosen else []}
+	return {"email": chosen, "emails": emails, "topics": topic_rows(chosen) if chosen else [], "language": record_language(doc)}
+
+
+def record_language(doc):
+	"""The person's language for consent emails: preferred, then record language, fallback German."""
+	value = str(doc.get("custom_preferred_language") or doc.get("language") or "").strip().lower()[:2]
+	return value if value in LANGUAGES else "de"
 
 
 @frappe.whitelist(methods=["POST"])
-def set_person_preference(doctype, name, topic, subscribed, email=None):
+def set_person_preference(doctype, name, topic, subscribed, email=None, language=None):
 	if doctype not in ("Lead", "Contact"):
 		frappe.throw(_("Unsupported record"), frappe.PermissionError)
 	doc = frappe.get_doc(doctype, name)
@@ -346,7 +358,9 @@ def set_person_preference(doctype, name, topic, subscribed, email=None):
 	if not person["email"]:
 		frappe.throw(_("This record has no email address"))
 	if frappe.utils.cint(subscribed):
-		return request_subscription(person["email"], topic, "Desk: " + doctype + " " + name)
+		# The confirmation email goes out in the language chosen in Desk, else the person's own.
+		language = str(language or "").strip().lower() or person.get("language") or "de"
+		return request_subscription(person["email"], topic, "Desk: " + doctype + " " + name, language=language)
 	unsubscribe(person["email"], topic, "Desk: " + doctype + " " + name)
 	return "Unsubscribed"
 

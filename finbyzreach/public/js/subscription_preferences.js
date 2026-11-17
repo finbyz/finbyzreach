@@ -68,17 +68,27 @@ window.finbyzreachPreferences = {
                             const subscribed = topic.status === "Subscribed";
                             const $button = $("<button type='button' class='btn btn-xs btn-default'>")
                                 .text(subscribed ? __("Unsubscribe") : __("Subscribe")).appendTo($row);
-                            $button.on("click", () => {
+                            const send = (language) => {
                                 $button.prop("disabled", true);
                                 frappe.call({
                                     method: "finbyzreach.subscription_preferences.set_person_preference",
-                                    args: {doctype: frm.doctype, name: frm.doc.name, email: message.email, topic: topic.name, subscribed: subscribed ? 0 : 1},
+                                    args: {doctype: frm.doctype, name: frm.doc.name, email: message.email, topic: topic.name, subscribed: subscribed ? 0 : 1, language: language || ""},
                                     callback({message: status}) {
-                                        if (status === "Pending") frappe.msgprint(__("Confirmation pending. Please check the inbox."));
+                                        if (status === "Pending") frappe.msgprint(__("Confirmation email sent. The status stays Pending until the link in it is clicked."));
                                         window.finbyzreachPreferences.render(frm, message.email);
                                     },
                                     error() { $button.prop("disabled", false); }
                                 });
+                            };
+                            $button.on("click", () => {
+                                // Double opt-in sends a confirmation email: choose the language it is written in.
+                                if (subscribed || !topic.double_opt_in) return send();
+                                frappe.prompt([{
+                                    fieldname: "language", fieldtype: "Select", label: __("Language of the confirmation email"), reqd: 1,
+                                    options: [{value: "de", label: "Deutsch"}, {value: "fr", label: "Français"}, {value: "it", label: "Italiano"}, {value: "en", label: "English"}],
+                                    default: message.language || "de",
+                                    description: __("{0} receives an email with a confirmation link. {1} stays Pending until it is clicked.", [frappe.utils.escape_html(message.email), frappe.utils.escape_html(topic.label)]),
+                                }], (values) => send(values.language), __("Send confirmation email"), __("Send"));
                             });
                         });
                     });
