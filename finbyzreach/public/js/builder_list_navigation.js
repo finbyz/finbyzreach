@@ -5,6 +5,22 @@ frappe.provide("frappe.builder_list_navigation");
     const preference = "open_in_builder";
     const enabled = doctype => frappe.get_user_settings(doctype)[preference] !== false;
 
+    function injectStyle() {
+        if (document.getElementById("builder-nav-toggle-style")) return;
+        const style = document.createElement("style");
+        style.id = "builder-nav-toggle-style";
+        style.textContent = `
+            .btn.builder-nav-toggle { display: inline-flex; align-items: center; gap: 8px; }
+            .builder-nav-switch { position: relative; width: 26px; height: 15px; flex: none; border-radius: 999px;
+                background: var(--gray-400, #c0c6cc); transition: background .15s; }
+            .builder-nav-switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 11px; height: 11px;
+                border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.2); transition: transform .15s; }
+            .builder-nav-toggle.is-on .builder-nav-switch { background: var(--primary, #171717); }
+            .builder-nav-toggle.is-on .builder-nav-switch::after { transform: translateX(11px); }
+        `;
+        document.head.appendChild(style);
+    }
+
     frappe.builder_list_navigation.mount = function (listview) {
         if (listview._builder_navigation_button) return;
         const doctype = listview.doctype;
@@ -20,10 +36,13 @@ frappe.provide("frappe.builder_list_navigation");
                 button.prop("disabled", false);
             }
         });
+        injectStyle();
+        button.addClass("builder-nav-toggle").attr("role", "switch");
+        button.html(`<span>${__("Open in builder")}</span><span class="builder-nav-switch" aria-hidden="true"></span>`);
         function update() {
             const on = enabled(doctype);
-            button.text(on ? __("Open in builder: On") : __("Open in builder: Off"));
-            button.attr("aria-pressed", String(on));
+            button.toggleClass("is-on", on);
+            button.attr("aria-checked", String(on));
             button.attr("title", __("Choose whether clicking a row opens the builder or the document form."));
         }
         update();

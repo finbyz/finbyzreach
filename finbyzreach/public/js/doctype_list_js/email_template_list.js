@@ -175,12 +175,31 @@ frappe.listview_settings["Email Template"] = frappe.listview_settings["Email Tem
 	frappe.provide("frappe.email_template_builder");
 	frappe.email_template_builder.show_ai_create_dialog = show_ai_create_dialog;
 
+	// The list's main button creates an email template. Campaigns start from the
+	// Campaign list, the Marketing start page or a segment (Email Campaign Studio).
 	frappe.listview_settings["Email Template"].primary_action = function () {
-		frappe.set_route("email-campaign-studio", {new: Date.now().toString(36)});
+		if (can_design_email()) show_new_visual_template_dialog();
+		else frappe.new_doc("Email Template");
 	};
+
+	function set_create_button(listview) {
+		if (!listview.can_create || frappe.boot.read_only) return;
+		// A site translation renames "Email Template" to "Emails", which made Frappe's label read "Add Emails".
+		listview.page.set_primary_action(
+			{label: __("New Email"), short_label: __("New")},
+			() => frappe.listview_settings["Email Template"].primary_action(),
+			"plus"
+		);
+	}
 
 	frappe.listview_settings["Email Template"].onload = function (listview) {
 		if (existing_onload) existing_onload(listview);
+		if (!listview._create_button_relabelled) {
+			listview._create_button_relabelled = true;
+			const original = listview.set_primary_action.bind(listview);
+			listview.set_primary_action = function () { original(); set_create_button(listview); };
+			set_create_button(listview);
+		}
 		frappe.reach_folder_sidebar.setup(listview);
 		frappe.require([
 			"/assets/finbyzreach/css/email_workspace.css",
