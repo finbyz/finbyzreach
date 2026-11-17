@@ -9,6 +9,8 @@
  "field_order": [
   "library_section",
   "folder",
+  "custom_email_type",
+  "custom_language",
   "enabled",
   "thumbnail",
   "subject",
@@ -139,6 +141,21 @@
    "fieldtype": "Dynamic Link",
    "label": "Preview Document",
    "options": "custom_reference_doctype"
+  },
+  {
+   "fieldname": "custom_email_type",
+   "fieldtype": "Link",
+   "options": "Subscription Topic",
+   "label": "Email Type",
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "custom_language",
+   "fieldtype": "Select",
+   "options": "\nde\nfr\nit\nen",
+   "label": "Language",
+   "in_list_view": 1,
+   "in_standard_filter": 1
   }
  ],
  "links": [],

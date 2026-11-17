@@ -13,6 +13,8 @@ from .tokens import validate_semantic_tokens
 
 
 COPY_FIELDS = (
+	"custom_language",
+	"custom_email_type",
 	"use_html",
 	"response_html",
 	"response",

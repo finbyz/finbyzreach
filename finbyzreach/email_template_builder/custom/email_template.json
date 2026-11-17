@@ -946,6 +946,29 @@
    "insert_after": "custom_folder",
    "module": "Email Template Builder",
    "name": "Email Template-custom_email_type"
+  },
+  {
+   "fieldname": "custom_language",
+   "fieldtype": "Select",
+   "options": "\nde\nfr\nit\nen",
+   "label": "Language",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "insert_after": "custom_email_type",
+   "dt": "Email Template",
+   "name": "Email Template-custom_language",
+   "module": "Email Template Builder"
+  },
+  {
+   "fieldname": "custom_version_group",
+   "fieldtype": "Link",
+   "options": "Email Template",
+   "label": "Language version family",
+   "read_only": 1,
+   "insert_after": "custom_language",
+   "dt": "Email Template",
+   "name": "Email Template-custom_version_group",
+   "module": "Email Template Builder"
   }
  ],
  "custom_perms": [],

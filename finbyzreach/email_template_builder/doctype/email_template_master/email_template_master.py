@@ -9,6 +9,8 @@ class EmailTemplateMaster(Document):
 		return self.response_html if self.use_html else self.response
 
 	def validate(self):
+		from finbyzreach.email_template_builder.languages import validate_metadata
+		validate_metadata(self)
 		validate_template(self.subject)
 		validate_template(self.response_)
 		if self.folder and not frappe.db.exists("Email Template Folder", self.folder):
