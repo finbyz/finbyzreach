@@ -49,3 +49,18 @@ class SegmentUsageTest(TestCase):
 
 	def test_paused_workflow_counts_as_live(self):
 		self.assertIn("PAUSED", service.LIVE_WORKFLOW_STATUSES)
+
+
+class ExportHeaderTest(TestCase):
+	def test_without_language_keeps_field_names(self):
+		self.assertEqual(segments.export_headers("Lead", ["name", "email_id"]), ["name", "email_id"])
+
+	def test_language_uses_translated_labels(self):
+		meta = frappe._dict(get_label=lambda field: {"email_id": "Email"}[field])
+		with patch.object(frappe, "get_meta", return_value=meta), \
+				patch.object(segments, "_", side_effect=lambda text, lang=None: f"{lang}:{text}"):
+			self.assertEqual(segments.export_headers("Lead", ["name", "email_id"], "de"), ["de:ID", "de:Email"])
+
+	def test_unknown_language_is_rejected(self):
+		with self.assertRaises(frappe.ValidationError):
+			segments.export_headers("Lead", ["name"], "ES")

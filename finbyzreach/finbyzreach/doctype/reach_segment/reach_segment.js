@@ -347,9 +347,10 @@ class ReachSegmentBuilder {
     async exportDialog(format) {
         const {message:data} = await frappe.call({method:"finbyzreach.segments.segment_columns",type:"GET",args:{segment_name:this.frm.doc.name}});
         const dialog = new frappe.ui.Dialog({title:__("Export columns"),fields:[{fieldname:"columns",fieldtype:"MultiSelectList",label:__("Columns"),reqd:1,
-            get_data:txt=>data.fields.filter(field=>(field.description || field.value).toLowerCase().includes((txt || "").toLowerCase()))}],
+            get_data:txt=>data.fields.filter(field=>(field.description || field.value).toLowerCase().includes((txt || "").toLowerCase()))},
+            {fieldname:"header_language",fieldtype:"Select",label:__("Column headers"),options:[{value:"",label:__("Field names")},{value:"DE",label:"DE"},{value:"FR",label:"FR"},{value:"IT",label:"IT"},{value:"EN",label:"EN"}],default:"EN"}],
             primary_action_label:__("Export"),primary_action:async values=>{
-                await frappe.call({method:"finbyzreach.segments.request_segment_export",args:{segment_name:this.frm.doc.name,file_format:format,columns:JSON.stringify(values.columns)}});
+                await frappe.call({method:"finbyzreach.segments.request_segment_export",args:{segment_name:this.frm.doc.name,file_format:format,columns:JSON.stringify(values.columns),header_language:values.header_language || ""}});
                 dialog.hide();frappe.show_alert(__("Preparing export in the background"));
             }});
         dialog.show();dialog.set_value("columns",data.columns);

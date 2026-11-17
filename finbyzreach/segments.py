@@ -418,7 +418,7 @@ def record_segments(doctype, name, after=None, paginated=0):
 
 
 @frappe.whitelist(methods=['GET'])
-def export_segment(segment_name, file_format='csv', columns=None):
+def export_segment(segment_name, file_format='csv', columns=None, header_language=None):
     from finbyzreach.segment_service import member_names, parsed_list
     from frappe.model import get_permitted_fields
     from frappe.utils.csvutils import to_csv
@@ -426,7 +426,7 @@ def export_segment(segment_name, file_format='csv', columns=None):
     doc.check_permission('export')
     require_ready(doc)
     columns = effective_columns(doc, columns)
-    data = [columns]
+    data = [export_headers(doc.audience_doctype, columns, header_language)]
     cursor = None
     while True:
         names = member_names(doc, after=cursor, limit=500)
@@ -449,27 +449,47 @@ def export_segment(segment_name, file_format='csv', columns=None):
     frappe.response['filename'] = f'{frappe.scrub(doc.name)}.{file_format}'
 
 
+EXPORT_LANGUAGES = {'DE': 'de', 'FR': 'fr', 'IT': 'it', 'EN': 'en'}
+
+
+def export_headers(doctype, columns, header_language=None):
+    """Column labels in DE / FR / IT / EN. Without a language, keep field names (old behaviour)."""
+    if not header_language:
+        return list(columns)
+    lang = EXPORT_LANGUAGES.get(str(header_language).upper())
+    if not lang:
+        frappe.throw(_('Choose DE, FR, IT or EN for the column headers'))
+    meta = frappe.get_meta(doctype)
+    headers = []
+    for field in columns:
+        label = 'ID' if field == 'name' else (meta.get_label(field) or field)
+        headers.append(_(label, lang=lang))
+    return headers
+
+
 @frappe.whitelist(methods=['POST'])
-def request_segment_export(segment_name, file_format='csv', columns=None):
+def request_segment_export(segment_name, file_format='csv', columns=None, header_language=None):
     doc = _segment(segment_name)
     doc.check_permission('export')
     require_ready(doc)
     columns = effective_columns(doc, columns)
     if file_format not in ('csv','xlsx'):
         frappe.throw(_('Choose csv or xlsx'))
+    if header_language and str(header_language).upper() not in EXPORT_LANGUAGES:
+        frappe.throw(_('Choose DE, FR, IT or EN for the column headers'))
     job_id = f'reach-export:{frappe.generate_hash(length=20)}'
     frappe.enqueue('finbyzreach.segments.build_segment_export', segment_name=segment_name,
         file_format=file_format, columns=json.dumps(columns), requesting_user=frappe.session.user, queue='long',
-        job_id=job_id, enqueue_after_commit=True)
+        job_id=job_id, enqueue_after_commit=True, header_language=header_language)
     return {'job_id':job_id}
 
 
-def build_segment_export(segment_name, file_format, requesting_user, columns=None):
+def build_segment_export(segment_name, file_format, requesting_user, columns=None, header_language=None):
     from frappe.utils.file_manager import save_file
     # Enqueue captures the user's identity; recheck access when the job runs.
     if frappe.session.user != requesting_user:
         frappe.throw(_('Export identity changed'), frappe.PermissionError)
-    export_segment(segment_name, file_format, columns)
+    export_segment(segment_name, file_format, columns, header_language)
     content = frappe.response.pop('filecontent')
     filename = frappe.response.pop('filename')
     frappe.response.pop('type', None)
