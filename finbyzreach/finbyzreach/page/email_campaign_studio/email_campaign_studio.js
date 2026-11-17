@@ -232,13 +232,19 @@ class EmailCampaignStudio {
 				get_query: () => ({ filters: { disabled: 0, category: ["in", ["Mailing Type", "System"]] } }),
 				change: topicChange,
 			},
-			{ fieldname: "email_language", label: __("Email language"), fieldtype: "Select", options: "de\nfr\nit\nen", default: "de", reqd: 1, description: __("Language of this email version."), change },
-			{ fieldname: "email_folder", label: __("Folder"), fieldtype: "Link", options: "Email Folder", change },
-			{ fieldname: "content_topic", label: __("Content Topic"), fieldtype: "Link", options: "Subscription Topic", description: __("Optional preference for filtering. Topics do not control consent."), get_query: () => ({ filters: { disabled: 0, category: "Topic" } }), change: topicChange },
+			// Two fields per row, so the step reads left to right instead of one long right column.
+			{ fieldtype: "Section Break" },
+			{ fieldname: "email_language", label: __("Email language"), fieldtype: "Select", options: "de\nfr\nit\nen", default: "de", reqd: 1, description: __("Language of this email version. Also picks the suggested template."), change },
+			{ fieldtype: "Column Break" },
+			{ fieldname: "email_folder", label: __("Folder"), fieldtype: "Link", options: "Email Folder", description: __("Optional. Where the email is filed in the Emails list."), change },
+			{ fieldtype: "Section Break" },
+			{ fieldname: "content_topic", label: __("Content Topic"), fieldtype: "Link", options: "Subscription Topic", description: __("Optional. Marks this email's topic in the preference center. Topics never block sending."), get_query: () => ({ filters: { disabled: 0, category: "Topic" } }), change: topicChange },
+			{ fieldtype: "Column Break" },
 			{ fieldtype: "Section Break", label: __("Email content") },
 			{
 				fieldname: "email_template",
-				label: __("Email Template"),
+				// Not "Email Template": the site translation renames that to "Emails".
+				label: __("Email to send"),
 				fieldtype: "Link",
 				options: "Email Template",
 				reqd: 1,

@@ -7,15 +7,18 @@ frappe.pages["email-template-builder"].on_page_load = function (wrapper) {
 	frame.title = __("Visual email designer");
 	page.main.append(frame);
 	wrapper.email_builder = {page, frame};
-	page.set_secondary_action(__("Close"), () => {
-		frappe.set_route("List", wrapper.email_builder.doctype || "Email Template");
-	});
+	const backToList = () => {
+		const builder = wrapper.email_builder;
+		if (builder.listHref) frappe.set_route(builder.listHref);
+		else frappe.set_route("List", builder.doctype || "Email Template");
+	};
+	page.set_secondary_action(__("Close"), backToList);
 	frame.addEventListener("load", () => {
 		// The editor's Back button should navigate the outer Desk, never nest Desk in the frame.
 		frame.contentDocument?.addEventListener("click", event => {
 			if (!event.target.closest?.(".builder-back-button")) return;
 			event.preventDefault();
-			frappe.set_route("List", wrapper.email_builder.doctype);
+			backToList();
 		});
 	});
 };
@@ -34,9 +37,10 @@ frappe.pages["email-template-builder"].on_page_show = function (wrapper) {
 	const builder = wrapper.email_builder;
 	const key = JSON.stringify([doctype, name]);
 	builder.page.set_title(name);
+	// Back links open the list inside the sidebar this builder was launched from.
+	builder.listHref = listInSidebar(doctype === "Email Template Master" ? "email-template-master" : "email-template", sidebar);
 	builder.page.set_breadcrumbs([
-		{label: doctype === "Email Template Master" ? __("Templates") : __("Emails"),
-			href: doctype === "Email Template Master" ? "/app/email-template-master" : "/app/email-template"},
+		{label: doctype === "Email Template Master" ? __("Templates") : __("Emails"), href: builder.listHref},
 		{label: name, title: name},
 	]);
 	if (key === builder.key) return; // Keep unsaved work when returning from another Desk view.
@@ -55,3 +59,9 @@ frappe.pages["email-template-builder"].on_page_show = function (wrapper) {
 		open();
 	}
 };
+
+function listInSidebar(slug, sidebar) {
+	return sidebar && frappe.boot?.module_sidebars?.[sidebar]
+		? `/desk/${frappe.router.shell_slug(sidebar)}/${slug}`
+		: `/desk/${slug}`;
+}
