@@ -32,6 +32,9 @@ class MemoryDatabase:
 
 class SegmentSQLTest(TestCase):
     def setUp(self):
+        # Restore the real site state so the test runner can still commit/clean up.
+        saved = {key: getattr(frappe.local, key, None) for key in ('db', 'qb', 'conf', 'flags', 'session')}
+        self.addCleanup(lambda: [setattr(frappe.local, key, value) for key, value in saved.items()])
         self.database = MemoryDatabase()
         frappe.local.db = self.database
         frappe.local.qb = MariaDB
