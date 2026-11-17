@@ -476,8 +476,18 @@ class ReachSegmentBuilder {
         }));
     }
 }
+// The filter editor draws into the read-only filter_groups_json field, and Frappe hides a
+// read-only field without a value. A new segment has none, so the editor stayed hidden and an
+// Active segment could not be saved ("needs at least one filter group"). Start with an empty list.
+function ensureFilterField(frm) {
+    if (frm.doc.filter_groups_json) return false;
+    frm.doc.filter_groups_json = "[]";
+    return true;
+}
 frappe.ui.form.on("Reach Segment", {
+    onload(frm) { ensureFilterField(frm); },
     refresh(frm) {
+        if (ensureFilterField(frm)) frm.refresh_field("filter_groups_json");
         frm.builder?.dispose();
         frm.builder = new ReachSegmentBuilder(frm);
     },
