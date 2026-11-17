@@ -1,6 +1,6 @@
 # Extending and operating Reach Segment audiences
 
-This guide implements chapter 19 SEG-12 for the `megasol` / `finbyzreach` subproject. It describes the current source, including the approved native Frappe permission policy and the detail layout with members below filters.
+This guide implements chapter 19 SEG-12 for the `megasol` / `finbyzreach` subproject. It describes the current source, including the approved native Frappe permission policy and the detail layout: filters on the left and members on the right on wide screens (stacked below 1200 px).
 
 ## Current model
 

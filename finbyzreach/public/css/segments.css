@@ -6,6 +6,19 @@
     gap: var(--margin-lg);
 }
 
+/* SEG-36: filters fixed on the left, records on the right on wide screens. */
+@media (min-width: 1200px) {
+    .rs-layout {
+        grid-template-columns: minmax(340px, 2fr) minmax(0, 3fr);
+    }
+    .rs-layout > .rs-filters {
+        position: sticky;
+        top: calc(var(--navbar-height, 48px) + var(--margin-md));
+        max-height: calc(100vh - var(--navbar-height, 48px) - 2 * var(--margin-md));
+        overflow-y: auto;
+    }
+}
+
 .rs-layout > section {
     min-width: 0;
     padding: var(--padding-md);
