@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, use
 import { useDroppable, type DraggableAttributes, type DraggableSyntheticListeners } from '@dnd-kit/core'
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { AlignCenter, AlignLeft, AlignRight, Bold, Bookmark, Copy, EyeOff, GripVertical, ImagePlus, Italic, Link, List, ListOrdered, Pencil, Plus, RemoveFormatting, Trash2, Underline } from 'lucide-react'
+import { AlignCenter, AlignLeft, AlignRight, Bold, Bookmark, Copy, EyeOff, GripVertical, ImagePlus, Italic, Link, List, ListOrdered, Pencil, Plus, RemoveFormatting, Strikethrough, Superscript, Trash2, Underline } from 'lucide-react'
 
 import { BLOCKS, findBlock, LAYOUTS, nodeCss, normalizeColumnWidths, normalizeLength } from '../lib/builder'
 import { insertLineBreakAtSelection, insertTextAtSelection, runLegacyEditorCommand } from '../lib/editorDom'
@@ -173,13 +173,15 @@ type TextFormatState = {
   bold: boolean
   italic: boolean
   underline: boolean
+  strike: boolean
+  superscript: boolean
   align: 'left' | 'center' | 'right'
   unorderedList: boolean
   orderedList: boolean
 }
 
 const DEFAULT_TEXT_FORMAT: TextFormatState = {
-  block: 'p', font: 'Arial', size: '3', color: '#1f2937', bold: false, italic: false, underline: false,
+  block: 'p', font: 'Arial', size: '3', color: '#1f2937', bold: false, italic: false, underline: false, strike: false, superscript: false,
   align: 'left', unorderedList: false, orderedList: false,
 }
 
@@ -262,6 +264,7 @@ function restoreBookmark(editor: HTMLElement, bookmark: TextSelectionBookmark | 
 function isSameTextFormat(left: TextFormatState, right: TextFormatState) {
   return left.block === right.block && left.font === right.font && left.size === right.size && left.color === right.color
     && left.bold === right.bold && left.italic === right.italic && left.underline === right.underline
+    && left.strike === right.strike && left.superscript === right.superscript
     && left.align === right.align && left.unorderedList === right.unorderedList && left.orderedList === right.orderedList
 }
 
@@ -402,6 +405,8 @@ function RichTextToolbar({
       bold: commandState('bold'),
       italic: commandState('italic'),
       underline: commandState('underline'),
+      strike: commandState('strikeThrough'),
+      superscript: commandState('superscript'),
       align: commandState('justifyCenter') ? 'center' : commandState('justifyRight') ? 'right' : 'left',
       unorderedList: commandState('insertUnorderedList'),
       orderedList: commandState('insertOrderedList'),
@@ -504,6 +509,8 @@ function RichTextToolbar({
         <button type="button" className={format.bold ? 'is-active' : ''} aria-pressed={format.bold} aria-label="Bold" title="Bold" onMouseDown={keepSelection} onClick={() => apply('bold')}><Bold size={15} /></button>
         <button type="button" className={format.italic ? 'is-active' : ''} aria-pressed={format.italic} aria-label="Italic" title="Italic" onMouseDown={keepSelection} onClick={() => apply('italic')}><Italic size={15} /></button>
         <button type="button" className={format.underline ? 'is-active' : ''} aria-pressed={format.underline} aria-label="Underline" title="Underline" onMouseDown={keepSelection} onClick={() => apply('underline')}><Underline size={15} /></button>
+        <button type="button" className={format.strike ? 'is-active' : ''} aria-pressed={format.strike} aria-label="Strikethrough" title="Strikethrough" onMouseDown={keepSelection} onClick={() => apply('strikeThrough')}><Strikethrough size={15} /></button>
+        <button type="button" className={format.superscript ? 'is-active' : ''} aria-pressed={format.superscript} aria-label="Superscript" title="Superscript" onMouseDown={keepSelection} onClick={() => apply('superscript')}><Superscript size={15} /></button>
       </span>
       <label className="rich-text-color" title="Text color"><span>A</span><input type="color" aria-label="Text color" value={format.color} onChange={(event) => apply('foreColor', event.target.value)} /></label>
       <span className="rich-text-toolbar__group">

@@ -8,7 +8,8 @@ from frappe import _
 
 from .tokens import validate_semantic_tokens
 
-RICH_TAGS = {"p", "div", "br", "ul", "ol", "li", "strong", "b", "em", "i", "u", "s", "a", "span", "font", "h1", "h2", "h3"}
+# sup/sub keep units and trademarks (m², CO₂, ®); strike is what browsers emit for strikethrough (EM-03).
+RICH_TAGS = {"p", "div", "br", "ul", "ol", "li", "strong", "b", "em", "i", "u", "s", "strike", "sup", "sub", "a", "span", "font", "h1", "h2", "h3"}
 CODE_TAGS = RICH_TAGS | {"div", "table", "thead", "tbody", "tfoot", "tr", "td", "th", "img", "pre", "code", "blockquote"}
 ALLOWED_CSS = {
 	"background-color", "border", "border-bottom", "border-color", "border-left", "border-radius", "border-right",
