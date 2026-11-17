@@ -402,12 +402,11 @@ def duplicate_segment(segment_name, new_name, copy_members=0):
         frappe.get_doc(dict(doctype=EXCLUSION, segment=duplicate.name, record_name=row.record_name)).insert(ignore_permissions=True)
     if doc.segment_type == 'Static':
         from finbyzreach.segment_snapshots import prepare
+        # SEG-35: "copy members" keeps the original members, manual additions included.
+        # Otherwise the copy is a newly saved Static segment: insert already took a fresh
+        # snapshot of the records matching its filters now (SEG-03), so keep that.
         if cint(copy_members):
             prepare(duplicate, source=doc)
-        else:
-            duplicate.snapshot_generation = frappe.generate_hash(length=32)
-            duplicate.snapshot_pending_generation = None
-            duplicate.snapshot_status = 'Ready'
         frappe.db.set_value('Reach Segment', duplicate.name, {key:duplicate.get(key) for key in (
             'snapshot_generation','snapshot_pending_generation','snapshot_status','snapshot_definition')},update_modified=False)
         from finbyzreach.segment_automation import schedule_reconciliation
