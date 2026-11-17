@@ -39,15 +39,26 @@ for (const [doctype, file, builder] of [
         const doc = {name: 'Document / 1'};
         assert.ok(settings.get_form_link(doc).startsWith(`/app/${builder}/Document%20%2F%201/`));
         let click, refreshes = 0, mounts = 0;
-        const button = {text(value) { this.label = value; return this; }, attr() {return this;}, prop(key, value) { this[key] = value; return this; }};
+        // The toggle is a switch: its state is the "is-on" class and aria-checked.
+        const button = {
+            attrs: {}, classes: new Set(),
+            html(value) { this.markup = value; return this; },
+            addClass(name) { this.classes.add(name); return this; },
+            toggleClass(name, on) { on ? this.classes.add(name) : this.classes.delete(name); return this; },
+            attr(key, value) { this.attrs[key] = value; return this; },
+            prop(key, value) { this[key] = value; return this; },
+            get on() { return this.attrs['aria-checked'] === 'true' && this.classes.has('is-on'); },
+        };
         const list = {doctype, page: {add_inner_button(label, action) { click = action; mounts++; return button; }}, async refresh() { refreshes++; }};
         env.frappe.builder_list_navigation.mount(list);
         env.frappe.builder_list_navigation.mount(list);
         assert.equal(mounts, 1);
-        assert.equal(button.label, 'Open in builder: On');
+        assert.ok(button.markup.includes('Open in builder'));
+        assert.equal(button.attrs.role, 'switch');
+        assert.equal(button.on, true);
         await click();
         assert.equal(env.preferences[doctype].open_in_builder, false);
-        assert.equal(button.label, 'Open in builder: Off');
+        assert.equal(button.on, false);
         assert.equal(settings.get_form_link(doc), `/desk/${env.frappe.router.slug(doctype)}/Document%20%2F%201`);
         assert.equal(env.frappe.get_user_settings('Unrelated').open_in_builder, undefined);
         await click();
@@ -56,7 +67,7 @@ for (const [doctype, file, builder] of [
         env.fail();
         await click();
         assert.equal(button.disabled, false);
-        assert.equal(button.label, 'Open in builder: On');
+        assert.equal(button.on, true);
         assert.equal(env.messages(), 1);
     });
 }

@@ -6,7 +6,7 @@ frappe.provide("frappe.builder_list_navigation");
     const enabled = doctype => frappe.get_user_settings(doctype)[preference] !== false;
 
     function injectStyle() {
-        if (document.getElementById("builder-nav-toggle-style")) return;
+        if (typeof document === "undefined" || document.getElementById("builder-nav-toggle-style")) return;
         const style = document.createElement("style");
         style.id = "builder-nav-toggle-style";
         style.textContent = `

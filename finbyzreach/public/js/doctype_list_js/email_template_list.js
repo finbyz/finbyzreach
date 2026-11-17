@@ -194,7 +194,7 @@ frappe.listview_settings["Email Template"] = frappe.listview_settings["Email Tem
 
 	frappe.listview_settings["Email Template"].onload = function (listview) {
 		if (existing_onload) existing_onload(listview);
-		if (!listview._create_button_relabelled) {
+		if (!listview._create_button_relabelled && typeof listview.set_primary_action === "function") {
 			listview._create_button_relabelled = true;
 			const original = listview.set_primary_action.bind(listview);
 			listview.set_primary_action = function () { original(); set_create_button(listview); };
