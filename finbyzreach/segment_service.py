@@ -17,6 +17,9 @@ AUDIENCE_TYPES = ('Lead', 'Contact', 'Customer', 'Opportunity', 'Sales Order')
 MEMBER = 'Reach Segment Member'
 EXCLUSION = 'Reach Segment Exclusion'
 CHUNK_SIZE = 500
+LIVE_WORKFLOW_STATUSES = ('ACTIVE', 'PAUSED')
+LIVE_CAMPAIGN_STATUSES = ('Preparing Audience', 'Scheduled', 'Sending', 'Paused')
+SEGMENT_MARKERS = ('#REACH_SEGMENT#', '#STATIC_SEGMENT#')
 
 
 def parsed_list(value):
@@ -392,18 +395,74 @@ def workflow_usage(segment):
         if workflow.active_version:
             graph = frappe.db.get_value('Automation Workflow Version', workflow.active_version, 'graph_json')
             if segment.name in referenced_segments(graph) or '*' in referenced_segments(graph):
-                result.append(dict(name=workflow.name, title=workflow.title, live=workflow.status == 'ACTIVE'))
+                # A paused workflow keeps enrolled records that resume later.
+                result.append(dict(name=workflow.name, title=workflow.title, status=workflow.status,
+                                   live=workflow.status in LIVE_WORKFLOW_STATUSES))
         if not any(row['name'] == workflow.name for row in result):
             graph = frappe.db.get_value('Automation Workflow Draft', {'workflow': workflow.name}, 'graph_json')
             if segment.name in referenced_segments(graph) or '*' in referenced_segments(graph):
-                result.append(dict(name=workflow.name, title=workflow.title, live=False))
+                result.append(dict(name=workflow.name, title=workflow.title, status=workflow.status, live=False))
+    return result
+
+
+def segment_refs_in_filters(value):
+    """Segment names referenced by a stored Campaign filter JSON."""
+    found = set()
+    def visit(node):
+        if isinstance(node, list):
+            if len(node) == 2 and node[0] in SEGMENT_MARKERS and isinstance(node[1], str):
+                found.add(node[1])
+                return
+            for child in node:
+                visit(child)
+        elif isinstance(node, dict):
+            for child in node.values():
+                visit(child)
+    try:
+        visit(frappe.parse_json(value or '[]'))
+    except Exception:
+        pass
+    return found
+
+
+def campaign_usage(segment):
+    """Email campaigns whose saved audience or exclusions reference this segment."""
+    if not frappe.db.has_column('Campaign', 'custom_lead_filters_json'):
+        return []
+    fields = ['name', 'campaign_name', 'custom_lead_filters_json', 'custom_exclude_filters_json']
+    has_status = frappe.db.has_column('Campaign', 'custom_broadcast_status')
+    if has_status:
+        fields.append('custom_broadcast_status')
+    rows = frappe.get_all('Campaign', or_filters=[['custom_lead_filters_json', 'like', '%SEGMENT#%'],
+                                                  ['custom_exclude_filters_json', 'like', '%SEGMENT#%']],
+                          fields=fields, limit_page_length=0)
+    result = []
+    for row in rows:
+        include = segment.name in segment_refs_in_filters(row.custom_lead_filters_json)
+        exclude = segment.name in segment_refs_in_filters(row.custom_exclude_filters_json)
+        if not (include or exclude):
+            continue
+        status = (row.get('custom_broadcast_status') if has_status else None) or 'Draft'
+        result.append(dict(name=row.name, title=row.campaign_name or row.name, status=status,
+                           role='exclude' if exclude and not include else 'include',
+                           # Resume and scheduling re-resolve the audience from the segment.
+                           live=status in LIVE_CAMPAIGN_STATUSES))
     return result
 
 
 def assert_unused(segment, blocking):
     usage = workflow_usage(segment)
+    campaigns = [row for row in campaign_usage(segment) if row['live'] or row['status'] == 'Draft']
     live = [row['title'] for row in usage if row['live']]
-    if blocking and live:
-        frappe.throw(_('Segment is used by live automations: {0}').format(', '.join(live)))
+    live_campaigns = [row['title'] for row in campaigns if row['live']]
+    if blocking and (live or live_campaigns):
+        parts = []
+        if live:
+            parts.append(_('live automations: {0}').format(', '.join(live)))
+        if live_campaigns:
+            parts.append(_('scheduled or sending emails: {0}').format(', '.join(live_campaigns)))
+        frappe.throw(_('Segment is used by {0}').format('; '.join(parts)))
     if usage:
         frappe.msgprint(_('Segment is used by automations: {0}').format(', '.join(row['title'] for row in usage)), indicator='orange')
+    if campaigns:
+        frappe.msgprint(_('Segment is used by emails: {0}').format(', '.join(row['title'] for row in campaigns)), indicator='orange')
