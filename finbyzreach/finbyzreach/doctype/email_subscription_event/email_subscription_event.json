@@ -69,14 +69,17 @@
   {
    "role": "Marketing Manager",
    "read": 1,
-   "report": 1
+   "report": 1,
+   "export": 1
   },
   {
    "role": "System Manager",
    "read": 1,
-   "report": 1
+   "report": 1,
+   "export": 1
   }
  ],
  "sort_field": "event_time",
- "sort_order": "DESC"
+ "sort_order": "DESC",
+ "modified": "2026-11-17 12:00:00.000000"
 }

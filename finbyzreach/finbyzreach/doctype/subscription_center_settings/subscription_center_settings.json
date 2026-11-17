@@ -3,13 +3,68 @@
  "name": "Subscription Center Settings",
  "module": "Finbyzreach",
  "issingle": 1,
- "field_order": ["allowed_embed_origins", "translations"],
+ "field_order": [
+  "allowed_embed_origins",
+  "translations",
+  "design_section",
+  "draft_config_json",
+  "published_config_json",
+  "published_on"
+ ],
  "fields": [
-  {"fieldname": "allowed_embed_origins", "fieldtype": "Small Text", "label": "Allowed Embed Origins", "description": "One website origin per line, for example https://www.example.com. Only these websites may embed the subscription form."},
-  {"fieldname": "translations", "fieldtype": "Table", "label": "Text Translations", "options": "Subscription Center Translation"}
+  {
+   "fieldname": "allowed_embed_origins",
+   "fieldtype": "Small Text",
+   "label": "Allowed Embed Origins",
+   "description": "One website origin per line, for example https://www.example.com. Only these websites may embed the subscription form."
+  },
+  {
+   "fieldname": "translations",
+   "fieldtype": "Table",
+   "label": "Text Translations",
+   "options": "Subscription Center Translation"
+  },
+  {
+   "fieldname": "design_section",
+   "fieldtype": "Section Break",
+   "label": "Preference center design",
+   "collapsible": 1,
+   "description": "Edited in Megasol Marketing \u2192 Subscriptions & consent \u2192 Preference center."
+  },
+  {
+   "fieldname": "draft_config_json",
+   "fieldtype": "Code",
+   "options": "JSON",
+   "label": "Draft design",
+   "read_only": 1,
+   "hidden": 1
+  },
+  {
+   "fieldname": "published_config_json",
+   "fieldtype": "Code",
+   "options": "JSON",
+   "label": "Published design",
+   "read_only": 1,
+   "hidden": 1
+  },
+  {
+   "fieldname": "published_on",
+   "fieldtype": "Datetime",
+   "label": "Published on",
+   "read_only": 1
+  }
  ],
  "permissions": [
-  {"role": "Marketing Manager", "read": 1, "write": 1},
-  {"role": "System Manager", "read": 1, "write": 1}
- ]
+  {
+   "role": "Marketing Manager",
+   "read": 1,
+   "write": 1
+  },
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1
+  }
+ ],
+ "modified": "2026-11-17 12:00:00.000000"
 }
