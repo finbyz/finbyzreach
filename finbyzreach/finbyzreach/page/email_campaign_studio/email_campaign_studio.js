@@ -167,7 +167,7 @@ class EmailCampaignStudio {
 			"</main><aside class='ecs-side'>",
 			"<section class='ecs-card ecs-report-card' id='ecs-report-card' hidden><div class='ecs-report-head'><div><h3>" + __("Campaign results") + "</h3><p>" + __("Completed sends in selected period") + "</p></div><div class='ecs-report-controls'><select class='form-control' id='ecs-report-period' aria-label='" + __("Campaign results period in days") + "'><option value='7'>7</option><option value='30' selected>30</option><option value='60'>60</option></select><button type='button' class='btn btn-default btn-xs' id='ecs-report-refresh'>" + __("Refresh") + "</button></div></div><div class='ecs-report-grid' id='ecs-report-grid'></div><div class='ecs-report-actions'><span class='ecs-report-state' id='ecs-report-state' role='status'></span><a id='ecs-report-link' href='/desk/email-campaign-report'>" + __("Open full report") + "</a></div></section>",
 			"<section class='ecs-card ecs-preview-card'><div class='ecs-card-head'><div class='ecs-step'>✓</div><div><h3>" + __("Audience health") + "</h3><p><span class='ecs-status-dot' id='ecs-preview-dot'></span><span id='ecs-preview-status'>" + __("Waiting for filters") + "</span></p></div></div><div class='ecs-card-body' id='ecs-preview-panel'><div class='ecs-preview-empty'>" + __("Add Lead filters or select a segment, then preview the campaign audience.") + "</div></div><div class='ecs-health-action'><button class='btn btn-default btn-sm' id='ecs-health-btn' disabled>" + __("View Full Audience Health") + "</button></div></section>",
-			"<section class='ecs-card ecs-summary-card'><div class='ecs-summary'><div class='ecs-summary-title'><span>" + __("Ready check") + "</span><h3>" + __("Launch summary") + "</h3></div><div id='ecs-summary-rows'></div><div class='ecs-launch-note'>" + __("Scheduling freezes recipients, recipient email addresses, Email Template content and the batch plan. Personalization uses the Lead data current when each email is queued.") + "</div><div class='ecs-side-actions'><button class='btn btn-primary btn-sm' id='ecs-launch-btn'>" + __("Review & Schedule") + "</button><button class='btn btn-default btn-sm' id='ecs-email-preview-btn'>" + __("Preview Email") + "</button><button class='btn btn-default btn-sm' id='ecs-test-btn'>" + __("Send Test") + "</button><button class='btn btn-default btn-sm' id='ecs-draft-btn'>" + __("Save Draft") + "</button></div></div></section>",
+			"<section class='ecs-card ecs-summary-card'><div class='ecs-summary'><div class='ecs-summary-title'><span>" + __("Ready check") + "</span><h3>" + __("Launch summary") + "</h3></div><div id='ecs-summary-rows'></div><div class='ecs-launch-note'>" + __("Scheduling freezes recipients, recipient email addresses, Email Template content and the batch plan. Personalization uses the record data current when each email is queued.") + "</div><div class='ecs-side-actions'><button class='btn btn-primary btn-sm' id='ecs-launch-btn'>" + __("Review & Schedule") + "</button><button class='btn btn-default btn-sm' id='ecs-email-preview-btn'>" + __("Preview Email") + "</button><button class='btn btn-default btn-sm' id='ecs-test-btn'>" + __("Send Test") + "</button><button class='btn btn-default btn-sm' id='ecs-draft-btn'>" + __("Save Draft") + "</button></div></div></section>",
 			"</aside></div></div>",
 		].join(""));
 	}
@@ -229,6 +229,8 @@ class EmailCampaignStudio {
 				get_query: () => ({ filters: { disabled: 0, category: ["in", ["Mailing Type", "System"]] } }),
 				change: topicChange,
 			},
+			{ fieldname: "email_language", label: __("Email language"), fieldtype: "Select", options: "de\nfr\nit\nen", default: "de", reqd: 1, description: __("Language of this email version."), change },
+			{ fieldname: "email_folder", label: __("Folder"), fieldtype: "Link", options: "Email Folder", change },
 			{ fieldname: "content_topic", label: __("Content Topic"), fieldtype: "Link", options: "Subscription Topic", description: __("Optional preference for filtering. Topics do not control consent."), get_query: () => ({ filters: { disabled: 0, category: "Topic" } }), change: topicChange },
 			{ fieldtype: "Section Break", label: __("Email content") },
 			{
@@ -243,7 +245,7 @@ class EmailCampaignStudio {
 					change();
 					// Bootstrap sets this field programmatically; the final bootstrap step
 					// renders its state once after every dependent value is available.
-					if (!this.applyingBootstrap) this.showTemplateState();
+					if (!this.applyingBootstrap) { this.showTemplateState(); this.loadEmailSetup(); }
 				},
 			},
 			{ fieldtype: "Column Break" },
@@ -482,10 +484,58 @@ class EmailCampaignStudio {
 				if (event.originalEvent) this.handleAudienceRuleChange();
 			}
 		);
+		this.$root.on("input", "#ecs-content-form [data-fieldname='campaign_title'] input", () => {
+			clearTimeout(this.titleCheckTimer);
+			this.titleCheckRequest = (this.titleCheckRequest || 0) + 1;
+			this.showCampaignTitleState("checking");
+			this.titleCheckTimer = setTimeout(() => this.checkCampaignTitle(), 400);
+		});
+
 		this.$root.on("click", "[data-scroll-step]", (event) => {
 			const target = this.$root.find("#ecs-step-" + $(event.currentTarget).data("scroll-step"))[0];
 			target?.scrollIntoView({ behavior: "smooth", block: "start" });
 		});
+	}
+
+
+	showCampaignTitleState(state) {
+		const field = this.contentForm.get_field("campaign_title");
+		const messages = {
+			checking: __("Checking title availability…"),
+			available: __("This campaign title is available."),
+			duplicate: __("Campaign Title is not unique. Choose a different title."),
+			error: __("Could not check this title. Try again before continuing."),
+			length: __("Campaign Title must contain between 1 and 140 characters."),
+		};
+		field.$wrapper.find(".help-box").attr("aria-live", "polite");
+		field.set_description(messages[state] || __("An internal name used to identify this campaign in lists and reports."));
+		const invalid = ["duplicate", "length"].includes(state);
+		field.$wrapper.toggleClass("ecs-title-invalid", invalid);
+		field.$input.attr("aria-invalid", String(invalid));
+	}
+
+	async checkCampaignTitle() {
+		clearTimeout(this.titleCheckTimer);
+		const request = this.titleCheckRequest = (this.titleCheckRequest || 0) + 1;
+		const field = this.contentForm.get_field("campaign_title");
+		const title = String(field.$input.val() || "").trim();
+		const route = this.routeKey;
+		if (!title || this.wizardUsage === "workflow" || !this.editable) {
+			this.showCampaignTitleState("");
+			return false;
+		}
+		if (title.length > 140) { this.showCampaignTitleState("length"); return false; }
+		this.showCampaignTitleState("checking");
+		try {
+			const response = await frappe.call({method: this.method + "check_campaign_title", type: "GET", args: {title, source_campaign: this.sourceCampaign || ""}});
+			if (request !== this.titleCheckRequest || route !== this.routeKey || title !== String(field.$input.val() || "").trim()) return false;
+			const available = response.message?.available === true;
+			this.showCampaignTitleState(available ? "available" : "duplicate");
+			return available;
+		} catch (error) {
+			if (request === this.titleCheckRequest && route === this.routeKey) this.showCampaignTitleState("error");
+			return false;
+		}
 	}
 
 
@@ -526,7 +576,7 @@ class EmailCampaignStudio {
 	}
 
 	wizardSteps() {
-		return this.wizardUsage === "workflow" ? ["what", "design", "check"] : ["what", "design", "who", "when", "check"];
+		return this.wizardUsage === "workflow" ? ["what", "design", "check"] : ["what", "design", "sender", "who", "when", "check"];
 	}
 
 	renderWizard() {
@@ -552,9 +602,9 @@ class EmailCampaignStudio {
 		const steps = this.wizardSteps();
 		if (!steps.includes(this.wizardStep)) this.wizardStep = "what";
 		const index = steps.indexOf(this.wizardStep);
-		const labels = {what: __("What"), design: __("Design"), who: __("Who"), when: __("When"), check: __("Check")};
+		const labels = {what: __("What"), design: __("Design"), sender: __("Sender"), who: __("Who"), when: __("When"), check: __("Check")};
 		this.$wizardNav.html(steps.map((step, i) => `<button type="button" data-wizard-step="${step}" class="${step === this.wizardStep ? "active" : ""}" ${i > index ? "disabled" : ""} ${i === index ? 'aria-current="step"' : ''}><span>${i + 1}</span>${labels[step]}</button>`).join(""));
-		const panels = {what: ["2"], design: ["3", "design"], who: ["1"], when: ["4", "5"], check: []};
+		const panels = {what: ["2"], design: ["design"], sender: ["3"], who: ["1"], when: ["4", "5"], check: []};
 		this.$root.find(".ecs-main > .ecs-card").hide();
 		panels[this.wizardStep].forEach((id) => this.$root.find("#ecs-step-" + id).show());
 		this.$root.find(".ecs-preview-card").toggle(this.wizardUsage !== "workflow" && ["who", "check"].includes(this.wizardStep));
@@ -570,8 +620,10 @@ class EmailCampaignStudio {
 		this.page.btn_primary.hide();
 		this.page.btn_secondary.toggle(this.editable && this.wizardUsage !== "workflow");
 		this.wizardUsageForm?.get_field("usage").$wrapper.toggle(!this.sourceCampaign && !this.workflowOnly);
-		this.$root.find("#ecs-step-design .ecs-step").text("2");
-		this.$root.find("#ecs-step-3").toggle(this.wizardStep === "design" && this.wizardUsage !== "workflow");
+		for (const [step, ids] of Object.entries(panels)) {
+			for (const id of ids) this.$root.find("#ecs-step-" + id + " > .ecs-card-head .ecs-step").text(String(steps.indexOf(step) + 1));
+		}
+		this.$root.find("#ecs-step-3").toggle(this.wizardStep === "sender" && this.wizardUsage !== "workflow");
 		this.$root.find("[data-wizard-create]").toggle(Boolean(this.editable));
 		this.$root.find("#ecs-content-form [data-fieldname='campaign_title'], #ecs-content-form [data-fieldname='content_topic'], #ecs-content-form [data-fieldname='subject_override']").toggle(this.wizardUsage !== "workflow");
 		this.$root.find(".ecs-summary-title h3").text(this.wizardUsage === "workflow" ? __("Email summary") : __("Launch summary"));
@@ -646,6 +698,7 @@ class EmailCampaignStudio {
 	async saveWizardDraft() {
 		if (this.busy || this.routeLoading) return;
 		if (!(await this.flushWizardDesign())) return;
+		if (this.contentForm.get_value("email_template") && this.contentForm.get_value("subscription_topic")) await this.configureEmailSetup();
 		return this.createCampaign("draft");
 	}
 
@@ -663,15 +716,18 @@ class EmailCampaignStudio {
 				frappe.msgprint(__("Choose an email and complete the required setup fields before continuing."));
 				return;
 			}
+			if (this.wizardUsage !== "workflow" && !(await this.checkCampaignTitle())) return;
+			if (routeKey !== this.routeKey || this.routeLoading) return;
 			if (this.consentPolicyEnabled) {
 				if (!(await this.flushWizardDesign())) return;
-				const savedType = await frappe.call({method: this.method + "set_email_type", type: "POST", args: {template_name: this.contentForm.get_value("email_template"), email_type: this.contentForm.get_value("subscription_topic")}});
+				const savedType = await this.configureEmailSetup();
 				if (savedType.message?.updated && this.wizardFrame) {
 					this.wizardFrame.remove(); this.wizardFrame = null; this.wizardTemplate = null;
 				}
 			}
 			if (!(await this.loadWizardDesign())) return;
 		}
+		if (this.wizardStep === "sender" && !this.formValues(this.senderForm, true)) return;
 		if (this.wizardStep === "who") {
 			await this.previewAudience();
 			if (routeKey !== this.routeKey || this.routeLoading) return;
@@ -684,13 +740,32 @@ class EmailCampaignStudio {
 		return this.moveWizard(1, true);
 	}
 
-	createWizardEmail() {
+	async loadEmailSetup() {
+		const name = this.contentForm.get_value("email_template");
+		if (!name) return;
+		const {message} = await frappe.call({method: "finbyzreach.email_template_builder.languages.email_setup", type: "GET", args: {template_name: name}});
+		if (name !== this.contentForm.get_value("email_template")) return;
+		await this.contentForm.set_value("email_language", message.language || "de");
+		await this.contentForm.set_value("email_folder", message.folder || "");
+		if (message.email_type) await this.contentForm.set_value("subscription_topic", message.email_type);
+	}
+
+	configureEmailSetup() {
+		return frappe.call({method: "finbyzreach.email_template_builder.languages.configure_email", type: "POST", args: {
+			template_name: this.contentForm.get_value("email_template"), email_type: this.contentForm.get_value("subscription_topic"),
+			language: this.contentForm.get_value("email_language"), folder: this.contentForm.get_value("email_folder") || ""}});
+	}
+
+	async createWizardEmail() {
+		const emailType = this.contentForm.get_value("subscription_topic");
+		const language = this.contentForm.get_value("email_language") || "de";
+		const suggestion = emailType ? (await frappe.call({method: "finbyzreach.email_template_builder.languages.suggested_master", type: "GET", args: {email_type: emailType, language}})).message : null;
 		const dialog = new frappe.ui.Dialog({
 			title: __("Create email"),
 			fields: [
 				{fieldname: "template_name", label: __("Email name"), fieldtype: "Data", reqd: 1, default: this.contentForm.get_value("campaign_title") || ""},
 				{fieldname: "subject", label: __("Subject"), fieldtype: "Data", reqd: 1},
-				{fieldname: "master_name", label: __("Template"), fieldtype: "Link", options: "Email Template Master", description: __("Leave empty to start with a blank visual email."), get_query: () => ({filters: {enabled: 1}})},
+				{fieldname: "master_name", label: __("Template (choose another or leave blank)"), default: suggestion?.name || "", fieldtype: "Link", options: "Email Template Master", description: __("Leave empty to start with a blank visual email."), get_query: () => ({filters: {enabled: 1, custom_language: language, custom_email_type: emailType}})},
 			],
 			primary_action_label: __("Create email"),
 			primary_action: async (values) => {
@@ -702,6 +777,9 @@ class EmailCampaignStudio {
 					});
 					if (!response.message?.name) return;
 					await this.contentForm.set_value("email_template", response.message.name);
+					await this.contentForm.set_value("email_language", language);
+					await this.contentForm.set_value("subscription_topic", emailType);
+					await this.configureEmailSetup();
 					dialog.hide();
 				} finally { $button.prop("disabled", false); }
 			},
@@ -964,6 +1042,9 @@ class EmailCampaignStudio {
 		this.$root.find("#ecs-report-card").prop("hidden", true);
 		this.routeKey = route.key;
 		this.sourceCampaign = campaignName;
+		clearTimeout(this.titleCheckTimer);
+		this.titleCheckRequest = (this.titleCheckRequest || 0) + 1;
+		this.showCampaignTitleState("");
 		this.updateCampaignNavigation();
 		clearTimeout(this.previewTimer);
 		this.previewTimer = null;
@@ -1071,6 +1152,7 @@ class EmailCampaignStudio {
 			}));
 			await this.runBootstrapStep(__("Loading campaign content"), () => this.setBootstrapFormValues(this.contentForm, {
 				campaign_title: "",
+				email_language: "de", email_folder: "",
 				subscription_topic: "",
 				content_topic: "",
 				email_template: "",
@@ -1146,6 +1228,7 @@ class EmailCampaignStudio {
 			}));
 			await this.runBootstrapStep(__("Loading campaign content"), () => this.setBootstrapFormValues(this.contentForm, {
 				campaign_title: campaign.campaign_title || "",
+				email_language: campaign.email_language || "de", email_folder: campaign.email_folder || "",
 				subscription_topic: campaign.subscription_topic || "",
 				content_topic: campaign.content_topic || "",
 				email_template: campaign.email_template || "",
@@ -1825,7 +1908,7 @@ class EmailCampaignStudio {
 		const rows = this.wizardUsage === "workflow" ? [[__("Email"), template || __("Not selected")], [__("Usage"), __("Automation workflow")]] : [
 			[__("Campaign"), title || __("Not named")],
 			[__("Template"), template || __("Not selected")],
-			[__("Topic"), topic || __("Not selected")],
+			[__("Email Type"), topic || __("Not selected")],
 			[__("Sender"), account || __("Not selected")],
 			[__("Audience"), this.preview ? eligible + " " + __("eligible") : __("Not previewed")],
 			[__("Batches"), batches || "-"],

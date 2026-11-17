@@ -80,3 +80,33 @@
 	.ecs-wizard-check .ecs-grid { grid-template-areas: "side" "footer"; }
 }
 .ecs-wizard .ecs-card[data-step] .ecs-step { background: var(--control-bg); color: var(--text-color); box-shadow: none; }
+
+/* Finish the existing Desk layout: consistent rhythm, focus and compact helpers. */
+.ecs-wizard .ecs-wizard-nav button { transition: background-color .15s ease; }
+.ecs-wizard .ecs-wizard-nav button:not(:disabled):hover { background: var(--control-bg); color: var(--text-color); }
+.ecs-wizard .ecs-wizard-nav button:focus-visible { outline: 2px solid var(--text-color); outline-offset: -3px; }
+.ecs-wizard .ecs-wizard-nav button:disabled { cursor: default; }
+.ecs-wizard .ecs-card[data-step].current,
+.ecs-wizard .ecs-card[data-step].complete,
+.ecs-wizard .ecs-form-card:hover { border-color: var(--border-color); box-shadow: none; }
+.ecs-wizard .ecs-card[data-step].complete .ecs-card-head { background: var(--card-bg); }
+.ecs-wizard .ecs-card-head { padding: 16px 20px; gap: 12px; }
+.ecs-wizard .ecs-card-head h3 { font-size: var(--text-base); font-weight: 600; }
+.ecs-wizard .ecs-card-head p { font-size: var(--text-sm); line-height: 1.5; }
+.ecs-wizard .ecs-card-body { padding: 20px; }
+.ecs-wizard .ecs-form-card .control-label { font-size: var(--text-sm); font-weight: 500; }
+.ecs-wizard .ecs-form-card .help-box { font-size: var(--text-xs); line-height: 1.5; margin-top: 6px; }
+.ecs-wizard .ecs-card .frappe-control { margin-bottom: 16px; }
+.ecs-wizard .ecs-summary-row { padding-top: 10px; padding-bottom: 10px; gap: 12px; }
+.ecs-wizard .ecs-summary-row strong { overflow-wrap: anywhere; }
+.ecs-wizard-footer { padding: 0 0 8px; align-items: center; }
+.ecs-wizard .ecs-title-invalid .help-box { color: var(--red-600); }
+.ecs-wizard .ecs-title-invalid .input-with-feedback { border-color: var(--red-500); }
+@media (max-width: 600px) {
+	.ecs-wizard .ecs-shell { padding: 0 10px; }
+	.ecs-wizard .ecs-card-head, .ecs-wizard .ecs-card-body { padding: 14px; }
+	.ecs-wizard .ecs-wizard-nav button { padding: 10px; flex-basis: 100px; }
+}
+@media (prefers-reduced-motion: reduce) {
+	.ecs-wizard .ecs-wizard-nav button { transition: none; }
+}

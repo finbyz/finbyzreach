@@ -15,7 +15,17 @@ class ConsentCenter {
 		this.$root.on("click", "[data-tab]", (e) => { this.tab = $(e.currentTarget).attr("data-tab"); this.render(); });
 		this.$root.on("click", "[data-edit]", (e) => this.edit($(e.currentTarget).attr("data-edit")));
 		this.$root.on("click", "[data-toggle]", (e) => this.toggle($(e.currentTarget).attr("data-toggle")));
-		this.$root.on("click", "[data-subscribers]", (e) => frappe.set_route("List", "Email Subscription Preference", {subscription_topic: $(e.currentTarget).attr("data-subscribers"), status: "Subscribed"}));
+        this.$root.on("click", "[data-subscribers]", (e) => {
+            const topic = $(e.currentTarget).attr("data-subscribers");
+            frappe.prompt([
+                {fieldname:"audience_doctype", fieldtype:"Select", options:"Contact\nLead\nCustomer", label:__("Record type"), reqd:1},
+                {fieldname:"segment_name", fieldtype:"Data", label:__("Segment name"), default:topic + " subscribers", reqd:1},
+                {fieldtype:"HTML", options:`<p class="text-muted">${__("Creates a live segment using each record's primary email address.")}</p>`}
+            ], async values => {
+                const {message} = await frappe.call({method:"finbyzreach.subscriber_segments.create_subscriber_segment", type:"POST", args:{topic, ...values}});
+                frappe.set_route("Form", "Reach Segment", message.name);
+            }, __("Show subscribers as segment"));
+        });
 		this.$root.on("click", "[data-new-topic]", () => this.edit(null, "Topic"));
 		this.$root.on("click", "[data-preview]", () => this.preview());
 		this.$root.on("click", "[data-log-page]", (e) => { this.offset = Math.max(0, this.offset + Number($(e.currentTarget).attr("data-log-page")) * 50); this.log(); });
@@ -54,7 +64,7 @@ class ConsentCenter {
 		const e = value => this.escape(value);
 		this.$root.find(".cc-body").html(["Mailing Type", "Topic", "System"].map(category => `<section class="cc-card"><div class="cc-heading"><h4>${category === "Mailing Type" ? __("Mailing types") : category === "Topic" ? __("Topics") : __("System email type")}</h4>${category === "Topic" && this.data.can_create ? `<button class="btn btn-default btn-sm" data-new-topic>${__("New topic")}</button>` : ""}</div><div class="cc-table"><table class="table"><thead><tr><th>${__("Name")}</th><th>${__("Consent")}</th><th>${__("Subscribed")}</th><th>${__("Pending")}</th><th>${__("Unsubscribed")}</th><th></th></tr></thead><tbody>${this.data.types.filter(row => row.category === category).map(row => {
 			const name=e(row.name), count=this.data.counts?.[row.name] || {};
-			return `<tr class="${row.disabled ? "text-muted" : ""}"><td><strong>${name}</strong>${row.disabled ? ` <span class="indicator-pill gray">${__("Disabled")}</span>` : ""}<p class="text-muted">${e(row.description)}</p></td><td>${row.consent_required ? __("Required") + (row.double_opt_in ? " · DOI" : "") : __("Not required")}${row.deliver_while_pending ? `<br><small>${__("Pending delivery allowed")}</small>` : ""}</td>${["Subscribed", "Pending", "Unsubscribed"].map(status => `<td>${this.data.counts === null || category === "System" ? "—" : Number(count[status] || 0)}</td>`).join("")}<td>${this.data.can_edit && category !== "System" ? `<button class="btn btn-default btn-xs" data-edit="${name}">${__("Edit & translate")}</button> <button class="btn btn-default btn-xs" data-toggle="${name}">${row.disabled ? __("Enable") : __("Disable")}</button>` : ""}${this.data.can_preview && category !== "System" ? ` <button class="btn btn-default btn-xs" data-subscribers="${name}">${__("Subscribers")}</button>` : ""}</td></tr>`;
+			return `<tr class="${row.disabled ? "text-muted" : ""}"><td><strong>${name}</strong>${row.disabled ? ` <span class="indicator-pill gray">${__("Disabled")}</span>` : ""}<p class="text-muted">${e(row.description)}</p></td><td>${row.consent_required ? __("Required") + (row.double_opt_in ? " · DOI" : "") : __("Not required")}${row.deliver_while_pending ? `<br><small>${__("Pending delivery allowed")}</small>` : ""}</td>${["Subscribed", "Pending", "Unsubscribed"].map(status => `<td>${this.data.counts === null || category === "System" ? "—" : Number(count[status] || 0)}</td>`).join("")}<td>${this.data.can_edit && category !== "System" ? `<button class="btn btn-default btn-xs" data-edit="${name}">${__("Edit & translate")}</button> <button class="btn btn-default btn-xs" data-toggle="${name}">${row.disabled ? __("Enable") : __("Disable")}</button>` : ""}${this.data.can_preview && category !== "System" ? ` <button class="btn btn-default btn-xs" data-subscribers="${name}">${__("Show as segment")}</button>` : ""}</td></tr>`;
 		}).join("") || `<tr><td colspan="6" class="text-muted">${__("No options yet")}</td></tr>`}</tbody></table></div></section>`).join(""));
 	}
 	async edit(name, category = "Mailing Type") {

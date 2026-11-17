@@ -540,6 +540,8 @@ def _campaign_for_studio(campaign_name):
 	return {
 		"name": campaign.name,
 		"campaign_title": campaign.campaign_name or campaign.name,
+		"email_language": frappe.db.get_value("Email Template", campaign.custom_email_template, "custom_language") if campaign.custom_email_template else "",
+		"email_folder": frappe.db.get_value("Email Template", campaign.custom_email_template, "custom_folder") if campaign.custom_email_template else "",
 		"broadcast_status": "Queued for scheduling" if campaign.custom_queued else (campaign.custom_broadcast_status or "Draft"),
 		"editable": (campaign.custom_broadcast_status or "Draft") == "Draft" and not campaign.custom_queued,
 		"email_template": campaign.custom_email_template,
@@ -773,6 +775,30 @@ def _default_if_blank(value, default):
 	return default if value in (None, "") else value
 
 
+def _normalized_campaign_title(value):
+	title = str(value or "").strip()
+	if not title or len(title) > 140:
+		frappe.throw(_("Campaign Title must contain between 1 and 140 characters"))
+	return title
+
+
+def _campaign_title_available(title, source_campaign=None):
+	filters = {"campaign_name": title}
+	if source_campaign:
+		filters["name"] = ["!=", source_campaign]
+	return not frappe.db.exists("Campaign", filters)
+
+
+@frappe.whitelist(methods=["GET"])
+def check_campaign_title(title, source_campaign=None):
+	"""Return availability only; do not expose another campaign's details."""
+	frappe.has_permission("Campaign", "write" if source_campaign else "create", throw=True)
+	if source_campaign:
+		frappe.get_doc("Campaign", source_campaign).check_permission("write")
+	title = _normalized_campaign_title(title)
+	return {"available": _campaign_title_available(title, source_campaign)}
+
+
 def _ensure_utm_campaign(campaign_name):
 	"""Create the UTM Campaign that ERPNext's Campaign controller expects to exist.
 
@@ -807,7 +833,7 @@ def _campaign_values(payload, context, require_ready=True, preview=None):
 	batch_size = cint(_default_if_blank(payload.get("batch_size"), 100))
 	values = {
 		"doctype": "Campaign",
-		"campaign_name": str(_required(payload, "campaign_title", _("Campaign Title"))).strip()[:140],
+		"campaign_name": _normalized_campaign_title(_required(payload, "campaign_title", _("Campaign Title"))),
 		"custom_audience_doctype": context.audience_doctype,
 		"custom_contact_mode": context.contact_mode if context.audience_doctype == "Customer" else "Primary Contact",
 		"custom_personalization_doctype": (payload.get("personalization_doctype") or "Customer") if context.audience_doctype == "Customer" else context.audience_doctype,
@@ -878,6 +904,8 @@ def create_campaign(payload=None, launch="schedule"):
 	preview = None
 
 	values = _campaign_values(payload, context, require_ready=require_ready, preview=preview)
+	if not _campaign_title_available(values["campaign_name"], source_campaign):
+		frappe.throw(_("Campaign Title is not unique. Choose a different title."))
 	# ERPNext's Campaign.after_insert/on_change fetch the matching "UTM Campaign" with
 	# frappe.get_doc and only build it inside an `except DoesNotExistError` branch. Because
 	# get_doc appends a "... not found" message to the log before raising, that swallowed
