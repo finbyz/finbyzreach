@@ -1,0 +1,5 @@
+{#- Renders one editable design text with its resolved style. Import "with context". -#}
+{% macro pc_text(key, extra="") -%}
+{%- set tag = tags.get(key, "p") -%}
+<{{ tag }} class="pc-text" data-pc-text="{{ key }}" style="{{ pc_css.get(key, '') }};{{ extra }}">{{ text.get(key, "") | e }}</{{ tag }}>
+{%- endmacro %}

@@ -1,0 +1,49 @@
+{#- Shared look of the public consent pages (preference center, subscribe, confirm).
+    Theme values come from the validated page design (finbyzreach.preference_center). -#}
+<style>
+  .page-content-wrapper, .page-content-wrapper > main, .page_content { margin: 0; padding: 0; }
+  .page-content-wrapper > main.container { width: 100%; max-width: none; }
+  .page-breadcrumbs, .page-header-wrapper { display: none; }
+  .pc-field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; font-weight: 600; color: {{ pc_theme.text }}; }
+  .pc-field input { border: 1px solid #d5dbe1; border-radius: 6px; padding: 9px 11px; font: inherit; font-weight: 400; font-size: 14px; background: #fff; color: #1f2933; }
+  .pc-field input:focus { outline: 2px solid {{ pc_theme.primary }}; outline-offset: 1px; }
+  .pc-names { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 480px) { .pc-names { grid-template-columns: 1fr; } .pc-card { padding: 20px; } }
+  .pc-page { background: {{ pc_theme.background }}; padding: 32px 16px 56px; min-height: 70vh; font-family: {{ pc_theme.font_css }}; }
+  .pc-card { background: {{ pc_theme.card }}; color: {{ pc_theme.text }}; max-width: {{ pc_theme.width }}px; margin: 0 auto; padding: 28px; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,.08); display: flex; flex-direction: column; gap: 18px; }
+  .pc-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .pc-logo img { max-height: 40px; max-width: 200px; display: block; }
+  .pc-wordmark { font-weight: 700; letter-spacing: .12em; color: {{ pc_theme.primary }}; }
+  .pc-lang select { border: 1px solid #d5dbe1; border-radius: 6px; padding: 4px 8px; font: inherit; font-size: 13px; background: #fff; }
+  .pc-text { margin: 0; line-height: 1.45; }
+  .pc-email { font-size: 13px; color: #5d6875; margin-top: 4px; overflow-wrap: anywhere; }
+  .pc-option { display: flex; gap: 12px; align-items: flex-start; padding: 12px 0; border-bottom: 1px solid #e5e7eb; cursor: pointer; }
+  .pc-option:last-child { border-bottom: 0; }
+  .pc-option input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+  .pc-switch { flex: none; width: 36px; height: 20px; border-radius: 10px; background: #d5dbe1; position: relative; margin-top: 2px; transition: background .15s; }
+  .pc-switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: left .15s; box-shadow: 0 1px 2px rgba(0,0,0,.2); }
+  .pc-option input:checked + .pc-switch { background: {{ pc_theme.primary }}; }
+  .pc-option input:checked + .pc-switch::after { left: 18px; }
+  .pc-option input:focus-visible + .pc-switch { outline: 2px solid {{ pc_theme.primary }}; outline-offset: 2px; }
+  .pc-label { font-weight: 600; font-size: 14px; }
+  .pc-desc { font-size: 13px; color: #5d6875; margin-top: 2px; }
+  .pc-badge { display: inline-block; font-size: 11px; background: #fdf1da; color: #7a5a00; border-radius: 4px; padding: 0 6px; margin-left: 6px; font-weight: 500; }
+  .pc-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+  .pc-chip { position: relative; cursor: pointer; }
+  .pc-chip input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+  .pc-chip span { display: inline-block; border: 1px solid #d5dbe1; border-radius: 20px; padding: 5px 14px; font-size: 13px; background: #fff; color: {{ pc_theme.text }}; }
+  .pc-chip input:checked + span { background: {{ pc_theme.primary }}; border-color: {{ pc_theme.primary }}; color: #fff; }
+  .pc-chip input:focus-visible + span { outline: 2px solid {{ pc_theme.primary }}; outline-offset: 2px; }
+  .pc-actions { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .pc-save { background: {{ pc_theme.button }}; border: 0; border-radius: {{ pc_theme.radius }}px; padding: 10px 18px; cursor: pointer; }
+  .pc-save:disabled { opacity: .55; cursor: not-allowed; }
+  .pc-save .pc-text { color: #fff; }
+  .pc-all { text-decoration: underline; }
+  #preference-result { font-size: 13px; margin: 0; }
+  .pc-error { text-align: center; }
+  {% if preview %}
+  [data-pc-text] { outline: 1px dashed #9cc3e6; outline-offset: 2px; border-radius: 3px; cursor: text; }
+  [data-pc-text].pc-selected { outline: 2px solid #077ddf; }
+  [data-pc-section].pc-hidden-preview { display: none; }
+  {% endif %}
+</style>
