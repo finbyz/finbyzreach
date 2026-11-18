@@ -63,6 +63,9 @@ export function useBuilderPanels() {
   const showDesktopViewport = useCallback(() => {
     if (!isDrawerMode(state.uiMode)) dispatch({ type: 'set-viewport', value: 'desktop' })
   }, [state.uiMode])
+  const showTabletViewport = useCallback(() => {
+    if (!isDrawerMode(state.uiMode)) dispatch({ type: 'set-viewport', value: 'tablet' })
+  }, [state.uiMode])
   const showMobileViewport = useCallback(() => dispatch({ type: 'set-viewport', value: 'mobile' }), [])
 
   return {
@@ -82,6 +85,7 @@ export function useBuilderPanels() {
     closeInspector,
     toggleStructure,
     showDesktopViewport,
+    showTabletViewport,
     showMobileViewport,
   }
 }

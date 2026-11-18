@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import { AlertTriangle, CheckCircle2, Clock3, Eye, FileCode2, ImagePlus, MoreVertical, Monitor, RefreshCw, Reply, RotateCcw, Search, Smartphone, Sparkles, Star, Trash2, Upload, User, Wand2, Save } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Clock3, Eye, FileCode2, ImagePlus, MoreVertical, Monitor, RefreshCw, Reply, RotateCcw, Search, Smartphone, Sparkles, Star, Trash2, Upload, User, Wand2, Save, Tablet } from 'lucide-react'
 
 import { useBuilder } from '../hooks/useBuilder'
 import { getErrorMessage } from '../lib/errors'
@@ -838,7 +838,8 @@ export const BuilderDialogs = memo(function BuilderDialogs() {
             </div>
             {previewFormat === 'html' && <span className="viewport-switch">
               {!compactPreview && <button type="button" className={activePreviewWidth === 'desktop' ? 'is-active' : ''} onClick={() => setPreviewWidth('desktop')}><Monitor size={14} /> Desktop</button>}
-              <button type="button" className={activePreviewWidth === 'mobile' ? 'is-active' : ''} onClick={() => setPreviewWidth('mobile')}><Smartphone size={14} /> Mobile</button>
+              {!compactPreview && <button type="button" className={activePreviewWidth === 'tablet' ? 'is-active' : ''} onClick={() => setPreviewWidth('tablet')}><Tablet size={14} /> Tablet</button>}
+                <button type="button" className={activePreviewWidth === 'mobile' ? 'is-active' : ''} onClick={() => setPreviewWidth('mobile')}><Smartphone size={14} /> Mobile</button>
             </span>}
           </div>
           {sdk.preview.loading && <PreviewLoadingSkeleton device={activePreviewWidth} label="Compiling the exact email HTML" />}
@@ -865,6 +866,7 @@ export const BuilderDialogs = memo(function BuilderDialogs() {
               <button type="button" className="button button--secondary" onClick={backToHistory}>Back to history</button>
               {previewFormat === 'html' && <span className="viewport-switch">
                 {!compactPreview && <button type="button" className={activePreviewWidth === 'desktop' ? 'is-active' : ''} onClick={() => setPreviewWidth('desktop')}><Monitor size={14} /> Desktop</button>}
+                {!compactPreview && <button type="button" className={activePreviewWidth === 'tablet' ? 'is-active' : ''} onClick={() => setPreviewWidth('tablet')}><Tablet size={14} /> Tablet</button>}
                 <button type="button" className={activePreviewWidth === 'mobile' ? 'is-active' : ''} onClick={() => setPreviewWidth('mobile')}><Smartphone size={14} /> Mobile</button>
               </span>}
             </div>

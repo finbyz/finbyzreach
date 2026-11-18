@@ -18,6 +18,8 @@ import {
   normalizeLength,
   rebalanceColumnWidths,
   resizeSection,
+  shiftNode,
+  visibilitySummary,
 } from './builder.ts'
 
 function section(id: string) {
@@ -104,6 +106,30 @@ test('layout reduction retains content from removed columns', () => {
   resizeSection(row, '1/2:1/2')
   assert.equal(row.columns.length, 2)
   assert.deepEqual(row.columns[1].blocks.map((item) => item.id), ['b', 'c'])
+})
+
+test('shiftNode moves a block or a row one place and stops at the ends', () => {
+  const row = createSection('1')
+  row.columns[0].blocks = [block('a'), block('b'), block('c')]
+  const schema = emptyDocument().schema
+  schema.sections = [row, createSection('1'), createSection('1')]
+  assert.equal(shiftNode(schema, 'block', 'a', -1), false)
+  assert.equal(shiftNode(schema, 'block', 'a', 1), true)
+  assert.deepEqual(row.columns[0].blocks.map((item) => item.id), ['b', 'a', 'c'])
+  assert.equal(shiftNode(schema, 'block', 'c', 1), false)
+  assert.equal(shiftNode(schema, 'block', 'missing', 1), false)
+  const [first, second] = schema.sections
+  assert.equal(shiftNode(schema, 'section', first.id, 1), true)
+  assert.deepEqual(schema.sections.slice(0, 2).map((item) => item.id), [second.id, first.id])
+  assert.equal(shiftNode(schema, 'section', second.id, -1), false)
+})
+
+test('visibilitySummary describes who sees a block, or nothing when it is for everyone', () => {
+  assert.equal(visibilitySummary(undefined), null)
+  assert.equal(visibilitySummary({ conditions: [], segment_conditions: [] }), null)
+  assert.deepEqual(visibilitySummary({ match: 'all', conditions: [{}] }), { rules: 1, label: 'Conditional', title: 'Shown only when the condition is met' })
+  assert.equal(visibilitySummary({ match: 'any', conditions: [{}], segment_conditions: [{}] })?.title, 'Shown only when any of the 2 conditions is met')
+  assert.equal(visibilitySummary({ match: 'all', conditions: [{}, {}, {}] })?.label, 'Conditional · 3')
 })
 
 test('layout expansion adds new columns', () => {

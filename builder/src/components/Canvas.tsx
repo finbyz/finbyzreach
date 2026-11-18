@@ -2,9 +2,9 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, use
 import { useDroppable, type DraggableAttributes, type DraggableSyntheticListeners } from '@dnd-kit/core'
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { AlignCenter, AlignLeft, AlignRight, Bold, Bookmark, Copy, EyeOff, GripVertical, ImagePlus, Italic, Link, List, ListOrdered, Pencil, Plus, RemoveFormatting, Strikethrough, Superscript, Trash2, Underline } from 'lucide-react'
+import { AlignCenter, AlignLeft, AlignRight, Bold, Bookmark, ChevronDown, ChevronUp, Copy, EyeOff, GripVertical, ImagePlus, Italic, Link, List, ListOrdered, Pencil, Plus, RemoveFormatting, Strikethrough, Superscript, Trash2, Underline } from 'lucide-react'
 
-import { BLOCKS, findBlock, LAYOUTS, nodeCss, normalizeColumnWidths, normalizeLength } from '../lib/builder'
+import { BLOCKS, findBlock, LAYOUTS, nodeCss, normalizeColumnWidths, normalizeLength, visibilitySummary } from '../lib/builder'
 import { insertLineBreakAtSelection, insertTextAtSelection, runLegacyEditorCommand } from '../lib/editorDom'
 import { isValidMergeToken } from '../lib/tokens'
 import type { BuilderBlock, BuilderColumn, BuilderMetadata, BuilderSchema, BuilderSection, Selection, Viewport } from '../types'
@@ -30,6 +30,7 @@ type CanvasProps = {
   onResizeColumns: (sectionId: string, widths: number[]) => void
   onEditSection: (sectionId: string, tab: 'content' | 'visibility') => void
   onDuplicate: (selection: NonNullable<Selection>) => void
+  onMove?: (selection: NonNullable<Selection>, delta: -1 | 1) => void
   onDelete: (selection: NonNullable<Selection>) => void
   onSaveComponent: (selection: NonNullable<Selection>) => void
   onPickImage: (blockId: string) => void
@@ -533,8 +534,11 @@ function RichTextToolbar({
   )
 }
 
-function NodeToolbar({ selection, listeners, attributes, onEdit, onVisibility, onDuplicate, onDelete, onSave }: {
+function NodeToolbar({ selection, listeners, attributes, onEdit, onVisibility, onDuplicate, onDelete, onSave, onMove, canMoveUp, canMoveDown }: {
   selection: NonNullable<Selection>
+  onMove?: (delta: -1 | 1) => void
+  canMoveUp?: boolean
+  canMoveDown?: boolean
   listeners?: DraggableSyntheticListeners
   attributes?: DraggableAttributes
   onEdit?: () => void
@@ -547,6 +551,7 @@ function NodeToolbar({ selection, listeners, attributes, onEdit, onVisibility, o
     <div className={`node-toolbar node-toolbar--${selection.kind}`} onClick={(event) => event.stopPropagation()}>
       {selection.kind === 'section' ? (
         <>
+          {onMove && <><button type="button" title="Move row up" aria-label="Move row up" disabled={!canMoveUp} onClick={() => onMove(-1)}><ChevronUp size={14} /></button><button type="button" title="Move row down" aria-label="Move row down" disabled={!canMoveDown} onClick={() => onMove(1)}><ChevronDown size={14} /></button></>}
           <button type="button" title="Edit row" aria-label="Edit row" onClick={onEdit}><Pencil size={13} /></button>
           <button type="button" title="Visibility" aria-label="Edit row visibility" onClick={onVisibility}><EyeOff size={13} /></button>
           <button type="button" title="Duplicate" aria-label="Duplicate row" onClick={onDuplicate}><Copy size={14} /></button>
@@ -556,6 +561,7 @@ function NodeToolbar({ selection, listeners, attributes, onEdit, onVisibility, o
       ) : (
         <>
           <button type="button" className="drag-handle" title="Drag" aria-label="Drag content" {...attributes} {...listeners}><GripVertical size={15} /></button>
+          {onMove && selection.kind === 'block' && <><button type="button" title="Move up" aria-label="Move content up" disabled={!canMoveUp} onClick={() => onMove(-1)}><ChevronUp size={14} /></button><button type="button" title="Move down" aria-label="Move content down" disabled={!canMoveDown} onClick={() => onMove(1)}><ChevronDown size={14} /></button></>}
           <button type="button" title="Duplicate" aria-label="Duplicate content" onClick={onDuplicate}><Copy size={14} /></button>
           {selection.kind !== 'column' && <button type="button" title="Save to library" aria-label="Save to library" onClick={onSave}><Bookmark size={14} /></button>}
           <button type="button" className="node-delete" title="Delete" aria-label="Delete content" onClick={onDelete}><Trash2 size={14} /></button>
@@ -565,7 +571,7 @@ function NodeToolbar({ selection, listeners, attributes, onEdit, onVisibility, o
   )
 }
 
-const SOCIAL_PLATFORMS: Record<string, { label: string; path: string; color: string; viewBox?: string }> = {
+const SOCIAL_PLATFORMS: Record<string, { label: string; path: string; color: string; viewBox?: string; glyph?: string }> = {
   Facebook: { label: 'Facebook', color: '#1877f2', viewBox: '0 0 320 512', path: 'M279.14 288l14.22-92.66h-88.91v-60.13c0-25.35 12.42-50.06 52.24-50.06H297V6.26S260.43 0 225.36 0C152.14 0 104.14 44.38 104.14 124.72v70.62H22.89V288h81.25v224h100.31V288z' },
   Instagram: { label: 'Instagram', color: '#e1306c', viewBox: '0 0 448 512', path: 'M224.1 141c-63.6 0-114.9 51.3-114.9 114.9S160.5 370.8 224.1 370.8 339 319.5 339 255.9 287.7 141 224.1 141zm0 189.6c-41.1 0-74.7-33.5-74.7-74.7s33.5-74.7 74.7-74.7 74.7 33.5 74.7 74.7-33.6 74.7-74.7 74.7zm146.4-194.3c0 14.9-12 26.8-26.8 26.8-14.9 0-26.8-12-26.8-26.8s12-26.8 26.8-26.8 26.8 12 26.8 26.8zm76.1 27.2c-1.7-35.9-9.9-67.7-36.2-93.9S352.4 35 316.5 33.3c-37-2.1-147.9-2.1-184.9 0-35.8 1.7-67.6 9.9-93.9 36.1S3.1 127.6 1.4 163.5c-2.1 37-2.1 147.9 0 184.9 1.7 35.9 9.9 67.7 36.2 93.9s58 34.5 93.9 36.2c37 2.1 147.9 2.1 184.9 0 35.9-1.7 67.7-9.9 93.9-36.2s34.5-58 36.2-93.9c2.1-37 2.1-147.8.1-184.9zM398.8 388c-7.8 19.6-22.9 34.7-42.6 42.6-29.5 11.7-99.5 9-132.1 9s-102.7 2.6-132.1-9c-19.6-7.8-34.7-22.9-42.6-42.6-11.7-29.5-9-99.5-9-132.1s-2.6-102.7 9-132.1c7.8-19.6 22.9-34.7 42.6-42.6 29.5-11.7 99.5-9 132.1-9s102.7-2.6 132.1 9c19.6 7.8 34.7 22.9 42.6 42.6 11.7 29.5 9 99.5 9 132.1s2.7 102.7-9 132.1z' },
   LinkedIn: { label: 'LinkedIn', color: '#0a66c2', viewBox: '0 0 448 512', path: 'M100.28 448H7.4V148.9h92.88zM53.79 108.1C24.09 108.1 0 83.5 0 53.8A53.8 53.8 0 0 1 53.79 0c29.7 0 53.79 24.1 53.79 53.8 0 29.7-24.09 54.3-53.79 54.3zM447.9 448h-92.68V302.4c0-34.7-.7-79.2-48.29-79.2-48.3 0-55.69 37.7-55.69 76.7V448h-92.78V148.9h89.08v40.8h1.3c12.4-23.5 42.69-48.3 87.88-48.3 94 0 111.28 61.9 111.28 142.3V448z' },
@@ -574,6 +580,8 @@ const SOCIAL_PLATFORMS: Record<string, { label: string; path: string; color: str
   TikTok: { label: 'TikTok', color: '#111827', viewBox: '0 0 24 24', path: 'M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 1 1-2.89-2.89c.3 0 .59.05.86.14V9.4a6.32 6.32 0 0 0-.86-.06 6.34 6.34 0 1 0 6.34 6.34V8.75a8.16 8.16 0 0 0 4.77 1.53z' },
   WhatsApp: { label: 'WhatsApp', color: '#25d366', viewBox: '0 0 24 24', path: 'M17.47 14.38c-.3-.15-1.76-.87-2.03-.97-.27-.1-.47-.15-.67.15-.2.3-.77.97-.94 1.16-.17.2-.35.22-.64.08-.3-.15-1.26-.46-2.39-1.48-.88-.79-1.48-1.76-1.65-2.06-.17-.3-.02-.46.13-.61.13-.13.3-.35.45-.52.15-.17.2-.3.3-.5.1-.2.05-.37-.03-.52-.07-.15-.67-1.61-.92-2.21-.24-.58-.49-.5-.67-.51h-.57c-.2 0-.52.07-.79.37-.27.3-1.04 1.02-1.04 2.48s1.07 2.88 1.21 3.07c.15.2 2.1 3.2 5.08 4.49.71.31 1.26.49 1.69.63.71.23 1.36.2 1.87.12.57-.09 1.76-.72 2.01-1.41.25-.69.25-1.29.17-1.41-.07-.13-.27-.2-.57-.35zM12.05 21.79h-.01a9.87 9.87 0 0 1-5.03-1.38l-.36-.21-3.74.98 1-3.65-.24-.37a9.86 9.86 0 0 1-1.51-5.26c0-5.45 4.44-9.88 9.89-9.88 2.64 0 5.12 1.03 6.99 2.9a9.83 9.83 0 0 1 2.89 6.99c0 5.45-4.44 9.88-9.88 9.88zM20.46 3.49A11.82 11.82 0 0 0 12.05 0C5.5 0 .16 5.34.16 11.89c0 2.1.55 4.14 1.59 5.95L.06 24l6.31-1.65a11.88 11.88 0 0 0 5.68 1.45h.01c6.55 0 11.89-5.34 11.89-11.89 0-3.18-1.24-6.16-3.49-8.42z' },
   Website: { label: 'Website', color: '#475569', viewBox: '0 0 24 24', path: 'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm6.93 6h-3.04a15.54 15.54 0 0 0-1.1-3.02A8.04 8.04 0 0 1 18.93 8zM12 4.04c.83 1.2 1.48 2.53 1.88 3.96h-3.76A13.7 13.7 0 0 1 12 4.04zM4.26 14a8.2 8.2 0 0 1 0-4h3.43a16.8 16.8 0 0 0 0 4zm.81 2h3.04c.27 1.07.64 2.08 1.1 3.02A8.04 8.04 0 0 1 5.07 16zm3.04-8H5.07a8.04 8.04 0 0 1 4.14-3.02A15.54 15.54 0 0 0 8.11 8zM12 19.96A13.7 13.7 0 0 1 10.12 16h3.76A13.7 13.7 0 0 1 12 19.96zM14.31 14H9.69a14.7 14.7 0 0 1 0-4h4.62a14.7 14.7 0 0 1 0 4zm.48 5.02c.46-.94.83-1.95 1.1-3.02h3.04a8.04 8.04 0 0 1-4.14 3.02zM16.31 14a16.8 16.8 0 0 0 0-4h3.43a8.2 8.2 0 0 1 0 4z' },
+  XING: { label: 'XING', color: '#026466', glyph: 'X', path: '' },
+  Pinterest: { label: 'Pinterest', color: '#e60023', glyph: 'P', path: '' },
 }
 
 function socialPlatform(platform: unknown) {
@@ -615,7 +623,9 @@ function SocialIcon({ platform, size, color, shape = 'circle' }: { platform: unk
         focusable="false"
         style={{ display: 'block', flex: '0 0 auto' }}
       >
-        <path d={meta.path} fill="currentColor" />
+        {meta.glyph
+          ? <text x="12" y="18.4" textAnchor="middle" fontSize="20" fontWeight="700" fontFamily="Arial, Helvetica, sans-serif" fill="currentColor">{meta.glyph}</text>
+          : <path d={meta.path} fill="currentColor" />}
       </svg>
     </span>
   )
@@ -745,10 +755,11 @@ function BlockContent({ block, settings, onUpdateContent, onPickImage, onRegiste
   return <div className="code-preview"><span>&lt;/&gt;</span><div><strong>Custom HTML</strong><small>{String(content.html || '').slice(0, 80).replace(/<[^>]+>/g, ' ') || 'Empty HTML block'}</small></div></div>
 }
 
-function SortableBlock({ block, columnId, props }: { block: BuilderBlock; columnId: string; props: CanvasProps }) {
+function SortableBlock({ block, columnId, props, index, count }: { block: BuilderBlock; columnId: string; props: CanvasProps; index: number; count: number }) {
+  const condition = visibilitySummary(block.visibility)
   const sortable = useSortable({ id: `block:${block.id}`, data: { kind: 'block', blockId: block.id, columnId } })
   const selected = props.selection?.kind === 'block' && props.selection.id === block.id
-  const hidden = block.visibility?.device !== 'both' && block.visibility?.device !== props.viewport
+  const hidden = block.visibility?.device !== 'both' && block.visibility?.device !== (props.viewport === 'mobile' ? 'mobile' : 'desktop')
   const transform = sortable.transform ? CSS.Transform.toString(sortable.transform) : undefined
   return (
     <article
@@ -759,7 +770,8 @@ function SortableBlock({ block, columnId, props }: { block: BuilderBlock; column
       data-block-id={block.id}
     >
       {props.showStructure && <span className="node-label">{BLOCKS.find((item) => item.type === block.type)?.label}</span>}
-      {!props.readOnly && <NodeToolbar selection={{ kind: 'block', id: block.id }} listeners={sortable.listeners} attributes={sortable.attributes} onDuplicate={() => props.onDuplicate({ kind: 'block', id: block.id })} onDelete={() => props.onDelete({ kind: 'block', id: block.id })} onSave={() => props.onSaveComponent({ kind: 'block', id: block.id })} />}
+      {condition && <span className="condition-badge" title={condition.title} data-testid="condition-badge">{condition.label}</span>}
+      {!props.readOnly && <NodeToolbar selection={{ kind: 'block', id: block.id }} onMove={props.onMove ? (delta) => props.onMove!({ kind: 'block', id: block.id }, delta) : undefined} canMoveUp={index > 0} canMoveDown={index < count - 1} listeners={sortable.listeners} attributes={sortable.attributes} onDuplicate={() => props.onDuplicate({ kind: 'block', id: block.id })} onDelete={() => props.onDelete({ kind: 'block', id: block.id })} onSave={() => props.onSaveComponent({ kind: 'block', id: block.id })} />}
       <BlockContent block={block} settings={props.schema.settings} onUpdateContent={props.onUpdateContent} onPickImage={props.onPickImage} onRegisterTextEditor={props.onTextEditorController} readOnly={props.readOnly} onSelectBlock={() => props.onSelect({ kind: 'block', id: block.id })} />
     </article>
   )
@@ -772,7 +784,7 @@ function Column({ column, props }: { column: BuilderColumn; props: CanvasProps }
   return (
     <div ref={setNodeRef} className={`canvas-column${selected ? ' is-selected' : ''}${isOver ? ' is-over' : ''}`} style={nodeCss(column.style)} onClick={(event) => { event.stopPropagation(); props.onSelect({ kind: 'column', id: column.id }) }}>
       <SortableContext items={column.blocks.map((block) => `block:${block.id}`)} strategy={verticalListSortingStrategy}>
-        {column.blocks.map((block) => <SortableBlock key={block.id} block={block} columnId={column.id} props={props} />)}
+        {column.blocks.map((block, index) => <SortableBlock key={block.id} block={block} columnId={column.id} props={props} index={index} count={column.blocks.length} />)}
       </SortableContext>
       {!column.blocks.length && <button type="button" className="empty-column" disabled={props.readOnly} onClick={(event) => { event.stopPropagation(); props.onSelect({ kind: 'column', id: column.id }); if (!props.readOnly) props.onAddBlock(column.id) }}><span><Plus size={16} /></span><strong>{props.readOnly ? 'Empty column' : 'Add content'}</strong><small>{props.readOnly ? 'Unlock visual editing to insert modules' : 'Drop or click to insert'}</small></button>}
       {column.blocks.length > 0 && active && !props.readOnly && <button type="button" className="column-add" title="Add content" onClick={(event) => { event.stopPropagation(); props.onSelect({ kind: 'column', id: column.id }); if (!props.readOnly) props.onAddBlock(column.id) }}><Plus size={13} /><span>Add content</span></button>}
@@ -780,7 +792,8 @@ function Column({ column, props }: { column: BuilderColumn; props: CanvasProps }
   )
 }
 
-function SortableSection({ section, props }: { section: BuilderSection; props: CanvasProps }) {
+function SortableSection({ section, props, index, count }: { section: BuilderSection; props: CanvasProps; index: number; count: number }) {
+  const condition = visibilitySummary(section.visibility)
   const sortable = useSortable({ id: `section:${section.id}`, data: { kind: 'section', sectionId: section.id } })
   const selected = props.selection?.kind === 'section' && props.selection.id === section.id
   const layout = LAYOUTS.find((item) => item.value === section.layout) || LAYOUTS[0]
@@ -845,7 +858,8 @@ function SortableSection({ section, props }: { section: BuilderSection; props: C
     >
       {props.showStructure && <span className="section-label">Row · {displayWidths.map((width) => Math.round(width) + '%').join(' / ')}</span>}
       <button type="button" className="row-drag-rail" title="Drag row" aria-label="Drag row" onClick={(event) => { event.stopPropagation(); props.onSelect({ kind: 'section', id: section.id }) }} {...sortable.attributes} {...sortable.listeners}><GripVertical size={15} /></button>
-      {!props.readOnly && <NodeToolbar selection={{ kind: 'section', id: section.id }} onEdit={() => props.onEditSection(section.id, 'content')} onVisibility={() => props.onEditSection(section.id, 'visibility')} onDuplicate={() => props.onDuplicate({ kind: 'section', id: section.id })} onDelete={() => props.onDelete({ kind: 'section', id: section.id })} onSave={() => props.onSaveComponent({ kind: 'section', id: section.id })} />}
+      {condition && <span className="condition-badge condition-badge--section" title={condition.title} data-testid="condition-badge">{condition.label}</span>}
+      {!props.readOnly && <NodeToolbar selection={{ kind: 'section', id: section.id }} onMove={props.onMove ? (delta) => props.onMove!({ kind: 'section', id: section.id }, delta) : undefined} canMoveUp={index > 0} canMoveDown={index < count - 1} onEdit={() => props.onEditSection(section.id, 'content')} onVisibility={() => props.onEditSection(section.id, 'visibility')} onDuplicate={() => props.onDuplicate({ kind: 'section', id: section.id })} onDelete={() => props.onDelete({ kind: 'section', id: section.id })} onSave={() => props.onSaveComponent({ kind: 'section', id: section.id })} />}
       <div className={`canvas-columns${mobile && section.mobile_stack === 'reverse' ? ' is-reverse' : ''}`} style={{ gridTemplateColumns, alignItems }}>
         {section.columns.map((column) => <Column key={column.id} column={column} props={props} />)}
         {!mobile && displayWidths.slice(0, -1).map((width, index) => {
@@ -901,7 +915,7 @@ export const Canvas = memo(function Canvas(props: CanvasProps) {
 
   const selectedText = textToolbarBlockId ? findBlock(props.schema, textToolbarBlockId)?.block : undefined
   const frameStyle = {
-    width: props.viewport === 'mobile' ? 375 : props.schema.settings.content_width,
+    width: props.viewport === 'mobile' ? 375 : props.viewport === 'tablet' ? Math.min(768, props.schema.settings.content_width) : props.schema.settings.content_width,
     maxWidth: '100%',
     background: props.schema.settings.content_background,
     color: props.schema.settings.text_color,
@@ -925,7 +939,7 @@ export const Canvas = memo(function Canvas(props: CanvasProps) {
       <div className="email-shell" style={{ width: frameStyle.width, maxWidth: '100%', background: props.schema.settings.body_background }}>
         <div ref={setNodeRef} className={`email-canvas${props.schema.sections.length ? ' has-sections' : ''}${isOver ? ' is-over' : ''}`} style={frameStyle}>
           <SortableContext items={props.schema.sections.map((section) => `section:${section.id}`)} strategy={verticalListSortingStrategy}>
-            {props.schema.sections.map((section) => <SortableSection key={section.id} section={section} props={props} />)}
+            {props.schema.sections.map((section, index) => <SortableSection key={section.id} section={section} props={props} index={index} count={props.schema.sections.length} />)}
           </SortableContext>
           {!props.schema.sections.length && <button type="button" className="empty-canvas" disabled={props.readOnly} onClick={(event) => { event.stopPropagation(); if (!props.readOnly) props.onAddSection() }}><span><Plus size={20} /></span><strong>Start with a row</strong><small>Click here or drag a row from the library</small></button>}
           {props.schema.sections.length > 0 && !props.readOnly && <button type="button" className="add-row-button" onClick={(event) => { event.stopPropagation(); props.onAddSection() }}><Plus size={14} /> Add row</button>}

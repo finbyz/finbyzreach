@@ -141,7 +141,7 @@ export type Selection =
   | { kind: 'block'; id: string }
   | null
 
-export type Viewport = 'desktop' | 'mobile'
+export type Viewport = 'desktop' | 'tablet' | 'mobile'
 
 export type BuilderUiMode = 'wide' | 'desktop' | 'laptop' | 'tablet' | 'mobile'
 

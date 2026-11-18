@@ -119,3 +119,10 @@ test('edit-section opens requested inspector tab and keeps panels stable', () =>
   assert.equal(state.sidebarOpen, true)
   assert.equal(state.inspectorOpen, true)
 })
+
+test('the canvas can be switched to a tablet width and back', () => {
+  const desktop = createPanelState(1500)
+  const tablet = panelReducer(desktop, { type: 'set-viewport', value: 'tablet' })
+  assert.equal(tablet.viewport, 'tablet')
+  assert.equal(panelReducer(tablet, { type: 'set-viewport', value: 'desktop' }).viewport, 'desktop')
+})

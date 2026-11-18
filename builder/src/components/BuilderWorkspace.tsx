@@ -1,5 +1,5 @@
 import { lazy, memo, Suspense, useCallback, useState } from 'react'
-import { Menu, Monitor, PanelRight, Smartphone } from 'lucide-react'
+import { Menu, Monitor, PanelRight, Smartphone, Tablet } from 'lucide-react'
 
 import { Canvas } from './Canvas'
 import { useBuilder } from '../hooks/useBuilder'
@@ -40,12 +40,14 @@ export const BuilderWorkspace = memo(function BuilderWorkspace() {
     toggleStructure,
     showDesktopViewport,
     showMobileViewport,
+    showTabletViewport,
     requestAddBlock,
     addDefaultSection,
     updateContent,
     changeColumnWidths,
     editSection,
     duplicateNode,
+    moveNodeBy,
     requestSaveComponent,
     chooseImage,
     openTemplateInspector,
@@ -103,6 +105,7 @@ export const BuilderWorkspace = memo(function BuilderWorkspace() {
             <button type="button" className={`button button--compact${showStructure ? ' is-active' : ''}`} onClick={toggleStructure} title="Toggle structure labels" aria-label="Toggle structure labels">Structure</button>
             <span className="viewport-switch">
               <button type="button" className={viewport === 'desktop' ? 'is-active' : ''} onClick={showDesktopViewport}><Monitor size={15} /><span>Desktop</span></button>
+              <button type="button" className={viewport === 'tablet' ? 'is-active' : ''} onClick={showTabletViewport}><Tablet size={15} /><span>Tablet</span></button>
               <button type="button" className={viewport === 'mobile' ? 'is-active' : ''} onClick={showMobileViewport}><Smartphone size={15} /><span>Mobile</span></button>
             </span>
             <button type="button" className={`icon-button panel-toggle${inspectorOpen ? ' is-active' : ''}`} onClick={toggleInspector} title="Toggle inspector"><PanelRight size={17} /></button>
@@ -124,6 +127,7 @@ export const BuilderWorkspace = memo(function BuilderWorkspace() {
             onResizeColumns={changeColumnWidths}
             onEditSection={editSection}
             onDuplicate={duplicateNode}
+            onMove={moveNodeBy}
             onDelete={deleteNode}
             onSaveComponent={requestSaveComponent}
             onPickImage={chooseImage}

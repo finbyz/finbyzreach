@@ -171,6 +171,28 @@ export function moveSection(schema: BuilderSchema, sectionId: string, targetSect
   return true
 }
 
+/** EM-02: move a block (within its column) or a row one place up (-1) or down (+1). */
+export function shiftNode(schema: BuilderSchema, kind: 'block' | 'section', id: string, delta: -1 | 1) {
+  const list: Array<{ id: string }> | undefined = kind === 'section'
+    ? schema.sections
+    : findBlock(schema, id)?.column.blocks
+  if (!list) return false
+  const index = list.findIndex((item) => item.id === id)
+  const target = index + delta
+  if (index < 0 || target < 0 || target >= list.length) return false
+  const [item] = list.splice(index, 1)
+  list.splice(target, 0, item)
+  return true
+}
+
+/** EM-13: does this block or row show only for some recipients? */
+export function visibilitySummary(visibility: { match?: string; conditions?: unknown[]; segment_conditions?: unknown[] } | undefined) {
+  const rules = (visibility?.conditions?.length || 0) + (visibility?.segment_conditions?.length || 0)
+  if (!rules) return null
+  const joiner = visibility?.match === 'any' ? 'any' : 'all'
+  return { rules, label: rules === 1 ? 'Conditional' : `Conditional · ${rules}`, title: `Shown only when ${rules === 1 ? 'the condition is met' : joiner === 'any' ? 'any of the ' + rules + ' conditions is met' : 'all ' + rules + ' conditions are met'}` }
+}
+
 export function moveBlock(schema: BuilderSchema, blockId: string, destinationColumnId: string, targetBlockId?: string) {
   const source = findBlock(schema, blockId)
   const destination = findColumn(schema, destinationColumnId)

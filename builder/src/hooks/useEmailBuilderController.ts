@@ -14,7 +14,7 @@ import { useBuilderTemplateState } from './useBuilderTemplateState'
 import { useNotifications } from './useNotifications'
 import { useRevisionPreview } from './useRevisionPreview'
 import { useTextEditorBridge } from './useTextEditorBridge'
-import { clone, cloneNode, createBlock, createSection, findBlock, findColumn, findSection, normalizeColumnWidths, resizeSection, safeJson } from '../lib/builder'
+import { clone, cloneNode, createBlock, createSection, findBlock, findColumn, findSection, normalizeColumnWidths, resizeSection, safeJson, shiftNode } from '../lib/builder'
 import { EMPTY_COMPONENTS, EMPTY_MERGE_FIELDS, EMPTY_REVISIONS } from '../lib/builderConstants'
 import { getErrorMessage, isConcurrencyError } from '../lib/errors'
 import { analyzeReferenceDoctypeUsage, removeReferenceDependentContent, type PendingReferenceDoctypeChange } from '../lib/referenceDoctype'
@@ -122,6 +122,7 @@ export function useEmailBuilderController() {
     toggleStructure,
     showDesktopViewport,
     showMobileViewport,
+    showTabletViewport,
   } = useBuilderPanels()
   const { registerTextEditor, focusTextEditor, prepareMergeField, insertMergeField } = useTextEditorBridge()
   const sdk = useBuilderData(templateName, templateDoctype, modal === 'history', document)
@@ -408,6 +409,11 @@ export function useEmailBuilderController() {
         if (location) location.column.blocks.splice(location.blockIndex + 1, 0, cloneNode(location.block))
       }
     })
+  }, [commit, isReadOnly])
+
+  const moveNodeBy = useCallback((selected: NonNullable<Selection>, delta: -1 | 1) => {
+    if (isReadOnly || selected.kind === 'column') return
+    commit((next) => { shiftNode(next.schema, selected.kind, selected.id, delta) })
   }, [commit, isReadOnly])
 
   const deleteNode = useCallback((selected: NonNullable<Selection>) => {
@@ -791,12 +797,14 @@ export function useEmailBuilderController() {
     toggleStructure,
     showDesktopViewport,
     showMobileViewport,
+    showTabletViewport,
     requestAddBlock,
     addDefaultSection,
     updateContent,
     changeColumnWidths,
     editSection,
     duplicateNode,
+    moveNodeBy,
     requestSaveComponent,
     chooseImage,
     openTemplateInspector,
