@@ -177,6 +177,36 @@ frappe.listview_settings["Email Template"] = frappe.listview_settings["Email Tem
 
 	// The list's main button creates an email template. Campaigns start from the
 	// Campaign list, the Marketing start page or a segment (Email Campaign Studio).
+	// EM-40: status, where used and send time of the emails on screen. They describe the campaigns and
+	// workflows that use an email, so they are fetched once per page and added to each row.
+	const STATUS_COLOURS = {Draft: "gray", Scheduled: "blue", "Preparing Audience": "blue", Sending: "orange", Paused: "orange",
+		Completed: "green", Failed: "red", Cancelled: "gray", "In workflow": "purple"};
+	function show_usage(listview) {
+		const rows = listview.$result.find(".list-row-container").toArray()
+			.map((el) => ({el: $(el), name: $(el).find(".list-row-checkbox").attr("data-name")})).filter((row) => row.name);
+		if (!rows.length) return;
+		frappe.call({
+			method: "finbyzreach.email_template_builder.languages.email_usage", type: "POST", args: {template_names: JSON.stringify(rows.map((row) => row.name))},
+		}).then(({message}) => {
+			rows.forEach(({el, name}) => {
+				const usage = (message || {})[name];
+				if (!usage || el.find(".em-usage").length) return;
+				const used = usage.used_in.map((u) => frappe.utils.escape_html(u.title)).slice(0, 3).join(", ");
+				const more = usage.used_in.length > 3 ? ` +${usage.used_in.length - 3}` : "";
+				const pill = usage.status ? `<span class="indicator-pill ${STATUS_COLOURS[usage.status] || "gray"}">${__(usage.status)}</span> ` : `<span class="text-muted">${__("Not used yet")}</span> `;
+				const time = usage.send_time ? ` · ${frappe.datetime.str_to_user(usage.send_time.slice(0, 16))}` : "";
+				el.find(".list-subject").first().append(`<div class="em-usage text-muted small" style="padding-left:28px">${pill}${used ? __("Used in {0}", [used + more]) : ""}${time}</div>`);
+			});
+		});
+	}
+	frappe.listview_settings["Email Template"].refresh = show_usage;
+
+	function selected_emails(listview) {
+		const names = listview.get_checked_items().map((row) => row.name);
+		if (!names.length) frappe.msgprint(__("Select at least one email first."));
+		return names;
+	}
+
 	frappe.listview_settings["Email Template"].primary_action = function () {
 		if (can_design_email()) show_new_visual_template_dialog();
 		else frappe.new_doc("Email Template");
@@ -205,6 +235,27 @@ frappe.listview_settings["Email Template"] = frappe.listview_settings["Email Tem
 			"/assets/finbyzreach/css/email_workspace.css",
 			"/assets/finbyzreach/js/email_workspace.js",
 		], () => frappe.email_workspace?.mount(listview.page, "emails"));
+		if (!listview._email_row_actions_added && typeof listview.page.add_action_item === "function") {
+			listview._email_row_actions_added = true;
+			// EM-41: duplicate (one or several) and move to a folder, from the row selection.
+			listview.page.add_action_item(__("Duplicate"), async () => {
+				const names = selected_emails(listview);
+				for (const name of names) {
+					await frappe.call({method: "finbyzreach.email_template_builder.languages.duplicate_email", type: "POST", args: {template_name: name}, freeze: true});
+				}
+				if (names.length) { frappe.show_alert({message: __("{0} email(s) duplicated", [names.length]), indicator: "green"}); listview.refresh(); }
+			});
+			listview.page.add_action_item(__("Move to folder…"), () => {
+				const names = selected_emails(listview);
+				if (!names.length) return;
+				frappe.prompt([{fieldname: "folder", fieldtype: "Link", options: "Email Folder", label: __("Folder"), description: __("Leave empty for “No folder”.")}], async (values) => {
+					const {message} = await frappe.call({method: "finbyzreach.email_template_builder.languages.move_emails_to_folder", type: "POST",
+						args: {template_names: JSON.stringify(names), folder: values.folder || ""}, freeze: true});
+					frappe.show_alert({message: __("{0} email(s) moved", [message.moved]), indicator: "green"});
+					listview.refresh();
+				}, __("Move to folder"), __("Move"));
+			});
+		}
 		if (!can_design_email() || listview._visual_builder_actions_added) return;
 
 		listview.page.add_button(__("Build with AI ✨"), () => show_ai_create_dialog("Email Template"));

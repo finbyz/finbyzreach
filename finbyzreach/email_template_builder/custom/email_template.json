@@ -945,7 +945,9 @@
    "options": "Subscription Topic",
    "insert_after": "custom_folder",
    "module": "Email Template Builder",
-   "name": "Email Template-custom_email_type"
+   "name": "Email Template-custom_email_type",
+   "in_list_view": 1,
+   "in_standard_filter": 1
   },
   {
    "fieldname": "custom_language",

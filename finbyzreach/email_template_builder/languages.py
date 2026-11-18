@@ -86,3 +86,80 @@ def email_setup(template_name):
 	doc = frappe.get_doc("Email Template", template_name)
 	doc.check_permission("read")
 	return {"language": doc.get("custom_language") or "", "folder": doc.get("custom_folder") or "", "email_type": doc.get("custom_email_type") or ""}
+
+
+@frappe.whitelist(methods=["POST"])
+def duplicate_email(template_name, new_name=None):
+	"""EM-41: an independent copy of an email (its own name, no shared language group)."""
+	frappe.has_permission("Email Template", "create", throw=True)
+	source = frappe.get_doc("Email Template", template_name)
+	source.check_permission("read")
+	base = str(new_name or "").strip() or f"{source.name} (copy)"
+	if len(base) > 140:
+		frappe.throw(_("Choose a name of at most 140 characters"))
+	name, number = base, 2
+	while frappe.db.exists("Email Template", name):
+		suffix = f" {number}"
+		name, number = base[:140 - len(suffix)] + suffix, number + 1
+	doc = frappe.copy_doc(source)
+	doc.name = name
+	doc.custom_version_group = None
+	doc.insert()
+	from finbyzreach.email_template_builder.library import _copy_public_attachments
+	_copy_public_attachments(source, doc)
+	return {"name": doc.name}
+
+
+@frappe.whitelist(methods=["POST"])
+def move_emails_to_folder(template_names, folder=None):
+	"""EM-41: bulk "Move to folder" for the selected emails; an empty folder means "No folder"."""
+	names = frappe.parse_json(template_names)
+	if not isinstance(names, list) or not names or len(names) > 200:
+		frappe.throw(_("Select between 1 and 200 emails"))
+	if folder:
+		frappe.get_doc("Email Folder", folder).check_permission("read")
+	moved = 0
+	for name in names:
+		doc = frappe.get_doc("Email Template", name)
+		doc.check_permission("write")
+		if (doc.get("custom_folder") or None) != (folder or None):
+			doc.db_set("custom_folder", folder or None)
+			moved += 1
+	return {"moved": moved}
+
+
+@frappe.whitelist(methods=["POST"])
+def email_usage(template_names):
+	"""EM-40: status, where used and send time of the emails on screen (one batch per list page)."""
+	names = frappe.parse_json(template_names)
+	if not isinstance(names, list):
+		frappe.throw(_("Invalid list of emails"))
+	names = [str(name) for name in names[:100] if name]
+	frappe.has_permission("Email Template", "read", throw=True)
+	result = {name: {"status": "", "used_in": [], "send_time": ""} for name in names}
+	if not names:
+		return result
+	if frappe.has_permission("Campaign", "read"):
+		rows = frappe.get_all(
+			"Campaign", filters={"custom_email_template": ["in", names]},
+			fields=["name", "campaign_name", "custom_email_template", "custom_broadcast_status", "custom_start_on", "modified"],
+			order_by="modified desc", limit_page_length=500,
+		)
+		for row in rows:
+			entry = result[row.custom_email_template]
+			entry["used_in"].append({"kind": "campaign", "name": row.name, "title": row.campaign_name or row.name})
+			if not entry["status"]:
+				entry["status"] = row.custom_broadcast_status or "Draft"
+				entry["send_time"] = str(row.custom_start_on or "")
+	if frappe.has_permission("Automation Workflow", "read") and frappe.db.exists("DocType", "Automation Workflow Version"):
+		for name in names:
+			versions = frappe.get_all(
+				"Automation Workflow Version", filters={"graph_json": ["like", f"%{name}%"]},
+				fields=["workflow"], limit_page_length=20,
+			)
+			for workflow in dict.fromkeys(row.workflow for row in versions):
+				title = frappe.db.get_value("Automation Workflow", workflow, "title") or workflow
+				result[name]["used_in"].append({"kind": "workflow", "name": workflow, "title": title})
+			if versions and not result[name]["status"]:
+				result[name]["status"] = "In workflow"
+	return result

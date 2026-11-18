@@ -92,3 +92,22 @@ test('rows switch target immediately, before the preference save finishes', asyn
     finishSave();
     await saving;
 });
+
+test('Emails list adds duplicate and move actions and asks the server for usage after render', async () => {
+    const env = environment();
+    const calls = [];
+    env.frappe.call = args => { calls.push(args.method); return Promise.resolve({message: {}}); };
+    env.frappe.reach_folder_sidebar = {setup() {}};
+    env.frappe.require = () => {};
+    vm.runInNewContext(fs.readFileSync(path.join(root, 'doctype_list_js', 'email_template_list.js'), 'utf8'), env.context);
+    const settings = env.frappe.listview_settings['Email Template'];
+    const actions = [];
+    const chain = {html() { return chain; }, addClass() { return chain; }, toggleClass() { return chain; }, attr() { return chain; }, prop() { return chain; }};
+    const list = {page: {add_action_item: label => actions.push(label), add_button() {}, add_inner_button() { return chain; }, set_primary_action() {}},
+        get_checked_items: () => [], $result: {find: () => ({toArray: () => []})}};
+    settings.onload(list);
+    assert.ok(actions.includes('Duplicate'));
+    assert.ok(actions.includes('Move to folder…'));
+    settings.refresh(list); // no rows, so no request
+    assert.equal(calls.length, 0);
+});
