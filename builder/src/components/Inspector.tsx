@@ -660,6 +660,7 @@ function BlockContent({ block, props }: { block: BuilderBlock; props: InspectorP
     <PersonalizedTextField label="Button text" value={content.text} onChange={(value) => update('text', value)} props={props} />
     <Field label="Action type"><SelectInput value={content.action || 'url'} onChange={(value) => update('action', value)} options={[['url', 'URL'], ['email', 'Email'], ['file', 'Public file'], ['telephone', 'Telephone'], ['sms', 'SMS']]} /></Field>
     <PersonalizedTextField label="Action value" value={content.href} onChange={(value) => update('href', value)} props={props} placeholder={BUTTON_ACTION_PLACEHOLDERS[String(content.action || 'url')] || 'https://example.com'} />
+    {content.action === 'sms' && <p className="helper-text" data-testid="sms-button-note">Gmail and Outlook do not open text-message links directly. The button opens a small page that opens the messages app on a phone. On a computer it shows the number. Add ?body=Your text to fill in the message.</p>}
     {buttonActionIssue(String(content.action || 'url'), content.href) && <p className="field-error" role="alert" data-testid="button-action-issue">{buttonActionIssue(String(content.action || 'url'), content.href)} Until it is fixed, the button does nothing.</p>}
     <Toggle label="Full-width button" checked={Boolean(content.full_width)} onChange={(value) => update('full_width', value)} />
   </Group>

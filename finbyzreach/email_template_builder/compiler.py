@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import html
 import re
+from urllib.parse import quote, unquote
 
 import frappe
 from frappe import _
@@ -10,7 +11,7 @@ from frappe.utils import get_url, strip_html_tags
 from .constants import DEFAULT_SETTINGS, LAYOUTS, TYPOGRAPHY_PROPS, TYPOGRAPHY_STYLES
 from .sanitizer import sanitize_code_html, sanitize_rich_html
 from .schema import validate_schema
-from .tokens import compile_attribute, compile_tokens, compile_url, field_expression
+from .tokens import TOKEN_RE, compile_attribute, compile_tokens, compile_url, field_expression
 
 
 SOCIAL_PLATFORMS = {
@@ -121,6 +122,30 @@ def apply_typography(rich_html, settings):
 		return f"<{match.group(1)}{attrs}>"
 
 	return _TYPOGRAPHY_TAG.sub(apply, rich_html)
+
+
+def _quote_outside_tokens(text):
+	"""Percent-encode the plain text of a value but leave {{ merge fields }} as they are."""
+	parts, position = [], 0
+	for match in TOKEN_RE.finditer(text):
+		parts.append(quote(unquote(text[position : match.start()]), safe=""))
+		parts.append(match.group(0))
+		position = match.end()
+	parts.append(quote(unquote(text[position:]), safe=""))
+	return "".join(parts)
+
+
+def sms_landing_url(href):
+	"""Gmail and Outlook do not open sms: links, so an SMS button points to a small https page of ours.
+
+	That page opens the messages app on a phone (see www/open_sms.py). The number and the optional
+	?body=text come from the sms: value typed in the builder; merge fields are filled in per recipient.
+	"""
+	rest = str(href or "")[4:] if str(href or "").lower().startswith("sms:") else str(href or "")
+	match = re.match(r"^(.*?)[?&]body=(.*)$", rest, re.S)
+	number, body = (match.group(1), match.group(2)) if match else (rest, "")
+	url = get_url("/open_sms") + "?to=" + _quote_outside_tokens(number.strip())
+	return url + ("&body=" + _quote_outside_tokens(body) if body else "")
 
 
 def _hex6(value):
@@ -321,7 +346,10 @@ def _compile_block(block, settings, normalized=False):
 		inner = f'<div style="{wrapper_style}">{image}</div>'
 	elif type_ == "button":
 		block_style = block.get("style") or {}
-		href = compile_url(_absolute_file_url(content.get("href") or "#"))
+		raw_href = content.get("href") or "#"
+		if content.get("action") == "sms" and str(raw_href).lower().startswith("sms:"):
+			raw_href = sms_landing_url(raw_href)
+		href = compile_url(_absolute_file_url(raw_href))
 		background = block_style.get("button_background") or settings["button_background"]
 		text_color = block_style.get("button_text_color") or settings["button_text_color"]
 		button_style = _style(
