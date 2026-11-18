@@ -137,3 +137,13 @@
  .ecr-dashboard-row { grid-template-columns: minmax(0, 1fr); }
  .ecr-toolbar { justify-content: flex-start; }
 }
+
+/* Clicks per link (EM-35) */
+.ecr-links { display: grid; gap: 10px; padding: 0 16px 8px; }
+.ecr-link-top { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; font-size: var(--text-sm); }
+.ecr-link-top a { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ecr-link-bar { height: 6px; border-radius: 3px; background: var(--control-bg); overflow: hidden; margin-top: 4px; }
+.ecr-link-bar span { display: block; height: 100%; background: var(--text-color); }
+.ecr-utm { padding: 0 16px 12px; margin: 0; }
+
+.ecr-detail-actions { display: inline-flex; gap: 6px; margin-left: 12px; }

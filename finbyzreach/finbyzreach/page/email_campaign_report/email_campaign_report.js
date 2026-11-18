@@ -30,6 +30,7 @@ class EmailCampaignReport {
 			["clicked", __("Clicked")], ["unsubscribed", __("Unsubscribed")],
 			["hard_bounce", __("Hard bounce")], ["soft_bounce", __("Soft bounce")],
 			["spam", __("Marked as spam")], ["replied", __("Replied")], ["failed", __("Failed")],
+			["skipped", __("Skipped")],
 		];
 		this.page.set_primary_action(__("Refresh"), () => this.view === "single" ? this.load() : this.loadCohort(), "refresh");
 		this.render();
@@ -67,8 +68,13 @@ class EmailCampaignReport {
 					<p class="ecr-note ecr-timeline-note"></p>
 				</section>
 				<section class="ecr-card ecr-highlights-card"><div class="ecr-section-head"><div><h3>${__("Recorded actions")}</h3><p>${__("Total engagement for this selection")}</p></div></div><div class="ecr-peaks"></div></section></div>
+				<section class="ecr-card ecr-links-card">
+					<div class="ecr-section-head"><div><h3>${__("Clicks per link")}</h3><p>${__("People who clicked each link in the email")}</p></div></div>
+					<div class="ecr-links"></div>
+					<p class="ecr-note ecr-utm"></p>
+				</section>
 				<section class="ecr-card ecr-details">
-					<div class="ecr-section-head"><div><h3 class="ecr-contacts-title">${__("Contacts: Clicked")}</h3><p>${__("People behind each recorded action")}</p></div><span class="ecr-detail-total"></span></div>
+					<div class="ecr-section-head"><div><h3 class="ecr-contacts-title">${__("Contacts: Clicked")}</h3><p>${__("People behind each recorded action")}</p></div><span class="ecr-detail-total"></span><span class="ecr-detail-actions"><button type="button" class="btn btn-default btn-xs ecr-save-segment">${__("Save as segment")}</button><button type="button" class="btn btn-default btn-xs ecr-export">${__("Export")}</button></span></div>
 
 					<div class="ecr-table-wrap"><table class="ecr-table"><thead><tr><th>${__("Full Name")}</th><th>${__("Email")}</th><th>${__("Campaign")}</th><th>${__("Status")}</th><th>${__("Action Time")}</th></tr></thead><tbody></tbody></table></div>
 					<div class="ecr-pagination"><span class="ecr-page-label"></span><div><button class="btn btn-default btn-sm ecr-prev">${__("Previous")}</button><button class="btn btn-default btn-sm ecr-next">${__("Next")}</button></div></div>
@@ -83,7 +89,7 @@ class EmailCampaignReport {
 							<div class="ecr-filter"><label class="control-label ecr-compare-input-label" for="ecr-compare-input">${__("Campaign")}</label><div class="ecr-picker"><input id="ecr-compare-input" class="form-control ecr-compare-input" type="text" autocomplete="off" placeholder="${__("Search campaigns")}"><div class="ecr-suggestions" hidden></div></div></div>
 							<div class="ecr-compare-chips"></div>
 						</div>
-					<div class="ecr-period-row"><label class="ecr-filter"><span class="control-label">${__("Send period")}</span><select class="form-control ecr-cohort-period"><option value="previous_month">${__("Previous calendar month")}</option><option value="7">${__("Last 7 days")}</option><option value="30">${__("Last 30 days")}</option><option value="60">${__("Last 60 days")}</option><option value="custom">${__("Custom")}</option></select></label><button class="btn btn-primary btn-sm ecr-cohort-apply" type="button">${__("Show report")}</button></div>
+					<div class="ecr-period-row"><label class="ecr-filter"><span class="control-label">${__("Send period")}</span><select class="form-control ecr-cohort-period"><option value="previous_month">${__("Previous calendar month")}</option><option value="7">${__("Last 7 days")}</option><option value="30">${__("Last 30 days")}</option><option value="90">${__("Last 90 days")}</option><option value="custom">${__("Custom")}</option></select></label><button class="btn btn-primary btn-sm ecr-cohort-apply" type="button">${__("Show report")}</button></div>
 						<div class="ecr-cohort-custom-range">
 							<label class="ecr-filter"><span class="control-label">${__("From Date")}</span><input class="form-control ecr-cohort-from" type="date"></label>
 							<label class="ecr-filter"><span class="control-label">${__("To Date")}</span><input class="form-control ecr-cohort-to" type="date"></label>
@@ -115,7 +121,7 @@ class EmailCampaignReport {
 		this.scope = make("scope", { fieldtype: "Select", fieldname: "scope", label: __("View by"), options: [__("Campaign"), __("Email Template")], default: __("Campaign"), change: () => this.scope && this.toggleScope() });
 		this.campaign = make("campaign", { fieldtype: "Link", fieldname: "campaign", label: __("Campaign"), options: "Campaign" });
 		this.template = make("template", { fieldtype: "Link", fieldname: "template", label: __("Email Template"), options: "Email Template" });
-		this.period = make("days", { fieldtype: "Select", fieldname: "days", label: __("Timeline in days"), options: ["7", "30", "60", __("Custom")], default: "30", change: () => this.period && this.togglePeriod() });
+		this.period = make("days", { fieldtype: "Select", fieldname: "days", label: __("Timeline in days"), options: ["7", "30", "90", __("Custom")], default: "30", change: () => this.period && this.togglePeriod() });
 		this.fromDate = make("from_date", { fieldtype: "Date", fieldname: "from_date", label: __("From Date"), default: frappe.datetime.add_days(frappe.datetime.get_today(), -29) });
 		this.toDate = make("to_date", { fieldtype: "Date", fieldname: "to_date", label: __("To Date"), default: frappe.datetime.get_today() });
 		this.scope.set_value(__("Campaign"));
@@ -234,6 +240,27 @@ class EmailCampaignReport {
 	}
 
 	bind() {
+		// EM-34: the people behind a number can be saved as a segment or exported.
+		this.page.main.on("click", ".ecr-export", () => {
+			const selection = this.selection();
+			if (!selection.value) return;
+			const params = new URLSearchParams({ ...selection, metric: this.metric });
+			window.open(`/api/method/${this.method}export_metric?${params.toString()}`);
+		});
+		this.page.main.on("click", ".ecr-save-segment", () => {
+			const selection = this.selection();
+			if (!selection.value) return;
+			const label = this.metrics.find((entry) => entry[0] === this.metric)[1];
+			frappe.prompt({ fieldname: "segment_name", fieldtype: "Data", label: __("Segment name"), reqd: 1,
+				default: `${label}: ${selection.value}`.slice(0, 140),
+				description: __("A static segment with everyone behind “{0}”. You can use it for emails and workflows.", [label]) },
+				async (values) => {
+					const { message } = await frappe.call({ method: this.method + "save_metric_as_segment", type: "POST",
+						args: { ...selection, metric: this.metric, segment_name: values.segment_name }, freeze: true });
+					frappe.msgprint({ title: __("Segment created"), indicator: "green",
+						message: __("{0} people saved in the static segment {1}.", [message.count, `<a href="/desk/reach-segment/${encodeURIComponent(message.name)}">${frappe.utils.escape_html(message.name)}</a>`]) });
+				}, __("Save as segment"), __("Create segment"));
+		});
 		this.page.main.on("change", ".ecr-view-select", (event) => this.setView(event.currentTarget.value));
 		this.page.main.on("change", ".ecr-compare-scope", () => this.resetComparison());
 		this.page.main.on("focus input", ".ecr-compare-input", () => this.renderSuggestions());
@@ -350,6 +377,7 @@ class EmailCampaignReport {
 			[__("Inbox delivery"), __("Unavailable"), __("Inbox delivery receipts are not available.")],
 			[__("Sent"), this.number(counts.sent), __("Current sent status")],
 			[__("Failed"), this.number(counts.failed), __("Completed attempts")],
+			[__("Skipped"), this.number(counts.skipped), __("Opted out, bounced before or duplicate")],
 			[__("Opened"), this.number(counts.opened), this.rate(counts.open_rate)],
 			[__("Clicked"), this.number(counts.clicked), this.rate(counts.click_rate)],
 			[__("Replied"), this.number(counts.replied), this.rate(counts.reply_rate)],
@@ -389,7 +417,7 @@ class EmailCampaignReport {
 		const hasAttempts = items.some((item) => Number(item.summary?.completed));
 		this.page.main.find(".ecr-compare-chart-card").toggleClass("is-empty", !hasAttempts);
 		if (!hasAttempts) {
-			this.page.main.find("#ecr-compare-chart").html(`<div class="ecr-chart-empty">${__("No sends in this period. Try Last 60 days or a custom range.")}</div>`);
+			this.page.main.find("#ecr-compare-chart").html(`<div class="ecr-chart-empty">${__("No sends in this period. Try Last 90 days or a custom range.")}</div>`);
 			return;
 		}
 		new frappe.Chart("#ecr-compare-chart", {
@@ -438,6 +466,7 @@ class EmailCampaignReport {
 			this.page.main.find(".ecr-state").text(__("Showing {0} campaign(s)", [this.report.campaign_count || 0]));
 			this.renderMetrics();
 			this.renderTrend();
+			this.renderLinks();
 			this.highlightMetric();
 			await this.loadDetails();
 			if (requestId === this.requestId) this.loadDashboardOverview(range, requestId);
@@ -461,6 +490,17 @@ class EmailCampaignReport {
 		}
 	}
 
+	renderLinks() {
+		const links = this.report.links || [];
+		const top = Math.max(1, ...links.map((row) => Number(row.clicks || 0)));
+		const shorten = (url) => (url.length > 70 ? url.slice(0, 67) + "…" : url);
+		this.page.main.find(".ecr-links").html(links.length
+			? links.map((row) => `<div class="ecr-link-row"><div class="ecr-link-top"><a href="${this.esc(row.url)}" target="_blank" rel="noopener noreferrer" title="${this.esc(row.url)}">${this.esc(shorten(row.url))}</a><strong>${this.number(row.clicks)}</strong></div><div class="ecr-link-bar"><span style="width:${(100 * Number(row.clicks || 0) / top).toFixed(1)}%"></span></div></div>`).join("")
+			: `<p class="ecr-note">${__("No link clicks recorded yet.")}</p>`);
+		const utm = (this.report.utm || []).map((row) => [row.source, row.medium, row.campaign].filter(Boolean).join(" / ")).filter(Boolean);
+		this.page.main.find(".ecr-utm").text(utm.length ? __("UTM added to every link (source / medium / campaign): {0}", [utm.join(" · ")]) : "");
+	}
+
 	renderMetrics() {
 		const counts = this.report.summary || {};
 		const eligible = Number(counts.eligible || 0);
@@ -474,9 +514,9 @@ class EmailCampaignReport {
 			const available = count !== null && count !== undefined;
 			const engagement = ["opened", "clicked", "unsubscribed", "replied"].includes(key);
 			const outcome = ["hard_bounce", "soft_bounce", "spam", "failed"].includes(key);
-			const denominator = engagement ? accepted : (outcome ? completed : eligible);
+			const denominator = engagement ? accepted : (outcome ? completed : (key === "skipped" ? eligible + Number(count || 0) : eligible));
 			const percent = available && denominator ? `${(100 * Number(count) / denominator).toFixed(1)}%` : (available ? "0%" : "-");
-			const note = notes[key] || (engagement ? __("Percent of accepted sends") : (outcome ? __("Percent of completed delivery attempts") : __("Percent of eligible recipients")));
+			const note = notes[key] || (key === "skipped" ? __("Percent of all recipients; the reason is shown in the list") : engagement ? __("Percent of accepted sends") : (outcome ? __("Percent of completed delivery attempts") : __("Percent of eligible recipients")));
 			return `<button type="button" class="ecr-card ecr-metric ${available ? "" : "ecr-unavailable"}" data-metric="${key}" title="${this.esc(note)}">
 				<span>${this.esc(label)}</span><strong>${available ? this.number(count) : "-"}</strong><small>${available ? percent : __("Unavailable")}</small>
 			</button>`;

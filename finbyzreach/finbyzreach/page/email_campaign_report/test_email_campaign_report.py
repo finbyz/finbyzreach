@@ -2,6 +2,8 @@ from unittest import TestCase
 from unittest.mock import MagicMock, patch
 from datetime import date, timedelta
 
+import frappe
+
 from finbyzreach.finbyzreach.page.email_campaign_report import email_campaign_report as report
 
 
@@ -13,18 +15,18 @@ class TestEmailCampaignReport(TestCase):
     @patch.object(report, "_cohort_rows", return_value=[{"eligible": 2, "sent": 1, "opened": 1}])
     @patch.object(report, "_campaign_names", return_value=["Campaign-1"])
     def test_studio_summary_uses_selected_send_cohort_and_permission_scope(self, campaign_names, cohort_rows):
-        summary = report.get_campaign_summary("Campaign-1", 60)
+        summary = report.get_campaign_summary("Campaign-1", 90)
         self.assertEqual(summary["sent"], 1)
         self.assertEqual(summary["opened"], 1)
         self.assertEqual(summary["completed"], 1)
         campaign_names.assert_called_once_with("campaign", "Campaign-1")
-        cohort_rows.assert_called_once_with(["Campaign-1"], date(2026, 10, 6) - timedelta(days=59), date(2026, 10, 6))
+        cohort_rows.assert_called_once_with(["Campaign-1"], date(2026, 10, 6) - timedelta(days=89), date(2026, 10, 6))
 
     @patch.object(report.frappe, "throw", side_effect=ValueError)
     @patch.object(report, "_campaign_names", return_value=["Campaign-1"])
-    def test_studio_summary_rejects_old_ninety_day_period(self, campaign_names, throw):
+    def test_studio_summary_rejects_unsupported_period(self, campaign_names, throw):
         with self.assertRaises(ValueError):
-            report.get_campaign_summary("Campaign-1", 90)
+            report.get_campaign_summary("Campaign-1", 45)
 
     @patch.object(report.frappe, "get_doc")
     @patch.object(report.frappe, "has_permission")
@@ -195,3 +197,48 @@ class TestEmailCampaignReport(TestCase):
         self.assertEqual(data["summary"]["accepted"], 0)
         self.assertIsNone(data["summary"]["acceptance_rate"])
         self.assertEqual(len(data["trend"]), 30)
+
+
+class SkippedAndLinkClicksTest(TestCase):
+    def test_skipped_is_a_metric_but_not_an_attempt(self):
+        self.assertIn("skipped", report.METRICS)
+        self.assertIn("skipped", report.AGGREGATE_FIELDS)
+        self.assertIn("Skipped", report.COHORT_STATUSES)
+        self.assertNotIn("Skipped", report.COMPLETED_STATUSES)
+        counts = {"sent": 8, "failed": 2, "skipped": 40}
+        self.assertEqual(report._rates(counts)["completed"], 10)
+
+    @patch.object(report.frappe.db, "table_exists", return_value=True)
+    @patch.object(report.frappe.db, "sql")
+    def test_link_clicks_are_counted_per_url_for_the_selected_campaigns(self, sql, table_exists):
+        sql.return_value = [frappe._dict(url="https://megasol.ch/bipv", clicks=7, last_click="2026-11-17 10:00:00")]
+        links = report._link_clicks(["Campaign-1"])
+        self.assertEqual(links, [{"url": "https://megasol.ch/bipv", "clicks": 7, "last_click": "2026-11-17 10:00:00"}])
+        self.assertIn("Clicked", sql.call_args.args[0])
+        self.assertEqual(sql.call_args.args[1][:1], ["Campaign-1"])
+        self.assertEqual(report._link_clicks([]), [])
+
+
+class ExportAndSegmentTest(TestCase):
+    @patch.object(report, "_campaign_names", return_value=["Campaign-1"])
+    @patch.object(report.frappe, "has_permission", return_value=True)
+    @patch.object(report.frappe.db, "sql")
+    def test_export_neutralises_spreadsheet_formulas(self, sql, has_permission, names):
+        self.enterContext(patch.object(frappe.local, "response", frappe._dict(), create=True))
+        sql.return_value = [frappe._dict(email="=HYPERLINK(1)", audience="Lead", record="LEAD-1", campaign="Campaign-1", action_time=None, reason="")]
+        report.export_metric("campaign", "Campaign-1", "sent")
+        text = frappe.response["filecontent"].decode("utf-8-sig")
+        self.assertIn("'=HYPERLINK(1)", text)
+        self.assertEqual(frappe.response["type"], "download")
+
+    @patch.object(report, "_campaign_names", return_value=["Campaign-1"])
+    @patch.object(report.frappe.db, "sql")
+    def test_segment_needs_one_record_type_and_someone_behind_the_number(self, sql, names):
+        sql.return_value = []
+        with self.assertRaises(frappe.ValidationError):
+            report.save_metric_as_segment("campaign", "Campaign-1", "opened", "Openers")
+        sql.return_value = [frappe._dict(audience="Lead", record="L-1"), frappe._dict(audience="Customer", record="C-1")]
+        with self.assertRaises(frappe.ValidationError):
+            report.save_metric_as_segment("campaign", "Campaign-1", "opened", "Openers")
+        with self.assertRaises(frappe.ValidationError):
+            report.save_metric_as_segment("campaign", "Campaign-1", "opened", "  ")

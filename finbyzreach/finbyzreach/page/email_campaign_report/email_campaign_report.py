@@ -11,7 +11,7 @@ from frappe.utils import cint, getdate, nowdate
 PAGE_SIZE = 25
 METRICS = (
     "sent", "delivered", "opened", "clicked", "unsubscribed",
-    "hard_bounce", "soft_bounce", "spam", "replied", "failed",
+    "hard_bounce", "soft_bounce", "spam", "replied", "failed", "skipped",
 )
 FIELD_METRICS = {
     "opened": ("custom_opened", "custom_opened_on"),
@@ -36,8 +36,11 @@ REPLY_CONDITION = (
     "and lower(trim(reply.sender)) = lower(trim(ec.custom_recipient_email)))"
 )
 COMPLETED_STATUSES = ("Sent", "Failed", "Bounced", "Soft-Bounced", "Marked As Spam")
+# Skipped recipients (opted out, bounced earlier, duplicate...) are counted next to the completed sends,
+# but they never count as attempts: "eligible", the acceptance rate and the engagement rates ignore them.
+COHORT_STATUSES = COMPLETED_STATUSES + ("Skipped",)
 COHORT_TIME = "coalesce(q.modified, ec.modified)"
-AGGREGATE_FIELDS = ("eligible", "sent", "failed", "hard_bounce", "soft_bounce", "spam", "opened", "clicked", "unsubscribed", "replied")
+AGGREGATE_FIELDS = ("eligible", "sent", "failed", "hard_bounce", "soft_bounce", "spam", "opened", "clicked", "unsubscribed", "replied", "skipped")
 COHORT_NOTE = (
     "Period membership uses Email Queue update time, or the recipient update time when no queue exists. "
     "Older send dates may be approximate if these records were updated later. Engagement includes later recorded actions."
@@ -80,6 +83,7 @@ def _summary(names):
             sum(ec.custom_delivery_status not in ('Skipped', 'Cancelled')) eligible,
             sum(({EFFECTIVE_STATUS}) = 'Sent') sent,
             sum(({EFFECTIVE_STATUS}) = 'Failed') failed,
+            sum(ec.custom_delivery_status = 'Skipped') skipped,
             sum(({EFFECTIVE_STATUS}) = 'Bounced') hard_bounce,
             sum(({EFFECTIVE_STATUS}) = 'Soft-Bounced') soft_bounce,
             sum(({EFFECTIVE_STATUS}) = 'Marked As Spam') spam,
@@ -103,8 +107,8 @@ def _summary(names):
 def get_campaign_summary(campaign_name, days=30):
     """Return completed send cohorts for one permitted broadcast campaign."""
     names = _campaign_names("campaign", campaign_name)
-    if str(days) not in ("7", "30", "60"):
-        frappe.throw(_("Choose 7, 30 or 60 days"))
+    if str(days) not in ("7", "30", "90"):
+        frappe.throw(_("Choose 7, 30 or 90 days"))
     first, last = _period_range(str(days))[:2]
     summary = _empty_aggregate()
     for row in _cohort_rows(names, first, last):
@@ -122,7 +126,7 @@ def _period_range(period="previous_month", from_date=None, to_date=None):
         last = first_of_month - timedelta(days=1)
         first = last.replace(day=1)
         label = _("Previous calendar month: {0} to {1}").format(first.isoformat(), last.isoformat())
-    elif str(period) in ("7", "30", "60"):
+    elif str(period) in ("7", "30", "90"):
         if from_date or to_date:
             frappe.throw(_("Custom dates require the Custom period"))
         first, last, label = _timeline_range(period)
@@ -195,7 +199,8 @@ def _cohort_rows(names, first, last, daily=False):
         rows.extend(frappe.db.sql(
             f"""
             select ec.campaign_name, {day_column}
-                count(*) eligible,
+                sum(effective_status <> 'Skipped') eligible,
+                sum(effective_status = 'Skipped') skipped,
                 sum(effective_status = 'Sent') sent,
                 sum(effective_status = 'Failed') failed,
                 sum(effective_status = 'Bounced') hard_bounce,
@@ -214,11 +219,11 @@ def _cohort_rows(names, first, last, daily=False):
                 left join `tabCommunication` comm on comm.name = ec.custom_communication
                 where {_where(batch)}
             ) ec
-            where effective_status in ({', '.join(['%s'] * len(COMPLETED_STATUSES))})
+            where effective_status in ({', '.join(['%s'] * len(COHORT_STATUSES))})
                 and cohort_time >= %s and cohort_time < %s
             group by {grouped}
             """,
-            [*batch, *COMPLETED_STATUSES, first, last + timedelta(days=1)],
+            [*batch, *COHORT_STATUSES, first, last + timedelta(days=1)],
             as_dict=True,
         ))
     return rows
@@ -293,8 +298,8 @@ def _timeline_range(days, from_date=None, to_date=None):
         label = _("{0} to {1}").format(first_day.isoformat(), last_day.isoformat())
     else:
         days = cint(days)
-        if days not in (7, 30, 60):
-            frappe.throw(_("Choose a 7, 30, or 60 day timeline"))
+        if days not in (7, 30, 90):
+            frappe.throw(_("Choose a 7, 30, or 90 day timeline"))
         last_day = getdate(nowdate())
         first_day = last_day - timedelta(days=days - 1)
         label = _("Last {0} days").format(days)
@@ -353,12 +358,51 @@ def _trend(names, first_day, last_day):
     ]
 
 
+def _link_clicks(names, limit=25):
+    """EM-35: people who clicked each link. Clicks are logged once per recipient and link."""
+    if not names or not frappe.db.table_exists("Email Tracking Event"):
+        return []
+    rows = frappe.db.sql(
+        f"""
+        select url, count(*) clicks, max(event_time) last_click
+        from `tabEmail Tracking Event`
+        where event_type = 'Clicked' and ifnull(url, '') <> ''
+            and marketing_email_campaign in ({', '.join(['%s'] * len(names))})
+        group by url
+        order by clicks desc, url asc
+        limit %s
+        """,
+        [*names, limit],
+        as_dict=True,
+    )
+    return [{"url": row.url, "clicks": cint(row.clicks), "last_click": str(row.last_click or "")} for row in rows]
+
+
+def _utm_values(names):
+    """EM-32: the UTM values added to every link of these campaigns."""
+    if not names:
+        return []
+    fields = ["custom_utm_source", "custom_utm_medium", "custom_utm_campaign"]
+    if not all(frappe.db.has_column("Campaign", field) for field in fields):
+        return []
+    rows = frappe.get_all("Campaign", filters={"name": ["in", names[:200]]}, fields=fields, limit_page_length=200)
+    seen, result = set(), []
+    for row in rows:
+        key = (row.custom_utm_source or "", row.custom_utm_medium or "", row.custom_utm_campaign or "")
+        if key not in seen:
+            seen.add(key)
+            result.append({"source": key[0], "medium": key[1], "campaign": key[2]})
+    return result[:10]
+
+
 @frappe.whitelist()
 def get_report(scope="campaign", value=None, days=30, from_date=None, to_date=None):
     first_day, last_day, range_label = _timeline_range(days, from_date, to_date)
     names = _campaign_names(scope, value)
     return {
         "summary": _summary(names),
+        "links": _link_clicks(names),
+        "utm": _utm_values(names),
         "trend": _trend(names, first_day, last_day),
         "campaign_count": len(names),
         "days": (last_day - first_day).days + 1,
@@ -373,6 +417,98 @@ def get_report(scope="campaign", value=None, days=30, from_date=None, to_date=No
     }
 
 
+def _metric_query(names, metric):
+    """FROM/WHERE for the recipients behind one metric, plus the action-time expression."""
+    if metric in FIELD_METRICS:
+        flag, field = FIELD_METRICS[metric]
+        condition = f"({REPLY_CONDITION})" if metric == "replied" else f"ec.`{flag}` = 1"
+        condition_args = []
+        timestamp, timestamp_args = f"ec.`{field}`", []
+    else:
+        status = FEEDBACK_METRICS.get(metric, "Skipped" if metric == "skipped" else ("Sent" if metric == "sent" else "Failed"))
+        condition, condition_args = f"({EFFECTIVE_STATUS}) = %s", [status]
+        if metric == "sent":
+            timestamp = "q.modified"
+        elif metric in ("failed", "skipped"):
+            timestamp = "coalesce(q.modified, ec.modified)"
+        else:
+            timestamp = "coalesce(comm.modified, ec.modified)"
+        timestamp_args = []
+    base = f"""from `tabEmail Campaign` ec
+        left join `tabEmail Queue` q on q.name = ec.custom_email_queue
+        left join `tabCommunication` comm on comm.name = ec.custom_communication
+        where {_where(names)} and {condition}"""
+    return base, condition_args, timestamp, timestamp_args
+
+
+EXPORT_LIMIT = 50000
+SEGMENT_LIMIT = 5000
+
+
+@frappe.whitelist()
+def export_metric(scope="campaign", value=None, metric="opened"):
+    """EM-34: download the people behind a number as CSV."""
+    import csv
+    from io import StringIO
+
+    if metric not in METRICS or metric == "delivered":
+        frappe.throw(_("Invalid metric"))
+    names = _campaign_names(scope, value)
+    frappe.has_permission("Email Campaign", "export", throw=True)
+    base, condition_args, timestamp, _unused = _metric_query(names, metric)
+    rows = frappe.db.sql(
+        f"""select ec.custom_recipient_email email, ec.email_campaign_for audience, ec.recipient record,
+                   ec.campaign_name campaign, {timestamp} action_time,
+                   coalesce(ec.custom_error_message, ec.custom_excluded_reason) reason
+            {base} order by action_time desc, ec.name desc limit %s""",
+        [*names, *condition_args, EXPORT_LIMIT],
+        as_dict=True,
+    )
+    out = StringIO()
+    writer = csv.writer(out)
+    writer.writerow([_("Email"), _("Record type"), _("Record"), _("Campaign"), _("Action time"), _("Reason")])
+    for row in rows:
+        # A leading = + - @ would be run as a formula by spreadsheet programs.
+        cells = [row.email, row.audience, row.record, row.campaign, str(row.action_time or ""), row.reason or ""]
+        writer.writerow(["'" + c if c and c[0] in "=+-@" else c for c in cells])
+    frappe.response["filename"] = f"email-{metric}-{frappe.utils.nowdate()}.csv"
+    frappe.response["filecontent"] = out.getvalue().encode("utf-8-sig")
+    frappe.response["type"] = "download"
+
+
+@frappe.whitelist(methods=["POST"])
+def save_metric_as_segment(scope="campaign", value=None, metric="opened", segment_name=None):
+    """EM-34: turn the people behind a number into a static segment."""
+    from finbyzreach.segments import change_segment_members, create_segment
+
+    if metric not in METRICS or metric == "delivered":
+        frappe.throw(_("Invalid metric"))
+    segment_name = str(segment_name or "").strip()
+    if not segment_name:
+        frappe.throw(_("Give the segment a name"))
+    names = _campaign_names(scope, value)
+    base, condition_args, _timestamp, _unused = _metric_query(names, metric)
+    rows = frappe.db.sql(
+        f"select distinct ec.email_campaign_for audience, ec.recipient record {base} limit %s",
+        [*names, *condition_args, SEGMENT_LIMIT + 1],
+        as_dict=True,
+    )
+    rows = [row for row in rows if row.record]
+    if not rows:
+        frappe.throw(_("There is nobody behind this number yet"))
+    if len(rows) > SEGMENT_LIMIT:
+        frappe.throw(_("More than {0} people. Use Export instead.").format(SEGMENT_LIMIT))
+    audiences = {row.audience or "Lead" for row in rows}
+    if len(audiences) > 1:
+        frappe.throw(_("These recipients are of different types ({0}). Select one campaign.").format(", ".join(sorted(audiences))))
+    audience = audiences.pop()
+    segment = create_segment(segment_name, "Static", "[]", audience_doctype=audience)
+    records = sorted({row.record for row in rows})
+    for start in range(0, len(records), 500):
+        change_segment_members(segment["name"], json.dumps(records[start:start + 500]), "add")
+    return {"name": segment["name"], "count": len(records), "audience_doctype": audience}
+
+
 @frappe.whitelist()
 def get_details(scope="campaign", value=None, metric="opened", page=1):
     if metric not in METRICS:
@@ -382,32 +518,13 @@ def get_details(scope="campaign", value=None, metric="opened", page=1):
     if not names or metric == "delivered":
         return {"rows": [], "total": 0, "page": page, "page_size": PAGE_SIZE}
 
-    if metric in FIELD_METRICS:
-        flag, field = FIELD_METRICS[metric]
-        condition = f"({REPLY_CONDITION})" if metric == "replied" else f"ec.`{flag}` = 1"
-        condition_args = []
-        timestamp, timestamp_args = f"ec.`{field}`", []
-    else:
-        status = FEEDBACK_METRICS.get(metric, "Sent" if metric == "sent" else "Failed")
-        condition, condition_args = f"({EFFECTIVE_STATUS}) = %s", [status]
-        if metric == "sent":
-            timestamp = "q.modified"
-        elif metric == "failed":
-            timestamp = "coalesce(q.modified, ec.modified)"
-        else:
-            timestamp = "coalesce(comm.modified, ec.modified)"
-        timestamp_args = []
-
-    base = f"""from `tabEmail Campaign` ec
-        left join `tabEmail Queue` q on q.name = ec.custom_email_queue
-        left join `tabCommunication` comm on comm.name = ec.custom_communication
-        where {_where(names)} and {condition}"""
+    base, condition_args, timestamp, timestamp_args = _metric_query(names, metric)
     total = cint(frappe.db.sql(f"select count(*) {base}", [*names, *condition_args])[0][0])
     rows = frappe.db.sql(
         f"""
         select ec.name, ec.campaign_name, ec.recipient lead, ec.email_campaign_for audience_doctype,
                ec.custom_contact contact,
-               ec.custom_recipient_email email, ec.custom_error_message error,
+               ec.custom_recipient_email email, coalesce(ec.custom_error_message, ec.custom_excluded_reason) error,
                {timestamp} action_time
         {base}
         order by action_time desc, ec.name desc
