@@ -340,6 +340,30 @@ def resolve_colour(colour, theme):
 	return {"primary": theme["primary"], "text": theme["text"], "muted": "#5d6875", "white": "#ffffff"}.get(colour, colour)
 
 
+def _luminance(hex_colour):
+	value = str(hex_colour or "").lstrip("#")
+	if len(value) == 3:
+		value = "".join(ch * 2 for ch in value)
+	try:
+		channels = [int(value[i : i + 2], 16) / 255 for i in (0, 2, 4)]
+	except ValueError:
+		return None
+	linear = [c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4 for c in channels]
+	return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+
+
+def readable_button_colour(theme):
+	"""Button text is always white, so a light button colour hides the button (WCAG 3:1).
+
+	The confirm page has only this button, so fall back to the primary colour, then navy.
+	"""
+	for colour in (theme.get("button"), theme.get("primary"), "#0f2f4f"):
+		luminance = _luminance(colour)
+		if luminance is not None and 1.05 / (luminance + 0.05) >= 3:
+			return colour
+	return "#0f2f4f"
+
+
 def page_context(config, language, page="manage"):
 	"""Values the template needs, with every style already resolved to CSS."""
 	language = language if language in LANGUAGES else "de"
@@ -347,6 +371,7 @@ def page_context(config, language, page="manage"):
 	config = config if page == "manage" else {**config[page], "show_descriptions": shared["show_descriptions"], "show_topics": shared["show_topics"]}
 	theme = dict(shared["theme"])
 	theme["font_css"] = FONTS[theme["font"]]
+	theme["button"] = readable_button_colour(theme)
 	css = {}
 	for key, style in config["styles"].items():
 		css[key] = "font-size:{}px;font-weight:{};color:{};text-align:{}".format(

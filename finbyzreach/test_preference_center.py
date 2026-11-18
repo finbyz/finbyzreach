@@ -100,3 +100,14 @@ class SubscribeAndConfirmPagesTest(TestCase):
 		with patch.object(frappe, "session", frappe._dict(user="Guest")):
 			with self.assertRaises(frappe.PermissionError):
 				pc.require_preview()
+
+
+class ReadableButtonColourTest(TestCase):
+	def test_white_button_falls_back_to_primary(self):
+		self.assertEqual(pc.readable_button_colour({"button": "#ffffff", "primary": "#0f2f4f"}), "#0f2f4f")
+
+	def test_dark_button_is_kept(self):
+		self.assertEqual(pc.readable_button_colour({"button": "#0f2f4f", "primary": "#171717"}), "#0f2f4f")
+
+	def test_light_button_and_primary_fall_back_to_navy(self):
+		self.assertEqual(pc.readable_button_colour({"button": "#fff", "primary": "#fdf6ea"}), "#0f2f4f")
