@@ -93,10 +93,9 @@ test('rows switch target immediately, before the preference save finishes', asyn
     await saving;
 });
 
-test('Emails list adds duplicate and move actions and asks the server for usage after render', async () => {
+test('Emails list adds duplicate and move actions', async () => {
     const env = environment();
-    const calls = [];
-    env.frappe.call = args => { calls.push(args.method); return Promise.resolve({message: {}}); };
+    env.frappe.call = () => Promise.resolve({message: {}});
     env.frappe.reach_folder_sidebar = {setup() {}};
     env.frappe.require = () => {};
     vm.runInNewContext(fs.readFileSync(path.join(root, 'doctype_list_js', 'email_template_list.js'), 'utf8'), env.context);
@@ -104,10 +103,38 @@ test('Emails list adds duplicate and move actions and asks the server for usage 
     const actions = [];
     const chain = {html() { return chain; }, addClass() { return chain; }, toggleClass() { return chain; }, attr() { return chain; }, prop() { return chain; }};
     const list = {page: {add_action_item: label => actions.push(label), add_button() {}, add_inner_button() { return chain; }, set_primary_action() {}},
-        get_checked_items: () => [], $result: {find: () => ({toArray: () => []})}};
+        get_checked_items: () => [], $result: {find: () => ({toArray: () => [], find: () => ({first: () => ({length: 0})})})}};
     settings.onload(list);
     assert.ok(actions.includes('Duplicate'));
     assert.ok(actions.includes('Move to folder…'));
-    settings.refresh(list); // no rows, so no request
-    assert.equal(calls.length, 0);
+});
+
+test('Emails list fills the Status and Used in columns and leaves the row layout alone', async () => {
+    const env = environment();
+    const cells = {}, labels = {};
+    const cell = name => (cells[name] = {content: '', tip: '', html(v) { this.content = v; return this; }, attr(k, v) { if (k === 'title') this.tip = v; return this; }});
+    const row = {find(selector) {
+        if (selector === '.list-row-checkbox') return {attr: () => 'TEST'};
+        const field = /data-fieldname="([^"]+)"/.exec(selector);
+        return cell(field[1]);
+    }};
+    const header = selector => {
+        const field = /data-fieldname="([^"]+)"/.exec(selector)[1];
+        return {find: () => ({first: () => ({length: 1, text: value => { labels[field] = value; }})})};
+    };
+    env.context.$ = value => value;
+    env.frappe.call = () => Promise.resolve({message: {TEST: {status: 'In workflow', send_time: '2026-11-16 08:00:00', used_in: [{title: 'WF <A>'}, {title: 'WF B'}]}}});
+    env.frappe.utils = {escape_html: value => String(value).replace(/</g, '&lt;')};
+    env.frappe.datetime = {str_to_user: value => value};
+    env.frappe.reach_folder_sidebar = {setup() {}};
+    vm.runInNewContext(fs.readFileSync(path.join(root, 'doctype_list_js', 'email_template_list.js'), 'utf8'), env.context);
+    const list = {$result: {find: selector => selector === '.list-row-container' ? {toArray: () => [row]} : selector.startsWith('.list-row-head') ? header(selector) : null}};
+    env.frappe.listview_settings['Email Template'].refresh(list);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(labels.custom_builder_mode, 'Status');
+    assert.equal(labels.response, 'Used in');
+    assert.ok(cells.custom_builder_mode.content.includes('In workflow'));
+    assert.ok(cells.response.content.includes('WF &lt;A&gt;') || cells.response.content.includes('WF &lt;A>'));
+    assert.ok(cells.response.tip.includes('WF B'));
+    assert.ok(cells.response.tip.includes('2026-11-16 08:00'));
 });

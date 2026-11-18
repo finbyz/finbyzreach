@@ -181,7 +181,17 @@ frappe.listview_settings["Email Template"] = frappe.listview_settings["Email Tem
 	// workflows that use an email, so they are fetched once per page and added to each row.
 	const STATUS_COLOURS = {Draft: "gray", Scheduled: "blue", "Preparing Audience": "blue", Sending: "orange", Paused: "orange",
 		Completed: "green", Failed: "red", Cancelled: "gray", "In workflow": "purple"};
+	// The two columns that carry no information on this list (Builder Mode is always "Visual", Response
+	// is empty) show the status and where the email is used. Rows and their layout are left untouched.
+	const STATUS_COLUMN = "custom_builder_mode", USED_COLUMN = "response";
+	function relabel_columns(listview) {
+		[[STATUS_COLUMN, __("Status")], [USED_COLUMN, __("Used in")]].forEach(([fieldname, label]) => {
+			const $label = listview.$result.find(`.list-row-head .list-row-col[data-fieldname="${fieldname}"]`).find("span, .ellipsis").first();
+			if ($label.length) $label.text(label);
+		});
+	}
 	function show_usage(listview) {
+		relabel_columns(listview);
 		const rows = listview.$result.find(".list-row-container").toArray()
 			.map((el) => ({el: $(el), name: $(el).find(".list-row-checkbox").attr("data-name")})).filter((row) => row.name);
 		if (!rows.length) return;
@@ -190,12 +200,16 @@ frappe.listview_settings["Email Template"] = frappe.listview_settings["Email Tem
 		}).then(({message}) => {
 			rows.forEach(({el, name}) => {
 				const usage = (message || {})[name];
-				if (!usage || el.find(".em-usage").length) return;
-				const used = usage.used_in.map((u) => frappe.utils.escape_html(u.title)).slice(0, 3).join(", ");
-				const more = usage.used_in.length > 3 ? ` +${usage.used_in.length - 3}` : "";
-				const pill = usage.status ? `<span class="indicator-pill ${STATUS_COLOURS[usage.status] || "gray"}">${__(usage.status)}</span> ` : `<span class="text-muted">${__("Not used yet")}</span> `;
-				const time = usage.send_time ? ` · ${frappe.datetime.str_to_user(usage.send_time.slice(0, 16))}` : "";
-				el.find(".list-subject").first().append(`<div class="em-usage text-muted small" style="padding-left:28px">${pill}${used ? __("Used in {0}", [used + more]) : ""}${time}</div>`);
+				if (!usage) return;
+				const status = usage.status
+					? `<span class="indicator-pill ${STATUS_COLOURS[usage.status] || "gray"}">${frappe.utils.escape_html(__(usage.status))}</span>`
+					: `<span class="text-muted">${__("Not used yet")}</span>`;
+				const titles = usage.used_in.map((u) => u.title);
+				const time = usage.send_time ? frappe.datetime.str_to_user(usage.send_time.slice(0, 16)) : "";
+				const used = titles.join(", ") + (time ? (titles.length ? " · " : "") + time : "");
+				el.find(`.list-row-col[data-fieldname="${STATUS_COLUMN}"]`).html(status);
+				el.find(`.list-row-col[data-fieldname="${USED_COLUMN}"]`)
+					.html(`<span class="text-muted">${frappe.utils.escape_html(used)}</span>`).attr("title", used);
 			});
 		});
 	}
