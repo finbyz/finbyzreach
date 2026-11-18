@@ -49,6 +49,30 @@ frappe.provide("frappe.ui.form");
 					label: __("Subject"),
 					reqd: 1,
 				},
+				// EM-16: everything the Studio also asks for, in one dialog.
+				{
+					fieldname: "email_type",
+					fieldtype: "Link",
+					options: "Subscription Topic",
+					label: __("Email type"),
+					description: __("Decides who may receive this email. Transactional ignores marketing opt-outs."),
+					get_query: () => ({
+						filters: { disabled: 0, category: ["in", ["Mailing Type", "System"]] },
+					}),
+				},
+				{
+					fieldname: "language",
+					fieldtype: "Select",
+					label: __("Language"),
+					options: ["", "de", "fr", "it", "en"].join("\n"),
+					default: "de",
+				},
+				{
+					fieldname: "folder",
+					fieldtype: "Link",
+					options: "Email Folder",
+					label: __("Folder"),
+				},
 			];
 		}
 
@@ -266,6 +290,15 @@ frappe.provide("frappe.ui.form");
 
 					subject:
 						values.subject,
+
+					email_type:
+						values.email_type || "",
+
+					language:
+						values.language || "",
+
+					folder:
+						values.folder || "",
 				},
 
 				freeze: true,

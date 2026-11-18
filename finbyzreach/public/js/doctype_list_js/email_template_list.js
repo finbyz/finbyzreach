@@ -35,6 +35,28 @@ frappe.listview_settings["Email Template"] = frappe.listview_settings["Email Tem
 					label: __("Subject"),
 					reqd: 1,
 				},
+				// EM-16: the email type, language and folder are chosen here, not only in the Studio.
+				{
+					fieldname: "email_type",
+					fieldtype: "Link",
+					options: "Subscription Topic",
+					label: __("Email type"),
+					description: __("Decides who may receive this email. Transactional ignores marketing opt-outs."),
+					get_query: () => ({ filters: { disabled: 0, category: ["in", ["Mailing Type", "System"]] } }),
+				},
+				{
+					fieldname: "language",
+					fieldtype: "Select",
+					label: __("Language"),
+					options: ["", "de", "fr", "it", "en"].join("\n"),
+					default: "de",
+				},
+				{
+					fieldname: "folder",
+					fieldtype: "Link",
+					options: "Email Folder",
+					label: __("Folder"),
+				},
 			],
 			primary_action_label: __("Create and open builder"),
 			primary_action() {
@@ -46,6 +68,9 @@ frappe.listview_settings["Email Template"] = frappe.listview_settings["Email Tem
 					args: {
 						template_name: values.template_name,
 						subject: values.subject,
+						email_type: values.email_type || "",
+						language: values.language || "",
+						folder: values.folder || "",
 					},
 					freeze: true,
 					freeze_message: __("Creating visual template..."),

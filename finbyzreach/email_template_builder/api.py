@@ -311,7 +311,7 @@ def _manual_html_state(doc):
 
 
 @frappe.whitelist(methods=["POST"])
-def create_visual_template(template_name, subject=None, template_doctype=None, folder=None):
+def create_visual_template(template_name, subject=None, template_doctype=None, folder=None, email_type=None, language=None):
 	_require_designer()
 	template_doctype = normalize_template_doctype(template_doctype)
 	frappe.has_permission(template_doctype, "create", throw=True)
@@ -343,6 +343,24 @@ def create_visual_template(template_name, subject=None, template_doctype=None, f
 	if template_doctype == EMAIL_TEMPLATE_MASTER_DOCTYPE:
 		doc.folder = folder or None
 		doc.enabled = 1
+	else:
+		# EM-16: the New Email dialog also sets the email type, language and folder.
+		email_type = str(email_type or "").strip()
+		language = str(language or "").strip()
+		folder = str(folder or "").strip()
+		if language and language not in ("de", "fr", "it", "en"):
+			frappe.throw(_("Choose German, French, Italian or English"))
+		if email_type:
+			from finbyzreach.consent import email_policy
+			if not email_policy(email_type).available:
+				frappe.throw(_("Choose an active email type"))
+			doc.custom_email_type = email_type
+		if language:
+			doc.custom_language = language
+		if folder:
+			if not frappe.db.exists("Email Folder", folder):
+				frappe.throw(_("Folder {0} does not exist").format(folder))
+			doc.custom_folder = folder
 	doc.insert()
 	return {"name": doc.name, "modified": doc.modified, "route": builder_route(doc.name, template_doctype)}
 
