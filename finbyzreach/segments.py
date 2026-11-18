@@ -201,7 +201,7 @@ def retry_segment_snapshot(segment_name):
 
 
 @frappe.whitelist(methods=['POST'])
-def preview_segment_page(segment_name=None, definition=None, after=None, page_length=50, search=None, include_count=1):
+def preview_segment_page(segment_name=None, definition=None, after=None, page_length=50, search=None, include_count=1, sort_by=None, sort_order='asc'):
     """SQL pagination: never return/download the complete audience for a page."""
     from frappe.utils import cint
     from finbyzreach.segment_service import member_query, parsed_list
@@ -239,13 +239,32 @@ def preview_segment_page(segment_name=None, definition=None, after=None, page_le
         from frappe.query_builder.functions import Count
         total = cint(query.select(Count(table.name)).run()[0][0])
     page_length = max(1, min(cint(page_length) or 50, 200))
-    if after:
-        query = query.where(table.name > str(after))
-    names = [row[0] for row in query.select(table.name).orderby(table.name).limit(page_length+1).run()]
+    columns = effective_columns(doc)
+    sort_by = str(sort_by or '').strip()
+    if sort_by:
+        # EM-37: sort by a column header. Only shown, stored columns may be used; the cursor is an offset.
+        field = frappe.get_meta(doctype).get_field(sort_by)
+        from frappe.model import no_value_fields
+        if sort_by not in columns or (sort_by != 'name' and (not field or field.fieldtype in no_value_fields or field.get('is_virtual'))):
+            frappe.throw(_('This column cannot be sorted'))
+        from pypika import Order
+        direction = Order.desc if str(sort_order).lower() == 'desc' else Order.asc
+        offset = max(0, cint(after))
+        names = [row[0] for row in query.select(table.name).orderby(table[sort_by], order=direction).orderby(table.name).limit(page_length+1).offset(offset).run()]
+        next_cursor = str(offset + page_length)
+    else:
+        if after:
+            query = query.where(table.name > str(after))
+        names = [row[0] for row in query.select(table.name).orderby(table.name).limit(page_length+1).run()]
+        next_cursor = None
     has_more = len(names) > page_length
     names = names[:page_length]
-    columns = effective_columns(doc)
+    if next_cursor is None:
+        next_cursor = names[-1] if has_more and names else None
     rows = frappe.get_list(doctype, filters={'name': ['in', names]}, fields=columns, order_by='name asc', limit_page_length=page_length) if names else []
+    if sort_by:
+        position = {name: index for index, name in enumerate(names)}
+        rows.sort(key=lambda row: position.get(row.get('name'), 0))
     excluded_count = None
     if cint(include_count):
         from frappe.query_builder.functions import Count
@@ -254,7 +273,7 @@ def preview_segment_page(segment_name=None, definition=None, after=None, page_le
             candidate_query = candidate_query.where(search_condition)
         candidate_count = cint(candidate_query.select(Count(table.name)).run()[0][0])
         excluded_count = max(0, candidate_count - total)
-    return dict(rows=rows, columns=columns, count=total, excluded_count=excluded_count, has_more=has_more, next_cursor=names[-1] if has_more else None,
+    return dict(rows=rows, columns=columns, count=total, excluded_count=excluded_count, has_more=has_more, next_cursor=next_cursor if has_more else None,
                 audience_doctype=doctype, snapshot_status=doc.get('snapshot_status') or 'Ready', segment_type=doc.segment_type)
 
 

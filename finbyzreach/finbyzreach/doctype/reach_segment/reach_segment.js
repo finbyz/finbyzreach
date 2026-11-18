@@ -67,6 +67,7 @@ class ReachSegmentBuilder {
         this.$root.find(".rs-refresh").on("click", () => this.load(true));
         this.$root.find(".rs-prev").on("click", () => { if (this.page) { this.page--; this.load(false); } });
         this.$root.find(".rs-next").on("click", () => { this.page++; this.load(false); });
+        this.$root.find(".rs-results").on("click", "[data-sort]", e => this.sort($(e.currentTarget).attr("data-sort")));
         this.$root.find(".rs-results").on("click", "[data-exclude]", e => this.mutate([$(e.currentTarget).attr("data-exclude")], "exclude"));
         this.$root.find(".rs-results").on("click", "[data-restore]", e => this.mutate([$(e.currentTarget).attr("data-restore")], "restore"));
         await frappe.model.with_doctype(this.doctype);
@@ -285,6 +286,7 @@ class ReachSegmentBuilder {
         const sequence = ++this.sequence;
         if (reset) { this.page = 0; this.cursors = [null]; }
         const args = {segment_name: this.frm.is_new() ? null : this.frm.doc.name, after: this.cursors[this.page], page_length: 50, search: this.$root.find(".rs-search").val(), include_count: reset ? 1 : 0};
+        if (this.sortBy) { args.sort_by = this.sortBy; args.sort_order = this.sortOrder || "asc"; }
         if (this.frm.is_dirty() || this.frm.is_new()) {
             this.serialize();
             args.definition = JSON.stringify({audience_doctype: this.doctype, filter_groups_json: this.frm.doc.filter_groups_json,
@@ -303,14 +305,15 @@ class ReachSegmentBuilder {
             if (["Queued","Building"].includes(data.snapshot_status)) this.snapshotTimer = setTimeout(()=>this.load(true),2000);
             const escape = frappe.utils.escape_html;
             this.columns = data.columns;
-            this.$root.find(".rs-summary").text(`${__(data.segment_type || this.frm.doc.segment_type)} · ${__(data.snapshot_status || "Ready")}`);
+            this.$root.find(".rs-summary").text(`${__(data.segment_type || this.frm.doc.segment_type)} · ${__(data.snapshot_status || "Ready")}${this.stamps()}`);
             if (data.count !== null) this.$root.find(".rs-count").text(__("{0} members · {1} excluded", [data.count, data.excluded_count ?? 0]));
             const showActions = this.canWrite && !this.frm.is_new();
             const columns = data.columns.map(c => `<col class="${c === "name" ? "rs-name-column" : "rs-data-column"}">`).join("");
             const minWidth = data.columns.reduce((width, c) => width + (c === "name" ? 280 : 180), showActions ? 100 : 0);
             const head = data.columns.map(c => {
                 const label = c === "name" ? __("ID") : __(frappe.meta.get_docfield(this.doctype, c)?.label || c);
-                return `<th title="${escape(label)}">${escape(label)}</th>`;
+                const arrow = this.sortBy === c ? (this.sortOrder === "desc" ? " ▼" : " ▲") : "";
+                return `<th title="${escape(label)}" class="rs-sortable" data-sort="${escape(c)}" style="cursor:pointer" aria-sort="${this.sortBy === c ? (this.sortOrder === "desc" ? "descending" : "ascending") : "none"}">${escape(label)}${arrow}</th>`;
             }).join("");
             const rows = data.rows.map(row => {
                 const cells = data.columns.map(c => {
@@ -329,6 +332,20 @@ class ReachSegmentBuilder {
         } catch (error) {
             if (sequence === this.sequence) this.$root.find(".rs-results").text(__("Preview unavailable. Check the filters and try again."));
         }
+    }
+    // EM-37: the exact time the segment was created and last changed, and by whom.
+    stamps() {
+        const doc = this.frm.doc;
+        if (this.frm.is_new() || !doc.creation) return "";
+        const when = value => frappe.datetime.str_to_user(String(value).split(".")[0]);
+        return " · " + __("Created {0} by {1}", [when(doc.creation), doc.owner]) + " · " + __("Modified {0} by {1}", [when(doc.modified), doc.modified_by]);
+    }
+    // EM-37: click a header to sort, click again to reverse, a third time to clear.
+    sort(column) {
+        if (this.sortBy !== column) { this.sortBy = column; this.sortOrder = "asc"; }
+        else if (this.sortOrder === "asc") this.sortOrder = "desc";
+        else { this.sortBy = null; this.sortOrder = "asc"; }
+        return this.load(true);
     }
     async mutate(records, action) {
         if (this.frm.is_dirty()) return frappe.msgprint(__("Save the segment before changing members."));
