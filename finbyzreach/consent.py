@@ -6,6 +6,18 @@ from frappe import _
 from frappe.utils import cint, now_datetime
 
 TRANSACTIONAL = "Transactional"
+UNSUBSCRIBE_MISSING = "The email has no unsubscribe link. Add an Unsubscribe link block to the email, or use the Transactional email type."
+
+
+def email_has_unsubscribe(html):
+	"""True when a template's source places the recipient's unsubscribe link (EM-11).
+
+	The builder's Unsubscribe and Compliance blocks, and hand-written HTML, all use
+	{{ unsubscribe_url }}; a template without it cannot give the recipient an opt-out.
+	"""
+	return "unsubscribe_url" in str(html or "")
+
+
 POLICY_FIELDS = ["name", "category", "disabled", "consent_required", "double_opt_in", "deliver_while_pending"]
 
 

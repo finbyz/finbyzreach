@@ -1085,6 +1085,9 @@ def resume_campaign(campaign_name):
 	if frappe.db.table_exists(STAGING) and frappe.db.count(STAGING, {"campaign": campaign.name}):
 		campaign.db_set("custom_broadcast_status", "Preparing Audience")
 		frappe.enqueue("finbyzreach.email_marketing.schedule_campaign", campaign_name=campaign.name,
+	from finbyzreach.consent import UNSUBSCRIBE_MISSING, email_has_unsubscribe
+	if campaign.custom_subscription_topic != "Transactional" and not email_has_unsubscribe(snapshot.html):
+		frappe.throw(_(UNSUBSCRIBE_MISSING), title=_("Unsubscribe link missing"))
 			queue="long", enqueue_after_commit=True)
 		return {"message": _("Audience preparation resumed")}
 	planned = frappe.get_all(
