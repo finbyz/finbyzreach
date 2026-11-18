@@ -1,4 +1,8 @@
 app_name = "finbyzreach"
+
+# Keep sms: and similar links as they are when Frappe builds an email (see utils/relative_urls.py).
+from finbyzreach.utils import relative_urls  # noqa: F401,E402
+
 app_title = "Finbyzreach"
 app_publisher = "Finbyz Tech Pvt Ltd"
 app_description = "AI-Powered Follow-ups and Smart Email Outreach"
