@@ -14,6 +14,7 @@ function studio(files = []) {
         ui: { FileUploader: class { constructor(options) { uploads.push(options); } } },
         utils: { escape_html: text => String(text) },
         msgprint: message => messages.push(message),
+        call: () => Promise.resolve({ message: frappe.callResult }),
     };
     const context = { frappe, __: (text, args) => args ? text.replace(/\{(\d)\}/g, (_, i) => args[i]) : text };
     const filename = path.join(__dirname, '../finbyzreach/finbyzreach/page/email_campaign_studio/email_campaign_studio.js');
@@ -21,7 +22,7 @@ function studio(files = []) {
     const instance = Object.create(context.Studio.prototype);
     instance.attachments = files;
     instance.contentForm = { get_field: () => ({ $wrapper: wrapper }) };
-    return { instance, uploads, messages, html: () => html };
+    return { instance, uploads, messages, frappe, html: () => html };
 }
 
 test('the attachment list shows names, size used out of 12 MB and a remove button', () => {
@@ -65,4 +66,30 @@ test('the A/B test state says what is happening and a tie goes to A', () => {
     instance.renderAbState();
     assert.match(content, /test is running/);
     void html;
+});
+
+test('the Studio warns when the chosen email has no unsubscribe link, unless it is Transactional', async () => {
+    const { instance, frappe } = studio();
+    let warning = '';
+    const wrapper = { find: () => ({ html(value) { warning = value; } }) };
+    let topic = 'Newsletter';
+    instance.contentForm = { get_field: () => ({ $wrapper: wrapper }), get_value: name => name === 'subscription_topic' ? topic : 'My email' };
+    instance.templateStateRequest = 1;
+    frappe.callResult = { has_unsubscribe: false };
+    await instance.showUnsubscribeWarning('My email', 1);
+    assert.match(warning, /no unsubscribe link/);
+    assert.match(warning, /cannot be scheduled/);
+    warning = '';
+    topic = 'Transactional';
+    await instance.showUnsubscribeWarning('My email', 1);
+    assert.equal(warning, '');
+    topic = 'Newsletter';
+    frappe.callResult = { has_unsubscribe: true };
+    await instance.showUnsubscribeWarning('My email', 1);
+    assert.equal(warning, '');
+    frappe.callResult = { has_unsubscribe: null };
+    await instance.showUnsubscribeWarning('My email', 1);
+    assert.equal(warning, '', 'no warning when the link cannot be checked');
+    await instance.showUnsubscribeWarning('My email', 2);
+    assert.equal(warning, '', 'a newer request wins');
 });

@@ -35,3 +35,16 @@ class UnsubscribeRequiredTest(TestCase):
 	def test_marketing_email_with_link_and_transactional_email_pass(self):
 		self.assertTrue(self._preflight("Marketing E-Mails", '<a href="{{ unsubscribe_url }}">x</a>'))
 		self.assertTrue(self._preflight("Transactional", "<p>Order confirmed</p>"))
+
+
+class EmailSetupUnsubscribeTest(TestCase):
+	def test_email_setup_reports_whether_the_email_has_an_unsubscribe_link(self):
+		from unittest.mock import patch
+		from finbyzreach.email_template_builder import languages
+		with patch.object(languages, "get_campaign_snapshot", create=True), \
+				patch("finbyzreach.email_template_builder.services.get_campaign_snapshot", return_value=frappe._dict(html='<a href="{{ unsubscribe_url }}">x</a>')):
+			self.assertTrue(languages._has_unsubscribe("Mail"))
+		with patch("finbyzreach.email_template_builder.services.get_campaign_snapshot", return_value=frappe._dict(html="<p>Hello</p>")):
+			self.assertFalse(languages._has_unsubscribe("Mail"))
+		with patch("finbyzreach.email_template_builder.services.get_campaign_snapshot", side_effect=Exception("broken")):
+			self.assertIsNone(languages._has_unsubscribe("Mail"))

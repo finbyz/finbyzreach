@@ -85,7 +85,20 @@ def add_language_version(template_name, language, new_name, master_name=None):
 def email_setup(template_name):
 	doc = frappe.get_doc("Email Template", template_name)
 	doc.check_permission("read")
-	return {"language": doc.get("custom_language") or "", "folder": doc.get("custom_folder") or "", "email_type": doc.get("custom_email_type") or ""}
+	return {
+		"language": doc.get("custom_language") or "", "folder": doc.get("custom_folder") or "",
+		"email_type": doc.get("custom_email_type") or "", "has_unsubscribe": _has_unsubscribe(doc.name),
+	}
+
+
+def _has_unsubscribe(template_name):
+	"""EM-11: does the email carry the recipient's unsubscribe link? None when it cannot be told."""
+	from finbyzreach.consent import email_has_unsubscribe
+	from finbyzreach.email_template_builder.services import get_campaign_snapshot
+	try:
+		return email_has_unsubscribe(get_campaign_snapshot(template_name, None).html)
+	except Exception:
+		return None
 
 
 @frappe.whitelist(methods=["POST"])

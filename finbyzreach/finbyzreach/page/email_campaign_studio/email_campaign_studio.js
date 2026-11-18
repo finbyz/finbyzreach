@@ -187,6 +187,7 @@ class EmailCampaignStudio {
 			this.preview = null;
 			this.updateSummary();
 			this.queuePreview();
+			this.showTemplateState();
 		};
 		this.audienceForm = this.makeForm("#ecs-audience-form", [
 			{ fieldname: "audience_doctype", label: __("Audience Type"), fieldtype: "Select", options: "Lead\nContact\nCustomer", default: "Lead", reqd: 1,
@@ -2198,8 +2199,23 @@ class EmailCampaignStudio {
 			if (requestId !== this.templateStateRequest || template !== this.contentForm.get_value("email_template")) return;
 			const values = response.message || {};
 			const mode = values.custom_builder_mode || "Standard";
-			field.html("<div class='alert alert-light border small mb-0'><strong>" + frappe.utils.escape_html(mode) + "</strong> · " + (values.custom_preheader_text ? frappe.utils.escape_html(values.custom_preheader_text) : __("Template is ready for {0} personalization", [this.personalizationDoctype()])) + "</div>");
+			field.html("<div class='alert alert-light border small mb-0'><strong>" + frappe.utils.escape_html(mode) + "</strong> · " + (values.custom_preheader_text ? frappe.utils.escape_html(values.custom_preheader_text) : __("Template is ready for {0} personalization", [this.personalizationDoctype()])) + "</div><div class='ecs-unsubscribe-warning'></div>");
+			this.showUnsubscribeWarning(template, requestId);
 		});
+	}
+
+	// EM-11: say so now when the email has no unsubscribe link, not only when scheduling fails.
+	async showUnsubscribeWarning(template, requestId) {
+		const field = this.contentForm.get_field("template_state");
+		try {
+			const {message} = await frappe.call({method: "finbyzreach.email_template_builder.languages.email_setup", type: "GET", args: {template_name: template}});
+			if (requestId !== this.templateStateRequest || template !== this.contentForm.get_value("email_template")) return;
+			if (message && message.has_unsubscribe === false && this.contentForm.get_value("subscription_topic") !== "Transactional") {
+				field.$wrapper.find(".ecs-unsubscribe-warning").html("<div class='alert alert-warning small mb-0' style='margin-top:8px' role='alert'>" + frappe.utils.escape_html(__("This email has no unsubscribe link. Add an Unsubscribe link block to the email, or use the Transactional email type. The campaign cannot be scheduled without it.")) + "</div>");
+			}
+		} catch (error) {
+			// The warning is optional; scheduling still checks the link.
+		}
 	}
 
 	reviewAndSchedule() {
