@@ -14,3 +14,17 @@ class RichTextFormattingTest(TestCase):
 		html = sanitize_rich_html('<p>Hi<sup onclick="alert(1)">x</sup><script>alert(1)</script></p>')
 		self.assertNotIn("onclick", html)
 		self.assertNotIn("<script", html)
+
+
+class SavedBlockNameTest(TestCase):
+	def test_duplicate_block_name_gets_a_clear_message(self):
+		from unittest.mock import patch
+		import frappe
+		from finbyzreach.email_template_builder import api
+		new_doc = frappe._dict(name=None, save=lambda: None)
+		with patch.object(api, "_require_designer"), patch.object(api, "validate_component", return_value={"component_type": "x", "category": "y"}), \
+				patch.object(frappe, "has_permission", return_value=True), patch.object(frappe, "new_doc", return_value=new_doc), \
+				patch.object(frappe.db, "get_value", return_value="Footer - DE"):
+			with self.assertRaises(frappe.ValidationError) as caught:
+				api.save_component({"component_name": "Footer - DE"})
+		self.assertIn("already exists", str(caught.exception))

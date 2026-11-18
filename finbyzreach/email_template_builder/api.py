@@ -776,6 +776,13 @@ def save_component(component):
 	doc.component_name = str(component.get("component_name") or "")[:140]
 	if not doc.component_name:
 		frappe.throw(_("Component name is required"))
+	# EM-17: a clear message instead of the raw duplicate-entry error.
+	existing = frappe.db.get_value("Email Builder Component", {"component_name": doc.component_name}, "name")
+	if existing and existing != doc.name:
+		frappe.throw(
+			_("A saved block named “{0}” already exists. Choose another name, or edit that block under Templates → Saved blocks.").format(doc.component_name),
+			title=_("Block name already used"),
+		)
 	doc.component_type = validated["component_type"]
 	doc.category = validated["category"]
 	doc.enabled = cint(component.get("enabled", 1))
