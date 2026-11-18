@@ -641,6 +641,10 @@ def _campaign_for_studio(campaign_name):
 		"email_account": campaign.custom_email_account,
 		"sender_name": campaign.custom_sender_name,
 		"reply_to": campaign.custom_reply_to,
+		"attachments": [
+			{"name": row.name, "file_name": row.file_name, "file_size": cint(row.file_size)}
+			for row in email_marketing.campaign_attachment_files(campaign.name)
+		],
 		**_campaign_audience_fields(campaign),
 		"exclude_email_groups": frappe.parse_json(campaign.custom_exclude_email_groups_json or "[]"),
 		"start_date": start_on.strftime("%Y-%m-%d") if start_on else "",
@@ -1018,6 +1022,8 @@ def create_campaign(payload=None, launch="schedule"):
 		campaign.save()
 	else:
 		campaign = frappe.get_doc(values).insert()
+	if "attachments" in payload:
+		email_marketing.set_campaign_attachments(campaign, payload.get("attachments") or [])
 	if launch == "schedule":
 		email_marketing.validate_schedule_preflight(campaign)
 		campaign.db_set("custom_queued", 1)
@@ -1180,6 +1186,13 @@ def send_test(payload=None, recipient=None, sample_lead=None, recipients=None):
 		(campaign.custom_sender_name if frozen else payload.get("sender_name")) or ""
 	).strip()
 	sender = formataddr((sender_name, account.email_id)) if sender_name else account.email_id
+	# EM-18: a test carries the same attachments the real send will.
+	attachment_names = [str(name) for name in (payload.get("attachments") or []) if name] if not frozen else []
+	attachment_rows = [row for row in (frappe.db.get_value("File", name, ["name", "file_size"], as_dict=True) for name in attachment_names) if row]
+	if frozen:
+		attachment_rows = email_marketing.campaign_attachment_files(campaign.name)
+	email_marketing.check_attachment_limit(attachment_rows)
+	test_attachments = [{"fid": row.name} for row in attachment_rows]
 	queue = frappe.sendmail(
 		recipients=allowed,
 		sender=sender,
@@ -1191,6 +1204,7 @@ def send_test(payload=None, recipient=None, sample_lead=None, recipients=None):
 		raw_html=snapshot.mode == "Visual",
 		add_css=snapshot.mode != "Visual",
 		add_unsubscribe_link=0,
+		attachments=test_attachments or None,
 	)
 	return {"status": "queued", "email_queue": queue.name if queue else None, "recipients": allowed, "blocked": blocked}
 																														

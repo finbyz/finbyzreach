@@ -979,6 +979,65 @@ def calculate_delivery_batches(campaign, recipient_count, start_local=None):
 	return batches
 
 
+MAX_ATTACHMENT_BYTES = 12 * 1024 * 1024  # EM-18: all attachments of one email together
+MAX_ATTACHMENT_FILES = 10
+
+
+def campaign_attachment_files(campaign_name):
+	"""Files attached to a campaign, oldest first. Every recipient email carries them (EM-18)."""
+	if not campaign_name:
+		return []
+	return frappe.get_all(
+		"File",
+		filters={"attached_to_doctype": "Campaign", "attached_to_name": campaign_name, "is_folder": 0},
+		fields=["name", "file_name", "file_size", "file_url", "is_private"],
+		order_by="creation asc",
+		limit_page_length=0,
+	)
+
+
+def check_attachment_limit(files):
+	"""Throw when the files together are over 12 MB or there are too many of them."""
+	files = list(files or [])
+	if len(files) > MAX_ATTACHMENT_FILES:
+		frappe.throw(_("Attach at most {0} files to one email.").format(MAX_ATTACHMENT_FILES), title=_("Too many attachments"))
+	total = sum(cint(row.get("file_size")) for row in files)
+	if total > MAX_ATTACHMENT_BYTES:
+		frappe.throw(
+			_("The attachments are {0} MB together. The limit is {1} MB for one email.").format(
+				round(total / 1048576, 1), MAX_ATTACHMENT_BYTES // 1048576
+			),
+			title=_("Attachments too large"),
+		)
+	return total
+
+
+def set_campaign_attachments(campaign, file_names):
+	"""Make the listed uploaded files the campaign's attachments, and drop removed ones (EM-18)."""
+	names = list(dict.fromkeys(str(name).strip() for name in (file_names or []) if str(name or "").strip()))
+	rows = []
+	for name in names:
+		row = frappe.db.get_value("File", name, ["name", "file_name", "file_size", "attached_to_doctype", "attached_to_name", "owner", "is_folder"], as_dict=True)
+		if not row or row.is_folder:
+			frappe.throw(_("Attachment {0} was not found.").format(name))
+		if (row.attached_to_doctype, row.attached_to_name) not in ((None, None), ("", ""), ("Campaign", campaign.name), (None, ""), ("", None)) and row.owner != frappe.session.user:
+			frappe.throw(_("Attachment {0} belongs to another document.").format(row.file_name or name))
+		rows.append(row)
+	check_attachment_limit(rows)
+	keep = {row.name for row in rows}
+	for existing in campaign_attachment_files(campaign.name):
+		if existing.name not in keep:
+			frappe.delete_doc("File", existing.name, ignore_permissions=True)
+	for row in rows:
+		if (row.attached_to_doctype, row.attached_to_name) != ("Campaign", campaign.name):
+			frappe.db.set_value("File", row.name, {"attached_to_doctype": "Campaign", "attached_to_name": campaign.name}, update_modified=False)
+	return [{"name": row.name, "file_name": row.file_name, "file_size": cint(row.file_size)} for row in rows]
+
+
+def _mail_attachments(campaign_name):
+	return [{"fid": row.name} for row in campaign_attachment_files(campaign_name)]
+
+
 def _snapshot_values(snapshot):
 	return {
 		"custom_template_mode": snapshot.mode,
@@ -1088,6 +1147,7 @@ def validate_schedule_preflight(campaign, eligible_count=None):
 	from finbyzreach.consent import UNSUBSCRIBE_MISSING, email_has_unsubscribe
 	if campaign.custom_subscription_topic != "Transactional" and not email_has_unsubscribe(snapshot.html):
 		frappe.throw(_(UNSUBSCRIBE_MISSING), title=_("Unsubscribe link missing"))
+	check_attachment_limit(campaign_attachment_files(campaign.name))
 	return snapshot
 
 
@@ -1455,6 +1515,7 @@ def _dispatch_recipient(recipient, campaign):
 		unsubscribe_params={"campaign_recipient": recipient.name},
 		raw_html=campaign.custom_template_mode == "Visual",
 		add_css=campaign.custom_template_mode != "Visual",
+		attachments=_mail_attachments(campaign.name) or None,
 	)
 	if not queue:
 		frappe.throw(_("Frappe did not create an Email Queue record"))
@@ -2000,6 +2061,7 @@ def send_campaign_test(campaign_name, recipient, sample_lead):
 		raw_html=snapshot.mode == "Visual",
 		add_css=snapshot.mode != "Visual",
 		add_unsubscribe_link=0,
+		attachments=_mail_attachments(campaign.name) or None,
 	)
 	return {"status": "queued", "email_queue": queue.name if queue else None}
 

@@ -261,7 +261,11 @@ class EmailCampaignStudio {
 			{ fieldname: "subject_override", label: __("Subject Override"), fieldtype: "Data", description: __("Optional-leave blank to use the template subject."), change },
 			{ fieldtype: "Section Break" },
 			{ fieldname: "template_state", fieldtype: "HTML" },
+			{ fieldtype: "Section Break", label: __("Attachments") },
+			{ fieldname: "attachments_panel", fieldtype: "HTML" },
 		]);
+		this.attachments = [];
+		this.renderAttachments();
 		this.senderForm = this.makeForm("#ecs-sender-form", [
 			{
 				fieldname: "email_account",
@@ -1258,6 +1262,9 @@ class EmailCampaignStudio {
 				email_template: campaign.email_template || "",
 				subject_override: campaign.subject_override || "",
 			}));
+			this.attachments = campaign.attachments || [];
+			this.campaignEditable = campaign.editable !== false;
+			this.renderAttachments();
 			await this.runBootstrapStep(__("Loading sender identity"), () => this.setBootstrapFormValues(this.senderForm, {
 				email_account: campaign.email_account || "",
 				sender_name: campaign.sender_name || "",
@@ -1943,6 +1950,52 @@ class EmailCampaignStudio {
 		}, {});
 	}
 
+	// EM-18: files sent with every email, up to 12 MB together.
+	attachmentLimitBytes() { return 12 * 1024 * 1024; }
+
+	attachmentTotal() { return (this.attachments || []).reduce((sum, file) => sum + (Number(file.file_size) || 0), 0); }
+
+	formatBytes(bytes) { return bytes >= 1048576 ? (bytes / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(bytes / 1024)) + " KB"; }
+
+	renderAttachments() {
+		const field = this.contentForm && this.contentForm.get_field("attachments_panel");
+		if (!field) return;
+		const escape = frappe.utils.escape_html;
+		const editable = this.campaignEditable !== false;
+		const rows = (this.attachments || []).map((file, index) =>
+			"<div class='ecs-attachment-row' style='display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--border-color)'><span title='" + escape(file.file_name) + "' style='min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'>" + escape(file.file_name) + " <span class='text-muted'>(" + this.formatBytes(file.file_size) + ")</span></span>" +
+			(editable ? "<button type='button' class='btn btn-xs btn-default' data-remove-attachment='" + index + "'>" + __("Remove") + "</button>" : "") + "</div>").join("");
+		const total = this.attachmentTotal();
+		const over = total > this.attachmentLimitBytes();
+		field.$wrapper.html(
+			"<div class='ecs-attachments'>" + (rows || "<div class='text-muted' style='padding:4px 0'>" + __("No attachments.") + "</div>") +
+			"<div class='text-muted' style='margin-top:6px;" + (over ? "color:var(--red-500)" : "") + "'>" + __("{0} of 12 MB used. Every recipient receives these files.", [this.formatBytes(total)]) + "</div>" +
+			(editable ? "<button type='button' class='btn btn-default btn-sm' style='margin-top:8px' data-add-attachment='1'>" + __("Attach file") + "</button>" : "") + "</div>");
+		field.$wrapper.find("[data-remove-attachment]").on("click", (event) => {
+			this.attachments.splice(Number(event.currentTarget.dataset.removeAttachment), 1);
+			this.renderAttachments();
+			this.updateSummary();
+		});
+		field.$wrapper.find("[data-add-attachment]").on("click", () => this.addAttachment());
+	}
+
+	addAttachment() {
+		new frappe.ui.FileUploader({
+			make_attachments_public: false,
+			restrictions: { max_file_size: this.attachmentLimitBytes() },
+			on_success: (file) => {
+				const next = [...this.attachments, { name: file.name, file_name: file.file_name, file_size: file.file_size }];
+				const total = next.reduce((sum, row) => sum + (Number(row.file_size) || 0), 0);
+				if (total > this.attachmentLimitBytes()) {
+					frappe.msgprint(__("The attachments would be {0} together. The limit is 12 MB for one email.", [this.formatBytes(total)]));
+					return;
+				}
+				this.attachments = next;
+				this.renderAttachments();
+			},
+		});
+	}
+
 	collectPayload(requireReady = true, requireTitle = true) {
 		const content = this.formValues(this.contentForm, requireReady);
 		const sender = this.formValues(this.senderForm, requireReady);
@@ -1974,6 +2027,7 @@ class EmailCampaignStudio {
 			segment_names: this.segmentList("segment_names"),
 			exclude_segment_names: this.segmentList("exclude_segment_names"),
 			source_campaign: this.sourceCampaign || "",
+			attachments: (this.attachments || []).map((file) => file.name),
 		});
 	}
 
