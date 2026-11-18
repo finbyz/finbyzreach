@@ -21,13 +21,15 @@ class ButtonActionsTest(IntegrationTestCase):
 	def test_each_action_builds_its_link(self):
 		self.assertEqual(_href("url", "megasol.ch"), "https://megasol.ch")
 		self.assertEqual(_href("email", "info@megasol.ch"), "mailto:info@megasol.ch")
-		self.assertEqual(_href("telephone", "+41 44 123 45 67"), "tel:+41 44 123 45 67")
+		self.assertEqual(_href("telephone", "+41 44 123 45 67"), "tel:+41441234567")
+		self.assertEqual(_href("telephone", "(044) 123-45-67"), "tel:0441234567")
 		self.assertEqual(_href("sms", "+41791234567"), "sms:+41791234567")
 		self.assertEqual(_href("file", "/files/a.pdf"), "/files/a.pdf")
 
 	def test_an_sms_link_needs_a_real_number_and_may_prefill_the_message(self):
 		self.assertEqual(_href("sms", "sms:+41791234567"), "sms:+41791234567")
 		self.assertEqual(_href("sms", "+41791234567?body=Hello%20there"), "sms:+41791234567?body=Hello%20there")
+		self.assertEqual(_href("sms", "+41791234567?body=Hello there, please call me"), "sms:+41791234567?body=Hello there, please call me")
 		self.assertEqual(_href("sms", "{{ mobile_no }}"), "sms:{{ mobile_no }}")
 		for bad in ("abc", "sms:abc", "sms:hello world", "+41791234567?body=<script>"):
 			self.assertEqual(_href("sms", bad), "#", bad)

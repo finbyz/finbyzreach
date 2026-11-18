@@ -435,6 +435,7 @@ test('button action values are checked for every action type', () => {
   assert.match(buttonActionIssue('telephone', 'abc'), /phone number/)
   assert.equal(buttonActionIssue('sms', '+41791234567'), '')
   assert.equal(buttonActionIssue('sms', 'sms:+41791234567?body=Hello%20there'), '')
+  assert.equal(buttonActionIssue('sms', '+41791234567?body=Hello there, please call me'), '', 'spaces in the text are fine')
   assert.match(buttonActionIssue('sms', 'abc'), /mobile number/)
   assert.match(buttonActionIssue('sms', 'sms:abc'), /mobile number/)
   assert.equal(buttonActionIssue('file', '/files/brochure.pdf'), '')

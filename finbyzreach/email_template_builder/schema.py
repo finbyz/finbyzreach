@@ -311,11 +311,17 @@ def _validate_block(block):
 			href = f"mailto:{href}"
 		elif action == "telephone" and href:
 			number = href[4:] if href.lower().startswith("tel:") else href
-			href = f"tel:{number}" if "{{" in number or re.fullmatch(r"\+?[0-9(). -]{3,40}", number) else "#"
+			if "{{" in number:
+				href = f"tel:{number}"
+			elif re.fullmatch(r"\+?[0-9(). -]{3,40}", number):
+				# Digits only: some phones fail on spaces and brackets in a tel: link.
+				href = "tel:" + re.sub(r"[^0-9+]", "", number)
+			else:
+				href = "#"
 		elif action == "sms" and href:
 			# EM-06: an SMS link must have a real number. "?body=text" pre-fills the message.
 			number = href[4:] if href.lower().startswith("sms:") else href
-			valid = "{{" in number or re.fullmatch(r"\+?[0-9(). -]{3,40}(?:[?&]body=[^\s{}<>\"']{0,300})?", number)
+			valid = "{{" in number or re.fullmatch(r"\+?[0-9(). -]{3,40}(?:[?&]body=[^{}<>\"']{0,300})?", number)
 			href = f"sms:{number}" if valid else "#"
 		out["href"] = _url(href, allow_full_token=True)
 		if action == "file" and _is_private_url(out["href"]):

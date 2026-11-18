@@ -202,7 +202,7 @@ export function buttonActionIssue(action: string, value: unknown) {
     case 'telephone':
       return /^(?:tel:)?\+?[0-9(). -]{3,40}$/i.test(text) ? '' : 'Enter a phone number like +41 44 123 45 67.'
     case 'sms':
-      return /^(?:sms:)?\+?[0-9(). -]{3,40}(?:[?&]body=[^\s{}<>"']{0,300})?$/i.test(text) ? '' : 'Enter a mobile number like +41 79 123 45 67. Add ?body=Your text to fill in the message.'
+      return /^(?:sms:)?\+?[0-9(). -]{3,40}(?:[?&]body=[^{}<>"']{0,300})?$/i.test(text) ? '' : 'Enter a mobile number like +41 79 123 45 67. Add ?body=Your text to fill in the message.'
     case 'file':
       return /^\/private\//.test(text) || /\/private\/files\//.test(text) ? 'Choose a public file. Private files cannot be opened by recipients.' : /^(?:\/files\/|https?:\/\/)/i.test(text) ? '' : 'Use a public file address that starts with /files/ or https://.'
     default:
