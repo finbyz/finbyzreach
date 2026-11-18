@@ -192,6 +192,28 @@ export function typographyCss(settings: Record<string, unknown>, scope = '.canva
   return rules.join('\n')
 }
 
+export const SHARED_CATEGORIES = ['Header', 'Footer']
+
+/** Header and footer: is this row linked to a shared saved Header or Footer block? */
+export function sharedSectionState(section: { saved_component?: string; saved_component_category?: string; component_customised?: boolean }) {
+  if (!section.saved_component || !SHARED_CATEGORIES.includes(String(section.saved_component_category))) return null
+  return { name: section.saved_component, category: section.saved_component_category as 'Header' | 'Footer', customised: Boolean(section.component_customised) }
+}
+
+/** Header and footer: a change to a linked row means this email now has its own version; return the rows that changed. */
+export function markCustomisedSharedSections(before: BuilderSchema, next: BuilderSchema) {
+  const content = (section: BuilderSection) => JSON.stringify({ ...section, component_customised: undefined })
+  const previous = new Map(before.sections.map((section) => [section.id, section]))
+  const marked: string[] = []
+  for (const section of next.sections) {
+    const old = previous.get(section.id)
+    const state = sharedSectionState(section)
+    if (!old || !state || state.customised || sharedSectionState(old)?.customised) continue
+    if (content(old) !== content(section)) { section.component_customised = true; marked.push(section.id) }
+  }
+  return marked
+}
+
 /** EM-02: move a block (within its column) or a row one place up (-1) or down (+1). */
 export function shiftNode(schema: BuilderSchema, kind: 'block' | 'section', id: string, delta: -1 | 1) {
   const list: Array<{ id: string }> | undefined = kind === 'section'

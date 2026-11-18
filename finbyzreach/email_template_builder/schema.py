@@ -455,6 +455,10 @@ def _validate_section(section, seen_ids):
 	saved_component = section.get("saved_component")
 	if saved_component and isinstance(saved_component, str):
 		normalized["saved_component"] = saved_component[:140]
+		# Shared Header or Footer rows keep their link and whether this email has its own version.
+		if section.get("saved_component_category") in ("Header", "Footer"):
+			normalized["saved_component_category"] = section["saved_component_category"]
+			normalized["component_customised"] = bool(section.get("component_customised"))
 	return normalized
 
 

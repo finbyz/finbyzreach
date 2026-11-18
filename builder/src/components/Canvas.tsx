@@ -4,7 +4,7 @@ import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-
 import { CSS } from '@dnd-kit/utilities'
 import { AlignCenter, AlignLeft, AlignRight, Bold, Bookmark, ChevronDown, ChevronUp, Copy, EyeOff, GripVertical, ImagePlus, Italic, Link, List, ListOrdered, Pencil, Plus, RemoveFormatting, Strikethrough, Superscript, Trash2, Underline } from 'lucide-react'
 
-import { BLOCKS, findBlock, LAYOUTS, nodeCss, normalizeColumnWidths, normalizeLength, typographyCss, visibilitySummary } from '../lib/builder'
+import { BLOCKS, findBlock, LAYOUTS, nodeCss, normalizeColumnWidths, normalizeLength, sharedSectionState, typographyCss, visibilitySummary } from '../lib/builder'
 import { insertLineBreakAtSelection, insertMergeChipAtSelection, runLegacyEditorCommand } from '../lib/editorDom'
 import { chipsToTokens, isValidMergeToken, mergeChipHtml, tokensToChips } from '../lib/tokens'
 import type { BuilderBlock, BuilderColumn, BuilderMetadata, BuilderSchema, BuilderSection, Selection, Viewport } from '../types'
@@ -796,6 +796,7 @@ function Column({ column, props }: { column: BuilderColumn; props: CanvasProps }
 
 function SortableSection({ section, props, index, count }: { section: BuilderSection; props: CanvasProps; index: number; count: number }) {
   const condition = visibilitySummary(section.visibility)
+  const shared = sharedSectionState(section)
   const sortable = useSortable({ id: `section:${section.id}`, data: { kind: 'section', sectionId: section.id } })
   const selected = props.selection?.kind === 'section' && props.selection.id === section.id
   const layout = LAYOUTS.find((item) => item.value === section.layout) || LAYOUTS[0]
@@ -860,6 +861,7 @@ function SortableSection({ section, props, index, count }: { section: BuilderSec
     >
       {props.showStructure && <span className="section-label">Row · {displayWidths.map((width) => Math.round(width) + '%').join(' / ')}</span>}
       <button type="button" className="row-drag-rail" title="Drag row" aria-label="Drag row" onClick={(event) => { event.stopPropagation(); props.onSelect({ kind: 'section', id: section.id }) }} {...sortable.attributes} {...sortable.listeners}><GripVertical size={15} /></button>
+      {shared && <span className="condition-badge condition-badge--section shared-badge" title={shared.customised ? `This email has its own version of the shared ${shared.category.toLowerCase()}` : `Follows the shared ${shared.category.toLowerCase()} ${shared.name}`} data-testid="shared-badge">{shared.customised ? `${shared.category} · customised` : `Shared ${shared.category.toLowerCase()}`}</span>}
       {condition && <span className="condition-badge condition-badge--section" title={condition.title} data-testid="condition-badge">{condition.label}</span>}
       {!props.readOnly && <NodeToolbar selection={{ kind: 'section', id: section.id }} onMove={props.onMove ? (delta) => props.onMove!({ kind: 'section', id: section.id }, delta) : undefined} canMoveUp={index > 0} canMoveDown={index < count - 1} onEdit={() => props.onEditSection(section.id, 'content')} onVisibility={() => props.onEditSection(section.id, 'visibility')} onDuplicate={() => props.onDuplicate({ kind: 'section', id: section.id })} onDelete={() => props.onDelete({ kind: 'section', id: section.id })} onSave={() => props.onSaveComponent({ kind: 'section', id: section.id })} />}
       <div className={`canvas-columns${mobile && section.mobile_stack === 'reverse' ? ' is-reverse' : ''}`} style={{ gridTemplateColumns, alignItems }}>

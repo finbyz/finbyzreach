@@ -413,6 +413,8 @@ body.is-resizing-columns { cursor: col-resize !important; user-select: none; }
 .rich-text .merge-chip { display: inline-block; padding: 0 6px; border: 1px solid #c7d2fe; border-radius: 10px; background: #eef2ff; color: #3730a3; font-size: .85em; line-height: 1.5; white-space: nowrap; cursor: default; user-select: all; }
 .condition-badge { position: absolute; top: 3px; right: 3px; z-index: 7; padding: 3px 6px; border-radius: 4px; background: #6b4eff; color: #fff; font-family: Inter, sans-serif; font-size: 8px; font-weight: 600; line-height: 1; pointer-events: none; }
 .condition-badge--section { top: -17px; right: auto; left: 70px; }
+.shared-badge { left: 150px; background: #0f766e; }
+.shared-section-panel { display: grid; gap: 8px; }
 .node-toolbar__ai { color: #a7f3d0 !important; }
 .node-toolbar__ai:hover { background: #047857 !important; color: #fff !important; }
 .node-toolbar .node-delete { color: #fff; }.node-toolbar .node-delete:hover { background: #b42318; color: #fff; }

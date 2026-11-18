@@ -76,6 +76,9 @@ export type LayoutType =
 export type BuilderSection = {
   id: string
   saved_component?: string
+  // Header and footer: a row from a saved Header or Footer block follows the shared version until it is customised.
+  saved_component_category?: 'Header' | 'Footer'
+  component_customised?: boolean
   layout: LayoutType
   column_widths?: number[]
   vertical_align: 'top' | 'middle' | 'bottom'

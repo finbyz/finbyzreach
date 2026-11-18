@@ -21,6 +21,7 @@ from .reference_fields import (
 	reference_field_rows,
 )
 from .realtime import publish_builder_revision_created, publish_builder_saved
+from .shared_sections import refresh_shared_sections
 from .schema import validate_component, validate_schema
 from .targets import builder_route, normalize_template_doctype, reference_matches, target_reference_filters
 from .tokens import compile_tokens, token_fields, validate_semantic_tokens
@@ -191,7 +192,7 @@ def _compile_builder_request(schema, metadata=None, *, fallback_subject="", refe
 	metadata = _metadata_payload(metadata)
 	preheader = validate_semantic_tokens(str(metadata.get("preheader") or "")[:500])
 	subject_source = validate_semantic_tokens(str(metadata.get("subject") or fallback_subject or "")[:500])
-	validated = validate_schema(schema)
+	validated = refresh_shared_sections(validate_schema(schema))
 	resolved_reference_doctype = str(reference_doctype if reference_doctype is not None else metadata.get("reference_doctype") or "").strip()
 	resolved_reference_name = str(reference_name if reference_name is not None else metadata.get("preview_document") or "").strip()
 	if not resolved_reference_doctype:
@@ -528,7 +529,7 @@ def load_builder(template_name, template_doctype=None):
 	schema_error = ""
 	can_save = True
 	try:
-		schema = validate_schema(doc.get("custom_builder_schema"))
+		schema = refresh_shared_sections(validate_schema(doc.get("custom_builder_schema")))
 	except Exception as exc:
 		if mode == "Visual":
 			schema_status = "invalid"

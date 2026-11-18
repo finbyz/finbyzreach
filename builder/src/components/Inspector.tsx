@@ -3,7 +3,7 @@ import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type Chang
 
 import { useFrappeGetCall, useFrappePostCall } from 'frappe-react-sdk'
 
-import { BLOCKS, findSelected, LAYOUTS, normalizeColumnWidths, rebalanceColumnWidths, TEXT_STYLES } from '../lib/builder'
+import { BLOCKS, findSelected, LAYOUTS, normalizeColumnWidths, rebalanceColumnWidths, sharedSectionState, TEXT_STYLES } from '../lib/builder'
 import { API_METHODS, makeCallKey } from '../lib/api'
 import { conditionFieldOptions, conditionNeedsValue, conditionOperatorOptions, defaultConditionOperator, defaultConditionValue, isCheckField, isMultiSelectField, isSelectField, normalizeConditionForField } from '../lib/conditionFields'
 import { getErrorMessage } from '../lib/errors'
@@ -39,6 +39,8 @@ type InspectorProps = {
   onPrepareMergeField: (blockId: string) => void
   onInsertMergeField: (blockId: string, token: string) => boolean
   onDuplicate: (selection: NonNullable<Selection>) => void
+  onCustomiseShared?: (sectionId: string) => void
+  onResetShared?: (sectionId: string) => void
   onDelete: (selection: NonNullable<Selection>) => void
   readOnly?: boolean
 }
@@ -302,6 +304,24 @@ function NumberInput({ value, onChange, min = 0, max = 2000, suffix }: { value: 
 
 function SelectInput({ value, onChange, options }: { value: unknown; onChange: (value: string) => void; options: Array<[string, string]> }) {
   return <select value={String(value ?? '')} onChange={(event) => onChange(event.target.value)}>{options.map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select>
+}
+
+// Header and footer: a row from a shared Header or Footer: follow the shared version, or customise it in this email only.
+function SharedSectionPanel({ section, readOnly, onCustomise, onReset }: { section: BuilderSection; readOnly?: boolean; onCustomise?: (sectionId: string) => void; onReset?: (sectionId: string) => void }) {
+  const state = sharedSectionState(section)
+  if (!state) return null
+  return <Group title={`Shared ${state.category.toLowerCase()}`}>
+    <div className="shared-section-panel" data-testid="shared-section-panel">
+      <p className="helper-text">
+        {state.customised
+          ? <>This email has its own version of <strong>{state.name}</strong>. Changes to the shared {state.category.toLowerCase()} do not reach it.</>
+          : <>This row follows the shared {state.category.toLowerCase()} <strong>{state.name}</strong>. When the shared version changes, this email shows the change the next time it is opened or saved. Editing the row here makes it this email's own version.</>}
+      </p>
+      {!readOnly && (state.customised
+        ? <button type="button" className="secondary-button" onClick={() => onReset?.(section.id)}>Reset to the shared version</button>
+        : <button type="button" className="secondary-button" onClick={() => onCustomise?.(section.id)}>Customise in this email only</button>)}
+    </div>
+  </Group>
 }
 
 const TEXT_STYLE_FONTS: Array<[string, string]> = [
@@ -1143,6 +1163,7 @@ export const Inspector = memo(function Inspector(props: InspectorProps) {
         <nav className="inspector-tabs">{(['content', 'style', 'visibility'] as InspectorTab[]).map((tab) => <button type="button" key={tab} className={props.tab === tab ? 'is-active' : ''} onClick={() => props.onTab(tab)}>{tab}</button>)}</nav>
         <div className="inspector-scroll"><fieldset className="inspector-fieldset" disabled={props.readOnly}>
           {props.tab === 'content' && block && <BlockContent block={block} props={props} />}
+          {props.tab === 'content' && props.selection.kind === 'section' && selected && 'layout' in selected && <SharedSectionPanel section={selected} readOnly={props.readOnly} onCustomise={props.onCustomiseShared} onReset={props.onResetShared} />}
           {props.tab === 'content' && props.selection.kind === 'section' && selected && 'layout' in selected && <Group title="Row structure"><p className="helper-text">Choose a structure at any time. Existing content is preserved when columns are added or removed.</p><LayoutPicker section={selected} onChange={(layout) => props.onLayout(selected.id, layout)} /><ColumnWidthEditor section={selected} props={props} /><Field label="Vertical alignment"><SelectInput value={selected.vertical_align} onChange={(value) => props.onNode(props.selection!, 'vertical_align', value)} options={[['top', 'Top'], ['middle', 'Middle'], ['bottom', 'Bottom']]} /></Field><Field label="Mobile stacking"><SelectInput value={selected.mobile_stack} onChange={(value) => props.onNode(props.selection!, 'mobile_stack', value)} options={[['stack', 'Left on top'], ['reverse', 'Right on top'], ['none', 'Keep columns']]} /></Field></Group>}
           {props.tab === 'content' && props.selection.kind === 'column' && <Group title="Column"><p className="helper-text">Drop modules here, or select this column before clicking a module in the library.</p></Group>}
           {props.tab === 'style' && selected && <StyleInspector selection={props.selection} style={selected.style} blockType={block?.type} props={props} />}

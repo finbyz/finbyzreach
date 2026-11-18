@@ -14,7 +14,7 @@ import { useBuilderTemplateState } from './useBuilderTemplateState'
 import { useNotifications } from './useNotifications'
 import { useRevisionPreview } from './useRevisionPreview'
 import { useTextEditorBridge } from './useTextEditorBridge'
-import { clone, cloneNode, createBlock, createSection, findBlock, findColumn, findSection, normalizeColumnWidths, resizeSection, safeJson, shiftNode } from '../lib/builder'
+import { clone, cloneNode, createBlock, createSection, findBlock, findColumn, findSection, normalizeColumnWidths, resizeSection, safeJson, SHARED_CATEGORIES, shiftNode } from '../lib/builder'
 import { EMPTY_COMPONENTS, EMPTY_MERGE_FIELDS, EMPTY_REVISIONS } from '../lib/builderConstants'
 import { getErrorMessage, isConcurrencyError } from '../lib/errors'
 import { analyzeReferenceDoctypeUsage, removeReferenceDependentContent, type PendingReferenceDoctypeChange } from '../lib/referenceDoctype'
@@ -648,7 +648,10 @@ export function useEmailBuilderController() {
         const savedName = response.message?.name || componentName.trim()
         commit((next) => {
           const found = findSection(next.schema, selection.id)
-          if (found) found.section.saved_component = savedName
+          if (found) {
+            found.section.saved_component = savedName
+            if (SHARED_CATEGORIES.includes(componentCategory)) { found.section.saved_component_category = componentCategory as 'Header' | 'Footer'; found.section.component_customised = false }
+          }
         }, false)
       }
       setModal(null)
@@ -656,6 +659,36 @@ export function useEmailBuilderController() {
       notify('Saved to reusable content', 'success')
     } catch (error) { notify(getErrorMessage(error, 'Reusable content could not be saved.'), 'error') }
   }, [commit, componentCategory, componentName, document, isReadOnly, notify, sdk.components, sdk.saveComponent, selection, setComponentName, setModal])
+
+  // Header and footer: cut the link to the shared Header or Footer for this email only.
+  const customiseSharedSection = useCallback((sectionId: string) => {
+    if (isReadOnly) return
+    commit((next) => {
+      const found = findSection(next.schema, sectionId)
+      if (found?.section.saved_component_category) found.section.component_customised = true
+    })
+  }, [commit, isReadOnly])
+
+  // Header and footer: go back to the current shared version and follow it again.
+  const resetSharedSection = useCallback(async (sectionId: string) => {
+    if (isReadOnly || !document) return
+    const current = findSection(document.schema, sectionId)?.section
+    if (!current?.saved_component) return
+    try {
+      const response = await sdk.loadComponent.call({ component_name: current.saved_component })
+      const loaded = response.message
+      const definition = JSON.parse(loaded.definition_json) as { definition?: BuilderSection } & BuilderSection
+      const source = cloneNode((definition.definition || definition) as BuilderSection)
+      commit((next) => {
+        const found = findSection(next.schema, sectionId)
+        if (!found) return
+        Object.assign(found.section, source, { id: sectionId, saved_component: current.saved_component, saved_component_category: current.saved_component_category, component_customised: false })
+      })
+      notify('Reset to the shared version', 'success')
+    } catch (error) {
+      notify(getErrorMessage(error, 'The shared version could not be loaded.'), 'error')
+    }
+  }, [commit, document, isReadOnly, notify, sdk.loadComponent])
 
   const requestSaveComponent = useCallback((selected: NonNullable<Selection>) => {
     if (isReadOnly) return
@@ -676,7 +709,10 @@ export function useEmailBuilderController() {
       const source = definition.definition || definition
       const kind = String(doc.component_type).toLowerCase() === 'section' ? 'section' : 'block'
       const copy = cloneNode(source as BuilderBlock | BuilderSection)
-      if (kind === 'section') (copy as BuilderSection).saved_component = componentNameToInsert
+      if (kind === 'section') {
+        (copy as BuilderSection).saved_component = componentNameToInsert
+        if (SHARED_CATEGORIES.includes(String(doc.category))) { (copy as BuilderSection).saved_component_category = doc.category as 'Header' | 'Footer'; (copy as BuilderSection).component_customised = false }
+      }
       commit((next) => {
         if (kind === 'section') next.schema.sections.push(copy as BuilderSection)
         else {
@@ -805,6 +841,8 @@ export function useEmailBuilderController() {
     editSection,
     duplicateNode,
     moveNodeBy,
+    customiseSharedSection,
+    resetSharedSection,
     requestSaveComponent,
     chooseImage,
     openTemplateInspector,

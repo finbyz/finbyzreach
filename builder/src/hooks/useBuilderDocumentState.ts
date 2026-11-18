@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useReducer, useRef } from 'react'
 
-import { clone, safeJson } from '../lib/builder'
+import { clone, markCustomisedSharedSections, safeJson } from '../lib/builder'
 import { HISTORY_COALESCE_MS, HISTORY_LIMIT } from '../lib/builderConstants'
 import type { BuilderDocument } from '../types'
 
@@ -41,6 +41,7 @@ export function useBuilderDocumentState() {
         const before = safeJson(current.document)
         const next = clone(current.document)
         action.change(next)
+        markCustomisedSharedSections(current.document.schema, next.schema)
         const after = safeJson(next)
         if (before === after) return current
         if (action.recordHistory) {

@@ -48,6 +48,8 @@ export const BuilderWorkspace = memo(function BuilderWorkspace() {
     editSection,
     duplicateNode,
     moveNodeBy,
+    customiseSharedSection,
+    resetSharedSection,
     requestSaveComponent,
     chooseImage,
     openTemplateInspector,
@@ -165,6 +167,8 @@ export const BuilderWorkspace = memo(function BuilderWorkspace() {
             onFocusText={focusTextEditor}
             onPrepareMergeField={prepareMergeField}
             onInsertMergeField={insertMergeField}
+            onCustomiseShared={customiseSharedSection}
+            onResetShared={resetSharedSection}
             onDuplicate={duplicateNode}
             onDelete={deleteNode}
             readOnly={isReadOnly}

@@ -17,7 +17,9 @@ import {
   normalizeColumnWidths,
   normalizeLength,
   rebalanceColumnWidths,
+  markCustomisedSharedSections,
   resizeSection,
+  sharedSectionState,
   shiftNode,
   typographyCss,
   visibilitySummary,
@@ -383,4 +385,40 @@ test('typographyCss writes rules only for the styles that have a font and ignore
   assert.equal(css, '.canvas-stage .rich-text h1{font-family:Georgia, serif;font-size:32px;font-weight:700}\n.canvas-stage .rich-text p{font-size:15px}')
   assert.equal(typographyCss({ h2_font_family: 'x;}</style><script>', h2_font_size: 'huge', h2_font_weight: 'heavy', h3_font_size: '0px' }), '')
   assert.equal(typographyCss({ h3_font_size: '22' }), '.canvas-stage .rich-text h3{font-size:22px}')
+})
+
+test('a row from a shared header or footer follows the shared version until it is changed', () => {
+  const header = section('h')
+  header.saved_component = 'Megasol header'
+  header.saved_component_category = 'Header'
+  header.component_customised = false
+  const plain = section('p')
+  plain.saved_component = 'Some block'
+  assert.deepEqual(sharedSectionState(header), { name: 'Megasol header', category: 'Header', customised: false })
+  assert.equal(sharedSectionState(plain), null)
+
+  const before = emptyDocument().schema
+  before.sections = [header, plain]
+  const same = JSON.parse(JSON.stringify(before))
+  assert.deepEqual(markCustomisedSharedSections(before, same), [])
+  const edited = JSON.parse(JSON.stringify(before))
+  edited.sections[0].columns[0].blocks.push(block('new'))
+  edited.sections[1].columns[0].blocks.push(block('other'))
+  assert.deepEqual(markCustomisedSharedSections(before, edited), ['h'])
+  assert.equal(edited.sections[0].component_customised, true)
+  assert.equal(edited.sections[1].component_customised, undefined, 'a plain saved block is never linked')
+})
+
+test('resetting a customised shared row does not mark it customised again', () => {
+  const header = section('h')
+  header.saved_component = 'Megasol header'
+  header.saved_component_category = 'Footer'
+  header.component_customised = true
+  const before = emptyDocument().schema
+  before.sections = [header]
+  const reset = JSON.parse(JSON.stringify(before))
+  reset.sections[0].component_customised = false
+  reset.sections[0].columns[0].blocks.push(block('shared-content'))
+  assert.deepEqual(markCustomisedSharedSections(before, reset), [])
+  assert.equal(reset.sections[0].component_customised, false)
 })
