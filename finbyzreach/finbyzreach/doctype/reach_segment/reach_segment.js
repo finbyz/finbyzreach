@@ -457,6 +457,13 @@ class ReachSegmentBuilder {
                     freeze:true,freeze_message:__("Creating workflow…")});
                 frappe.set_route("automation-workflow-designer", message);
             });
+            // WF-04: start an existing manual workflow for everyone in this segment, right now.
+            if (frappe.manual_workflow_start) this.frm.add_custom_button(__("Start workflow…"), () => frappe.manual_workflow_start.ask({
+                doctype: this.doctype,
+                subject: __("Every member of “{0}” ({1}) will be started.", [doc.name, doc.member_count || 0]),
+                run: async (workflow, key) => (await frappe.call({method: "finbyzai.workflow_builder.api.enroll_manual_segment", type: "POST", freeze: true,
+                    args: {workflow_id: workflow, segment_name: doc.name, idempotency_key: key}})).message,
+            }));
         }
         if (!this.canWrite) return;
         if (this.frm.doc.snapshot_status === "Failed") this.frm.add_custom_button(__("Retry membership preparation"),async()=>{
