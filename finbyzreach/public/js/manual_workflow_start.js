@@ -73,7 +73,8 @@ frappe.provide("frappe.manual_workflow_start");
 
     // A list view has no per-DocType hook that survives other apps' list settings, so look at the page that opened.
     function watch(attempt = 0) {
-        const route = frappe.get_route();
+        // Empty before the first route is set (app_ready fires first), so never index a null.
+        const route = frappe.get_route() || [];
         if (route[0] !== "List" || !DOCTYPES.includes(route[1])) return;
         const listview = window.cur_list;
         if (listview && listview.doctype === route[1]) return addAction(listview);

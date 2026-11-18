@@ -27,7 +27,7 @@ app_include_css = [
 after_request = ["finbyzreach.subscription_embed.set_subscription_embed_policy"]
 app_include_js = [
     "/assets/finbyzreach/js/form_route_guard.js?v=20261117.1",
-    "/assets/finbyzreach/js/manual_workflow_start.js?v=20261118.1",
+    "/assets/finbyzreach/js/manual_workflow_start.js?v=20261118.2",
     "/assets/finbyzreach/js/builder_list_navigation.js?v=20261117.2",
     "/assets/finbyzreach/js/subscription_preferences.js?v=20261117.1",
     "/assets/finbyzreach/js/email_builder_composer.js?v=20260716.1",
@@ -248,6 +248,7 @@ scheduler_events = {
         "finbyzreach.segment_automation.enqueue_changes",
         "finbyzreach.segment_snapshots.recover",
         "finbyzreach.email_marketing.flush_dirty_campaign_metrics",
+        "finbyzreach.ab_test.decide_due_tests",
     ],
     "daily": [
         "finbyzreach.segment_automation.refresh_time_segments",
