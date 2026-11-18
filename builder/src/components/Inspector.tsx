@@ -3,12 +3,12 @@ import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type Chang
 
 import { useFrappeGetCall, useFrappePostCall } from 'frappe-react-sdk'
 
-import { BLOCKS, findSelected, LAYOUTS, normalizeColumnWidths, rebalanceColumnWidths } from '../lib/builder'
+import { BLOCKS, findSelected, LAYOUTS, normalizeColumnWidths, rebalanceColumnWidths, TEXT_STYLES } from '../lib/builder'
 import { API_METHODS, makeCallKey } from '../lib/api'
 import { conditionFieldOptions, conditionNeedsValue, conditionOperatorOptions, defaultConditionOperator, defaultConditionValue, isCheckField, isMultiSelectField, isSelectField, normalizeConditionForField } from '../lib/conditionFields'
 import { getErrorMessage } from '../lib/errors'
 import { insertLineBreakAtSelection } from '../lib/editorDom'
-import type { ApiResponse, BuilderBlock, BuilderDocument, BuilderSection, InspectorTab, LayoutType, LinkMergeFieldsResponse, MergeField, NodeStyle, Selection, Spacing, Visibility, VisibilityCondition } from '../types'
+import type { ApiResponse, BuilderBlock, BuilderDocument, BuilderSettings, BuilderSection, InspectorTab, LayoutType, LinkMergeFieldsResponse, MergeField, NodeStyle, Selection, Spacing, Visibility, VisibilityCondition } from '../types'
 import { PersonalizationDialog } from './PersonalizationPicker'
 
 
@@ -304,6 +304,30 @@ function SelectInput({ value, onChange, options }: { value: unknown; onChange: (
   return <select value={String(value ?? '')} onChange={(event) => onChange(event.target.value)}>{options.map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select>
 }
 
+const TEXT_STYLE_FONTS: Array<[string, string]> = [
+  ['', 'Same as email'],
+  ['Arial, Helvetica, sans-serif', 'Arial'],
+  ['Helvetica, Arial, sans-serif', 'Helvetica'],
+  ['Georgia, Times New Roman, serif', 'Georgia'],
+  ['Tahoma, Arial, sans-serif', 'Tahoma'],
+  ['Verdana, Arial, sans-serif', 'Verdana'],
+]
+const TEXT_STYLE_WEIGHTS: Array<[string, string]> = [['', 'Same as email'], ['normal', 'Regular'], ['500', 'Medium'], ['600', 'Semibold'], ['bold', 'Bold']]
+
+// EM-14: one font, size and weight per text style, for the whole email.
+function TextStyleFields({ settings, onSetting }: { settings: BuilderSettings; onSetting: (key: keyof BuilderSettings, value: string | number) => void }) {
+  const values = settings as unknown as Record<string, string | undefined>
+  return <div className="text-style-fields" data-testid="text-style-fields">
+    <p className="helper-text">Fonts for headings and paragraphs in every text block. Text that has its own font keeps it.</p>
+    {TEXT_STYLES.map(([tag, label]) => <fieldset className="text-style-row" key={tag}>
+      <legend>{label}</legend>
+      <Field label="Font"><SelectInput value={values[`${tag}_font_family`] || ''} onChange={(value) => onSetting(`${tag}_font_family` as keyof BuilderSettings, value)} options={TEXT_STYLE_FONTS} /></Field>
+      <Field label="Size"><input type="text" aria-label={`${label} size`} placeholder="Same as email" value={values[`${tag}_font_size`] || ''} onChange={(event) => onSetting(`${tag}_font_size` as keyof BuilderSettings, event.target.value.trim())} /></Field>
+      <Field label="Weight"><SelectInput value={values[`${tag}_font_weight`] || ''} onChange={(value) => onSetting(`${tag}_font_weight` as keyof BuilderSettings, value)} options={TEXT_STYLE_WEIGHTS} /></Field>
+    </fieldset>)}
+  </div>
+}
+
 function Toggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
   return <label className="toggle-field"><span>{label}</span><input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} /><i /></label>
 }
@@ -525,6 +549,7 @@ function TemplateInspector({ props }: { props: InspectorProps }) {
         ]} /></Field>
         <Field label="Base size"><LengthInput value={settings.font_size || '16px'} onChange={(value) => props.onSetting('font_size', value)} max={72} units={['px', 'pt']} /></Field>
       </div>
+      <TextStyleFields settings={settings} onSetting={props.onSetting} />
       <div className="appearance-color-grid template-color-grid">
         <AppearanceColorField label="Email background" value={settings.body_background} onChange={(value) => props.onSetting('body_background', value)} />
         <AppearanceColorField label="Content background" value={settings.content_background} onChange={(value) => props.onSetting('content_background', value)} />

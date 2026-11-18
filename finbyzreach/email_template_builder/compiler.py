@@ -7,7 +7,7 @@ import frappe
 from frappe import _
 from frappe.utils import get_url, strip_html_tags
 
-from .constants import DEFAULT_SETTINGS, LAYOUTS
+from .constants import DEFAULT_SETTINGS, LAYOUTS, TYPOGRAPHY_PROPS, TYPOGRAPHY_STYLES
 from .sanitizer import sanitize_code_html, sanitize_rich_html
 from .schema import validate_schema
 from .tokens import compile_attribute, compile_tokens, compile_url, field_expression
@@ -85,6 +85,43 @@ SOCIAL_PLATFORMS = {
 		"path": "",
 	},
 }
+
+_TYPOGRAPHY_TAG = re.compile(r"<(h1|h2|h3|p)((?:\s[^<>]*)?)>", re.I)
+
+
+def apply_typography(rich_html, settings):
+	"""EM-14: give headings and paragraphs the fonts chosen for the whole email.
+
+	A tag that already carries its own font value keeps it. Only opening tags are touched, so
+	merge tokens in the text are left exactly as written.
+	"""
+	rules = {
+		tag: {prop.replace("_", "-"): settings.get(f"{tag}_{prop}") for prop in TYPOGRAPHY_PROPS if settings.get(f"{tag}_{prop}")}
+		for tag in TYPOGRAPHY_STYLES
+	}
+	if not any(rules.values()):
+		return rich_html
+
+	def apply(match):
+		tag, attrs = match.group(1).lower(), match.group(2) or ""
+		wanted = rules.get(tag) or {}
+		if not wanted:
+			return match.group(0)
+		existing = re.search(r'\sstyle\s*=\s*"([^"]*)"', attrs, re.I)
+		current = existing.group(1) if existing else ""
+		have = {part.split(":", 1)[0].strip().lower() for part in current.split(";") if ":" in part}
+		extra = ";".join(f"{name}:{value}" for name, value in wanted.items() if name not in have)
+		if not extra:
+			return match.group(0)
+		style = (current.rstrip().rstrip(";") + ";" if current.strip() else "") + html.escape(extra, quote=True)
+		if existing:
+			attrs = attrs[: existing.start()] + f' style="{style}"' + attrs[existing.end():]
+		else:
+			attrs = f'{attrs} style="{style}"'
+		return f"<{match.group(1)}{attrs}>"
+
+	return _TYPOGRAPHY_TAG.sub(apply, rich_html)
+
 
 def _social_platform(platform):
 	return SOCIAL_PLATFORMS.get(platform or "Website", SOCIAL_PLATFORMS["Website"])
@@ -238,7 +275,7 @@ def _compile_block(block, settings, normalized=False):
 	inner = ""
 	if type_ == "text":
 		rich_html = content.get("html") if normalized else sanitize_rich_html(content.get("html"))
-		sanitized = _absolute_embedded_urls(rich_html)
+		sanitized = apply_typography(_absolute_embedded_urls(rich_html), settings)
 		inner = f'<div style="{style}">{compile_tokens(sanitized, "e")}</div>'
 	elif type_ == "image":
 		src = _absolute_file_url(content.get("src"))

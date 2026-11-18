@@ -404,6 +404,12 @@ body.is-resizing-columns { cursor: col-resize !important; user-select: none; }
 .canvas-block.is-selected > .node-toolbar--block, .canvas-section.is-selected > .node-toolbar--section { opacity: 1; pointer-events: auto; }
 .node-toolbar button { display: grid; width: 25px; flex: 0 0 25px; place-items: center; border: 0; border-left: 1px solid rgb(255 255 255 / 17%); background: transparent; color: #fff; cursor: pointer; }.node-toolbar button:first-child { border-left: 0; }.node-toolbar button:hover { background: rgb(255 255 255 / 14%); color: #fff; }.drag-handle { cursor: grab !important; touch-action: none; }
 .node-toolbar button:disabled { opacity: .35; cursor: default; }.node-toolbar button:disabled:hover { background: transparent; }
+/* EM-14: one row per text style in the email design panel */
+.text-style-fields { display: grid; gap: 10px; margin-top: 12px; }
+.text-style-row { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr); gap: 8px; min-width: 0; margin: 0; padding: 8px 0 0; border: 0; border-top: 1px solid #e8e9eb; }
+.text-style-row legend { grid-column: 1 / -1; float: left; width: 100%; padding: 0; color: #46515d; font-size: 11px; font-weight: 700; }
+.text-style-row > * { min-width: 0; }
+.text-style-row input, .text-style-row select { width: 100%; min-width: 0; }
 .condition-badge { position: absolute; top: 3px; right: 3px; z-index: 7; padding: 3px 6px; border-radius: 4px; background: #6b4eff; color: #fff; font-family: Inter, sans-serif; font-size: 8px; font-weight: 600; line-height: 1; pointer-events: none; }
 .condition-badge--section { top: -17px; right: auto; left: 70px; }
 .node-toolbar__ai { color: #a7f3d0 !important; }

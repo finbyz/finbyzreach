@@ -19,6 +19,7 @@ import {
   rebalanceColumnWidths,
   resizeSection,
   shiftNode,
+  typographyCss,
   visibilitySummary,
 } from './builder.ts'
 
@@ -374,4 +375,12 @@ test('social blocks start with email-safe HubSpot-style display defaults', () =>
   assert.equal(social.content.icon_shape, 'circle')
   assert.equal(social.content.icon_size, 24)
   assert.equal(social.content.item_spacing, 8)
+})
+
+test('typographyCss writes rules only for the styles that have a font and ignores unsafe values', () => {
+  assert.equal(typographyCss({}), '')
+  const css = typographyCss({ h1_font_family: 'Georgia, serif', h1_font_size: '32px', h1_font_weight: '700', p_font_size: '15px' })
+  assert.equal(css, '.canvas-stage .rich-text h1{font-family:Georgia, serif;font-size:32px;font-weight:700}\n.canvas-stage .rich-text p{font-size:15px}')
+  assert.equal(typographyCss({ h2_font_family: 'x;}</style><script>', h2_font_size: 'huge', h2_font_weight: 'heavy', h3_font_size: '0px' }), '')
+  assert.equal(typographyCss({ h3_font_size: '22' }), '.canvas-stage .rich-text h3{font-size:22px}')
 })

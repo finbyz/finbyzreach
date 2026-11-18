@@ -4,7 +4,7 @@ import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-
 import { CSS } from '@dnd-kit/utilities'
 import { AlignCenter, AlignLeft, AlignRight, Bold, Bookmark, ChevronDown, ChevronUp, Copy, EyeOff, GripVertical, ImagePlus, Italic, Link, List, ListOrdered, Pencil, Plus, RemoveFormatting, Strikethrough, Superscript, Trash2, Underline } from 'lucide-react'
 
-import { BLOCKS, findBlock, LAYOUTS, nodeCss, normalizeColumnWidths, normalizeLength, visibilitySummary } from '../lib/builder'
+import { BLOCKS, findBlock, LAYOUTS, nodeCss, normalizeColumnWidths, normalizeLength, typographyCss, visibilitySummary } from '../lib/builder'
 import { insertLineBreakAtSelection, insertTextAtSelection, runLegacyEditorCommand } from '../lib/editorDom'
 import { isValidMergeToken } from '../lib/tokens'
 import type { BuilderBlock, BuilderColumn, BuilderMetadata, BuilderSchema, BuilderSection, Selection, Viewport } from '../types'
@@ -913,6 +913,7 @@ export const Canvas = memo(function Canvas(props: CanvasProps) {
     setTextToolbarBlockId(null)
   }, [props.schema, textToolbarBlockId])
 
+  const typography = useMemo(() => typographyCss(props.schema.settings as unknown as Record<string, unknown>), [props.schema.settings])
   const selectedText = textToolbarBlockId ? findBlock(props.schema, textToolbarBlockId)?.block : undefined
   const frameStyle = {
     width: props.viewport === 'mobile' ? 375 : props.viewport === 'tablet' ? Math.min(768, props.schema.settings.content_width) : props.schema.settings.content_width,
@@ -926,6 +927,7 @@ export const Canvas = memo(function Canvas(props: CanvasProps) {
   } as CSSProperties
   return (
     <div className="canvas-stage" onClick={() => props.onSelect(null)}>
+      {typography && <style>{typography}</style>}
       {selectedText?.type === 'text' && <RichTextToolbar
         block={selectedText}
         onUpdate={props.onUpdateContent}

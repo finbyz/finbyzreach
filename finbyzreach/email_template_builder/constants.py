@@ -52,6 +52,12 @@ CSS_COLOR = re.compile(
 	re.I,
 )
 
+# EM-14: optional fonts per text style, kept in the email's settings as h1_font_family, h1_font_size,
+# h1_font_weight and so on. An empty value means "same as the rest of the email".
+TYPOGRAPHY_STYLES = ("h1", "h2", "h3", "p")
+TYPOGRAPHY_PROPS = ("font_family", "font_size", "font_weight")
+FONT_WEIGHTS = {"normal", "500", "600", "700", "bold"}
+
 DEFAULT_SETTINGS = {
 	"content_width": 600,
 	"body_background": "#f5f7fa",

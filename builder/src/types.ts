@@ -98,6 +98,19 @@ export type BuilderSettings = {
   button_text_color: string
   button_radius: string
   section_padding: string
+  // EM-14: optional fonts per text style; empty means the same as the rest of the email.
+  h1_font_family?: string
+  h1_font_size?: string
+  h1_font_weight?: string
+  h2_font_family?: string
+  h2_font_size?: string
+  h2_font_weight?: string
+  h3_font_family?: string
+  h3_font_size?: string
+  h3_font_weight?: string
+  p_font_family?: string
+  p_font_size?: string
+  p_font_weight?: string
 }
 
 export type BuilderSchema = {

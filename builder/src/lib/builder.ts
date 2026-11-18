@@ -171,6 +171,27 @@ export function moveSection(schema: BuilderSchema, sectionId: string, targetSect
   return true
 }
 
+export const TEXT_STYLES = [['h1', 'Heading 1'], ['h2', 'Heading 2'], ['h3', 'Heading 3'], ['p', 'Paragraph']] as const
+const FONT_FAMILY_PATTERN = /^[A-Za-z0-9 ,'"-]{1,160}$/
+const FONT_SIZE_PATTERN = /^\d+(?:\.\d+)?(?:px|pt|em|rem|%)?$/
+const FONT_WEIGHTS = new Set(['normal', '500', '600', '700', 'bold'])
+
+/** EM-14: CSS that shows the canvas text in the fonts chosen for headings and paragraphs. Only safe values are used. */
+export function typographyCss(settings: Record<string, unknown>, scope = '.canvas-stage .rich-text') {
+  const rules: string[] = []
+  for (const [tag] of TEXT_STYLES) {
+    const declarations: string[] = []
+    const family = String(settings[`${tag}_font_family`] || '').trim()
+    const size = String(settings[`${tag}_font_size`] || '').trim()
+    const weight = String(settings[`${tag}_font_weight`] || '').trim().toLowerCase()
+    if (family && FONT_FAMILY_PATTERN.test(family)) declarations.push(`font-family:${family}`)
+    if (size && FONT_SIZE_PATTERN.test(size) && parseFloat(size) > 0) declarations.push(`font-size:${/\d$/.test(size) ? size + 'px' : size}`)
+    if (weight && FONT_WEIGHTS.has(weight)) declarations.push(`font-weight:${weight}`)
+    if (declarations.length) rules.push(`${scope} ${tag}{${declarations.join(';')}}`)
+  }
+  return rules.join('\n')
+}
+
 /** EM-02: move a block (within its column) or a row one place up (-1) or down (+1). */
 export function shiftNode(schema: BuilderSchema, kind: 'block' | 'section', id: string, delta: -1 | 1) {
   const list: Array<{ id: string }> | undefined = kind === 'section'

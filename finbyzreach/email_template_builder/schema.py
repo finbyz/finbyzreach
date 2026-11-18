@@ -130,6 +130,26 @@ def _font_family(value):
 	return value
 
 
+def _validate_typography(settings):
+	"""EM-14: keep only valid per-style fonts; anything else falls back to the email font."""
+	from .constants import FONT_WEIGHTS, TYPOGRAPHY_PROPS, TYPOGRAPHY_STYLES
+	for tag in TYPOGRAPHY_STYLES:
+		for prop in TYPOGRAPHY_PROPS:
+			key = f"{tag}_{prop}"
+			raw = str(settings.get(key) or "").strip()
+			if not raw:
+				settings.pop(key, None)
+			elif prop == "font_family":
+				settings[key] = raw if FONT_FAMILY.fullmatch(raw) else None
+			elif prop == "font_size":
+				value = _css(raw, default="")
+				settings[key] = None if not value or _zero_length(value) else value
+			else:
+				settings[key] = raw.lower() if raw.lower() in FONT_WEIGHTS else None
+			if settings.get(key) is None:
+				settings.pop(key, None)
+
+
 def _url(value, allow_full_token=False):
 	raw = validate_semantic_tokens(str(value or "").strip())
 	if not raw:
@@ -474,6 +494,7 @@ def validate_schema(value) -> dict:
 	if _zero_length(settings["font_size"]):
 		settings["font_size"] = DEFAULT_SETTINGS["font_size"]
 	settings["font_family"] = _font_family(settings.get("font_family"))
+	_validate_typography(settings)
 	settings["link_decoration"] = settings.get("link_decoration") if settings.get("link_decoration") in {"none", "underline"} else "underline"
 
 	raw_sections = schema.get("sections")
