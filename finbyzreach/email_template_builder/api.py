@@ -386,10 +386,12 @@ def get_link_merge_fields(reference_doctype, link_fieldname):
 	target_doctype = link_target_doctype(reference_doctype, str(link_fieldname or "").strip())
 	if not target_doctype:
 		frappe.throw(_("This Link field is unavailable or you cannot read its linked DocType"), frappe.PermissionError)
+	root = str(link_fieldname or "").strip()
+	from .latest_documents import is_virtual_root, virtual_child_rows
 	return {
-		"link_fieldname": str(link_fieldname or "").strip(),
+		"link_fieldname": root,
 		"target_doctype": target_doctype,
-		"fields": reference_field_rows(target_doctype, prefix=str(link_fieldname or "").strip()),
+		"fields": virtual_child_rows(root) if is_virtual_root(reference_doctype, root) else reference_field_rows(target_doctype, prefix=root),
 	}
 
 

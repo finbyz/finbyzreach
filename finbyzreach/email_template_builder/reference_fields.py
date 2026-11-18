@@ -3,6 +3,8 @@ from __future__ import annotations
 import frappe
 from frappe.model import get_permitted_fields
 
+from . import latest_documents
+
 
 REFERENCE_EXCLUDED_FIELDS = {
 	"Section Break",
@@ -62,6 +64,8 @@ def reference_field_rows(doctype: str, *, prefix: str = "") -> list[dict]:
 		for df in meta.fields
 		if df.fieldname in permitted and _is_safe_field(df)
 	)
+	if not prefix:
+		rows.extend(latest_documents.virtual_link_rows(doctype))
 	return rows
 
 
@@ -69,6 +73,8 @@ def link_target_doctype(reference_doctype: str, link_fieldname: str, *, require_
 	"""Validate one static Frappe Link and return its target DocType."""
 	if "." in str(link_fieldname or ""):
 		return ""
+	if latest_documents.is_virtual_root(reference_doctype, link_fieldname):
+		return latest_documents.VIRTUAL_LINKS[link_fieldname]["doctype"]
 	if require_permission and link_fieldname not in permitted_reference_fields(reference_doctype):
 		return ""
 	df = frappe.get_meta(reference_doctype).get_field(link_fieldname)
@@ -90,6 +96,8 @@ def is_permitted_reference_path(reference_doctype: str, field_path: str) -> bool
 	if len(parts) != 2:
 		return False
 	link_fieldname, target_fieldname = parts
+	if latest_documents.is_virtual_root(reference_doctype, link_fieldname):
+		return latest_documents.is_virtual_path(reference_doctype, link_fieldname, target_fieldname)
 	target = link_target_doctype(reference_doctype, link_fieldname)
 	return bool(target and target_fieldname in permitted_reference_fields(target))
 
@@ -106,6 +114,10 @@ def resolve_linked_value(source_doctype: str, field_path: str, source: dict):
 	if len(parts) != 2:
 		return None, False
 	link_fieldname, target_fieldname = parts
+	if latest_documents.is_virtual_root(source_doctype, link_fieldname):
+		if not latest_documents.is_virtual_path(source_doctype, link_fieldname, target_fieldname):
+			return None, False
+		return latest_documents.latest_value(source_doctype, link_fieldname, target_fieldname, source), True
 	source_df = frappe.get_meta(source_doctype).get_field(link_fieldname)
 	if not _is_safe_field(source_df) or source_df.fieldtype != "Link":
 		return None, False
