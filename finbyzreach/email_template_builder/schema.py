@@ -335,7 +335,13 @@ def _validate_block(block):
 			label = str(item.get("label") or platform).strip()[:80]
 			out["items"].append({"platform": platform, "href": _url(item.get("href"), allow_full_token=True), "label": label})
 		out["display"] = content.get("display") if content.get("display") in {"icon", "text", "both"} else "icon"
-		out["icon_shape"] = content.get("icon_shape") if content.get("icon_shape") in {"square", "rounded", "circle"} else "circle"
+		out["icon_shape"] = content.get("icon_shape") if content.get("icon_shape") in {"square", "rounded", "circle", "none"} else "circle"
+		# Colour of the symbol itself; empty means white (or the brand colour when there is no background).
+		icon_color = str(content.get("icon_color") or "").strip()
+		if icon_color:
+			icon_color = _css(icon_color, "color", "")
+		if icon_color and re.fullmatch(r"#[0-9a-fA-F]{6}", icon_color):
+			out["icon_color"] = icon_color.lower()
 		out["icon_size"] = _bounded_int(content.get("icon_size"), 24, 12, 64)
 		out["item_spacing"] = _bounded_int(content.get("item_spacing"), 8, 0, 40)
 	elif type_ == "preview_url":

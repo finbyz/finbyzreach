@@ -123,6 +123,33 @@ def apply_typography(rich_html, settings):
 	return _TYPOGRAPHY_TAG.sub(apply, rich_html)
 
 
+def _hex6(value):
+	value = str(value or "").strip().lower()
+	return value if re.fullmatch(r"#[0-9a-f]{6}", value) else ""
+
+
+def social_icon_url(platform_meta, glyph_color=""):
+	"""Hosted PNG for the symbol. A colour other than white is drawn once and kept in the public files."""
+	color = _hex6(glyph_color)
+	if not color or color == "#ffffff":
+		return get_url(platform_meta["asset"])
+	from pathlib import Path
+
+	from PIL import Image
+
+	slug = Path(platform_meta["asset"]).stem
+	folder = Path(frappe.get_site_path("public", "files", "social-icons"))
+	target = folder / f"{slug}-{color[1:]}.png"
+	if not target.exists():
+		base = Path(frappe.get_app_path("finbyzreach", "public", "email_builder", "social", f"{slug}.png"))
+		alpha = Image.open(base).convert("RGBA").getchannel("A")
+		image = Image.new("RGBA", alpha.size, tuple(int(color[i:i + 2], 16) for i in (1, 3, 5)) + (0,))
+		image.putalpha(alpha)
+		folder.mkdir(parents=True, exist_ok=True)
+		image.save(target, optimize=True)
+	return get_url(f"/files/social-icons/{target.name}")
+
+
 def _social_platform(platform):
 	return SOCIAL_PLATFORMS.get(platform or "Website", SOCIAL_PLATFORMS["Website"])
 
@@ -342,7 +369,8 @@ def _compile_block(block, settings, normalized=False):
 		items = []
 		size = int(content.get("icon_size") or 20)
 		display = content.get("display") if content.get("display") in {"icon", "text", "both"} else "icon"
-		shape = content.get("icon_shape") if content.get("icon_shape") in {"square", "rounded", "circle"} else "circle"
+		shape = content.get("icon_shape") if content.get("icon_shape") in {"square", "rounded", "circle", "none"} else "circle"
+		glyph_color = _hex6(content.get("icon_color"))
 		item_spacing = int(content.get("item_spacing") if content.get("item_spacing") is not None else 8)
 		style_color = (block.get("style") or {}).get("color")
 		text_color = (block.get("style") or {}).get("font_color") or settings["link_color"]
@@ -358,9 +386,14 @@ def _compile_block(block, settings, normalized=False):
 			label = compile_attribute(item.get("label") or meta["label"])
 			icon = ""
 			if display != "text":
-				asset = html.escape(get_url(meta["asset"]), quote=True)
-				img = f'<img src="{asset}" width="{inner_size}" height="{inner_size}" alt="" border="0" style="display:block;width:{inner_size}px;height:{inner_size}px;border:0;outline:none;text-decoration:none;margin:{inset}px auto 0 auto;" />'
-				icon = f'<span style="display:inline-block;width:{size}px;height:{size}px;border-radius:{radius};background:{color};text-align:center;vertical-align:middle;line-height:{size}px;">{img}</span>'
+				if shape == "none":
+					# No background: the symbol alone, in the chosen colour (else the background colour, else the brand colour).
+					asset = html.escape(social_icon_url(meta, glyph_color or _hex6(color) or _hex6(meta["color"])), quote=True)
+					icon = f'<img src="{asset}" width="{size}" height="{size}" alt="" border="0" style="display:inline-block;width:{size}px;height:{size}px;border:0;outline:none;text-decoration:none;vertical-align:middle;" />'
+				else:
+					asset = html.escape(social_icon_url(meta, glyph_color), quote=True)
+					img = f'<img src="{asset}" width="{inner_size}" height="{inner_size}" alt="" border="0" style="display:block;width:{inner_size}px;height:{inner_size}px;border:0;outline:none;text-decoration:none;margin:{inset}px auto 0 auto;" />'
+					icon = f'<span style="display:inline-block;width:{size}px;height:{size}px;border-radius:{radius};background:{color};text-align:center;vertical-align:middle;line-height:{size}px;">{img}</span>'
 			text = ""
 			if display != "icon":
 				text = f'<span style="display:inline-block;{"margin-left:6px;" if display == "both" else ""}color:{text_color};vertical-align:middle;">{label}</span>'

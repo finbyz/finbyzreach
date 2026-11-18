@@ -789,7 +789,7 @@ function StyleInspector({ selection, style = {}, blockType, props }: { selection
       <Group title="Display">
         <Field label="Show"><SelectInput value={display} onChange={(value) => setContent('display', value)} options={[['icon', 'Icons'], ['text', 'Text'], ['both', 'Icons and text']]} /></Field>
         {display !== 'text' && <>
-          <Field label="Icon shape"><SelectInput value={content?.content.icon_shape || 'circle'} onChange={(value) => setContent('icon_shape', value)} options={[['circle', 'Circle'], ['rounded', 'Rounded square'], ['square', 'Square']]} /></Field>
+          <Field label="Icon shape"><SelectInput value={content?.content.icon_shape || 'circle'} onChange={(value) => setContent('icon_shape', value)} options={[['circle', 'Circle'], ['rounded', 'Rounded square'], ['square', 'Square'], ['none', 'No background']]} /></Field>
           <Field label="Icon size">
             <span className="range-row"><input type="range" min="12" max="64" value={Number(content?.content.icon_size || 24)} onChange={(event) => setContent('icon_size', Number(event.target.value))} /><NumberInput value={content?.content.icon_size || 24} min={12} max={64} suffix="px" onChange={(value) => setContent('icon_size', value)} /></span>
           </Field>
@@ -799,9 +799,13 @@ function StyleInspector({ selection, style = {}, blockType, props }: { selection
       {display !== 'text' && <Group title="Icon colors">
         <Toggle label="Use official platform colors" checked={useOfficialColors} onChange={(value) => set('color', value ? '' : '#2563eb')} />
         {!useOfficialColors && <div className="appearance-color-grid is-single">
-          <AppearanceColorField label="Icon color" value={style.color || '#2563eb'} onChange={(value) => set('color', value)} />
+          <AppearanceColorField label={content?.content.icon_shape === 'none' ? 'Icon color' : 'Background color'} value={style.color || '#2563eb'} onChange={(value) => set('color', value)} />
         </div>}
-        <p className="helper-text">Turn this off only when every social icon should use one shared brand color.</p>
+        <div className="appearance-color-grid is-single" data-testid="social-symbol-color">
+          <AppearanceColorField label="Symbol color" value={String(content?.content.icon_color || (content?.content.icon_shape === 'none' ? (style.color || '#2563eb') : '#ffffff'))} onChange={(value) => setContent('icon_color', value)} />
+        </div>
+        {Boolean(content?.content.icon_color) && <button type="button" className="secondary-button" onClick={() => setContent('icon_color', '')}>Reset symbol color</button>}
+        <p className="helper-text">Background color fills the shape behind each icon. Symbol color changes the logo itself. With No background, only the symbol is shown, in the symbol color. Turn official colors off only when every icon should share one color.</p>
       </Group>}
       <Group title="Placement">
         <AlignmentControl value={style.align || 'left'} onChange={(value) => set('align', value)} />

@@ -590,7 +590,7 @@ function socialPlatform(platform: unknown) {
   return SOCIAL_PLATFORMS[key] || SOCIAL_PLATFORMS.Website
 }
 
-function SocialIcon({ platform, size, color, shape = 'circle' }: { platform: unknown; size: number; color?: string; shape?: string }) {
+function SocialIcon({ platform, size, color, glyphColor, shape = 'circle' }: { platform: unknown; size: number; color?: string; glyphColor?: string; shape?: string }) {
   const meta = socialPlatform(platform)
   const iconSize = Math.max(12, size)
   const radius = shape === 'circle' ? '50%' : shape === 'rounded' ? `${Math.max(3, Math.round(iconSize * 0.22))}px` : '0'
@@ -611,14 +611,14 @@ function SocialIcon({ platform, size, color, shape = 'circle' }: { platform: unk
         justifyContent: 'center',
         overflow: 'hidden',
         borderRadius: radius,
-        backgroundColor: color || meta.color,
-        color: '#ffffff',
+        backgroundColor: shape === 'none' ? 'transparent' : (color || meta.color),
+        color: shape === 'none' ? (glyphColor || color || meta.color) : (glyphColor || '#ffffff'),
       }}
     >
       <svg
         viewBox={meta.viewBox || '0 0 24 24'}
-        width="56%"
-        height="56%"
+        width={shape === 'none' ? '100%' : '56%'}
+        height={shape === 'none' ? '100%' : '56%'}
         fill="currentColor"
         aria-hidden="true"
         focusable="false"
@@ -710,10 +710,11 @@ function BlockContent({ block, settings, onUpdateContent, onPickImage, onRegiste
   if (block.type === 'social') {
     const items = Array.isArray(content.items) ? content.items as Array<{ platform?: string; href?: string; label?: string }> : []
     const display = ['icon', 'text', 'both'].includes(String(content.display)) ? String(content.display) : 'icon'
-    const shape = ['circle', 'rounded', 'square'].includes(String(content.icon_shape)) ? String(content.icon_shape) : 'circle'
+    const shape = ['circle', 'rounded', 'square', 'none'].includes(String(content.icon_shape)) ? String(content.icon_shape) : 'circle'
     const iconSize = Math.max(12, Number(content.icon_size || 24))
     const itemSpacing = Math.max(0, Number(content.item_spacing ?? 8))
     const overrideColor = block.style.color
+    const glyphColor = /^#[0-9a-fA-F]{6}$/.test(String(content.icon_color || '')) ? String(content.icon_color) : undefined
     return (
       <div
         className="eb-channel-list"
@@ -738,7 +739,7 @@ function BlockContent({ block, settings, onUpdateContent, onPickImage, onRegiste
             const meta = socialPlatform(item.platform)
             const label = String(item.label || meta.label)
             return <span className="eb-channel-entry" key={`${item.platform}-${item.href}-${index}`} title={label}>
-              {display !== 'text' && <SocialIcon platform={item.platform} size={iconSize} color={overrideColor} shape={shape} />}
+              {display !== 'text' && <SocialIcon platform={item.platform} size={iconSize} color={overrideColor} glyphColor={glyphColor} shape={shape} />}
               {display !== 'icon' && <span className="eb-channel-label">{label}</span>}
             </span>
           })
