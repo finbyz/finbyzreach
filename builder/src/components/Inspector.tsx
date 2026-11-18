@@ -672,7 +672,7 @@ function BlockContent({ block, props }: { block: BuilderBlock; props: InspectorP
           </span>
         </div>
         <div className="eb-channel-editor__fields">
-          <Field label="Network"><SelectInput value={item.platform} onChange={(platform) => changeItem(index, { platform, label: !item.label || item.label === item.platform ? platform : item.label })} options={['Facebook', 'Instagram', 'LinkedIn', 'YouTube', 'X', 'TikTok', 'WhatsApp', 'Website'].map((name) => [name, name])} /></Field>
+          <Field label="Network"><SelectInput value={item.platform} onChange={(platform) => changeItem(index, { platform, label: !item.label || item.label === item.platform ? platform : item.label })} options={['LinkedIn', 'Instagram', 'Facebook', 'YouTube', 'X', 'TikTok', 'XING', 'Pinterest', 'WhatsApp', 'Website'].map((name) => [name, name])} /></Field>
           {(display === 'text' || display === 'both') && <Field label="Label"><TextInput value={item.label || item.platform} onChange={(label) => changeItem(index, { label })} /></Field>}
           <Field label="Profile URL"><TextInput value={item.href} onChange={(href) => changeItem(index, { href })} placeholder="https://" /></Field>
         </div>

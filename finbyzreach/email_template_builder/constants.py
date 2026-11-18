@@ -39,7 +39,7 @@ FONT_WEIGHTS = {"normal", "bold", "400", "500", "600", "700"}
 FONT_STYLES = {"normal", "italic"}
 TEXT_DECORATIONS = {"none", "underline", "line-through"}
 BORDER_STYLES = {"solid", "dotted", "dashed"}
-SOCIAL_PLATFORMS = {"Facebook", "Instagram", "LinkedIn", "YouTube", "X", "TikTok", "WhatsApp", "Website"}
+SOCIAL_PLATFORMS = {"Facebook", "Instagram", "LinkedIn", "YouTube", "X", "TikTok", "XING", "Pinterest", "WhatsApp", "Website"}
 
 SAFE_URL_SCHEMES = ("http://", "https://", "mailto:", "tel:", "sms:", "/", "#")
 NODE_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")

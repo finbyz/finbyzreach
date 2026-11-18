@@ -373,7 +373,7 @@ class TestEmailTemplateBuilder(IntegrationTestCase):
 		self.assertIn("width:28px", social_html)
 		self.assertIn("background:#0891b2", social_html)
 		self.assertIn("LinkedIn", social_html)
-		self.assertIn("/assets/finbyzreach/email_builder/social/linkedin.svg", social_html)
+		self.assertIn("/assets/finbyzreach/email_builder/social/linkedin.png", social_html)
 		self.assertIn("<img", social_html)
 		self.assertNotIn("<svg", social_html)
 
