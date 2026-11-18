@@ -410,6 +410,7 @@ body.is-resizing-columns { cursor: col-resize !important; user-select: none; }
 .text-style-row legend { grid-column: 1 / -1; float: left; width: 100%; padding: 0; color: #46515d; font-size: 11px; font-weight: 700; }
 .text-style-row > * { min-width: 0; }
 .text-style-row input, .text-style-row select { width: 100%; min-width: 0; }
+.rich-text .merge-chip { display: inline-block; padding: 0 6px; border: 1px solid #c7d2fe; border-radius: 10px; background: #eef2ff; color: #3730a3; font-size: .85em; line-height: 1.5; white-space: nowrap; cursor: default; user-select: all; }
 .condition-badge { position: absolute; top: 3px; right: 3px; z-index: 7; padding: 3px 6px; border-radius: 4px; background: #6b4eff; color: #fff; font-family: Inter, sans-serif; font-size: 8px; font-weight: 600; line-height: 1; pointer-events: none; }
 .condition-badge--section { top: -17px; right: auto; left: 70px; }
 .node-toolbar__ai { color: #a7f3d0 !important; }

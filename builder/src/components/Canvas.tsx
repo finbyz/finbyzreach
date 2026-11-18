@@ -5,8 +5,8 @@ import { CSS } from '@dnd-kit/utilities'
 import { AlignCenter, AlignLeft, AlignRight, Bold, Bookmark, ChevronDown, ChevronUp, Copy, EyeOff, GripVertical, ImagePlus, Italic, Link, List, ListOrdered, Pencil, Plus, RemoveFormatting, Strikethrough, Superscript, Trash2, Underline } from 'lucide-react'
 
 import { BLOCKS, findBlock, LAYOUTS, nodeCss, normalizeColumnWidths, normalizeLength, typographyCss, visibilitySummary } from '../lib/builder'
-import { insertLineBreakAtSelection, insertTextAtSelection, runLegacyEditorCommand } from '../lib/editorDom'
-import { isValidMergeToken } from '../lib/tokens'
+import { insertLineBreakAtSelection, insertMergeChipAtSelection, runLegacyEditorCommand } from '../lib/editorDom'
+import { chipsToTokens, isValidMergeToken, mergeChipHtml, tokensToChips } from '../lib/tokens'
 import type { BuilderBlock, BuilderColumn, BuilderMetadata, BuilderSchema, BuilderSection, Selection, Viewport } from '../types'
 
 export type TextEditorController = {
@@ -71,7 +71,7 @@ function insertCompactLineBreak(event: KeyboardEvent<HTMLDivElement>) {
 function RichTextEditor({ block, onUpdate, onRegisterController, readOnly = false }: { block: BuilderBlock; onUpdate: CanvasProps['onUpdateContent']; onRegisterController: CanvasProps['onTextEditorController']; readOnly?: boolean }) {
   const editorRef = useRef<HTMLDivElement>(null)
   const savedSelection = useRef<TextSelectionBookmark | null>(null)
-  const externalHtml = useMemo(() => safeRichHtml(block.content.html), [block.content.html])
+  const externalHtml = useMemo(() => tokensToChips(safeRichHtml(block.content.html)), [block.content.html])
 
   useLayoutEffect(() => {
     const editor = editorRef.current
@@ -108,8 +108,9 @@ function RichTextEditor({ block, onUpdate, onRegisterController, readOnly = fals
   const commit = useCallback(() => {
     const editor = editorRef.current
     if (!editor) return
-    const value = safeRichHtml(editor.innerHTML)
-    if (editor.innerHTML !== value) editor.innerHTML = value
+    const value = safeRichHtml(chipsToTokens(editor.innerHTML))
+    const display = tokensToChips(value)
+    if (editor.innerHTML !== display) editor.innerHTML = display
     if (value !== String(block.content.html || '')) onUpdate(block.id, 'html', value)
   }, [block.content.html, block.id, onUpdate])
 
@@ -119,7 +120,7 @@ function RichTextEditor({ block, onUpdate, onRegisterController, readOnly = fals
     if (!editor) return false
     editor.focus({ preventScroll: true })
     restoreSelection(editor)
-    if (!insertTextAtSelection(token)) return false
+    if (!insertMergeChipAtSelection(mergeChipHtml(token))) return false
     captureSelection()
     commit()
     return true

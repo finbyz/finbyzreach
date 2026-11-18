@@ -31,6 +31,40 @@ export function buildMergeToken(fieldname: string, fallback = '') {
     : `{{ ${safeFieldname} }}`
 }
 
+const ZERO_WIDTH_SPACE = '​'
+const escapeAttribute = (value: string) => value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+const unescapeAttribute = (value: string) => value.replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
+const escapeText = (value: string) => value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+const MERGE_CHIP_RE = /<span\b[^>]*\bdata-token="([^"]*)"[^>]*>[\s\S]*?<\/span>/gi
+
+/** EM-04: the readable name shown on a merge-field chip, for example "Lead name" for {{ lead_name }}. */
+export function mergeChipLabel(token: string) {
+  const match = VALID_TOKEN_FULL_RE.exec(String(token || ''))
+  if (!match) return String(token || '')
+  const words = (name: string) => name.replace(/_/g, ' ').trim()
+  const [root, child] = match[1].split('.')
+  const label = child ? `${words(root)} · ${words(child)}` : words(root)
+  return label.charAt(0).toUpperCase() + label.slice(1)
+}
+
+export function mergeChipHtml(token: string) {
+  return `<span class="merge-chip" contenteditable="false" data-token="${escapeAttribute(token)}">${escapeText(mergeChipLabel(token))}</span>${ZERO_WIDTH_SPACE}`
+}
+
+/** Editing view: every valid merge field becomes one chip that is selected, moved and deleted as a whole. */
+export function tokensToChips(html: string) {
+  return String(html || '').split(/(<[^>]*>)/).map((part) => {
+    if (part.startsWith('<')) return part
+    VALID_TOKEN_RE.lastIndex = 0
+    return part.replace(VALID_TOKEN_RE, (token) => mergeChipHtml(token))
+  }).join('')
+}
+
+/** Saved view: chips go back to the plain {{ field }} text that the email is built from. */
+export function chipsToTokens(html: string) {
+  return String(html || '').replace(MERGE_CHIP_RE, (_match, token: string) => unescapeAttribute(token)).split(ZERO_WIDTH_SPACE).join('')
+}
+
 export function isValidMergeToken(value: string) {
   return VALID_TOKEN_FULL_RE.test(String(value || ''))
 }

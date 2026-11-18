@@ -23,6 +23,23 @@ export function insertTextAtSelection(text: string) {
   return true
 }
 
+/** EM-04: put a merge-field chip at the cursor. The chip is one unit, so Backspace removes it whole. */
+export function insertMergeChipAtSelection(chipHtml: string) {
+  const active = activeRange()
+  if (!active) return false
+  const holder = document.createElement('template')
+  holder.innerHTML = chipHtml
+  const nodes = Array.from(holder.content.childNodes)
+  if (!nodes.length) return false
+  active.range.deleteContents()
+  const fragment = document.createDocumentFragment()
+  nodes.forEach((node) => fragment.appendChild(node))
+  const last = fragment.lastChild as Node
+  active.range.insertNode(fragment)
+  collapseAfter(active.selection, active.range, last)
+  return true
+}
+
 export function insertLineBreakAtSelection() {
   const active = activeRange()
   if (!active) return false

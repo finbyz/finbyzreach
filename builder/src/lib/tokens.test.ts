@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { buildMergeToken, collectDynamicFields, getDynamicFieldValidation, isValidMergeToken, validateMergeTokenSyntax } from './tokens.ts'
+import { buildMergeToken, chipsToTokens, collectDynamicFields, getDynamicFieldValidation, isValidMergeToken, mergeChipLabel, tokensToChips, validateMergeTokenSyntax } from './tokens.ts'
 import type { BuilderDocument, MergeField } from '../types.ts'
 
 function documentWith(html: string, validateDynamicFields = true): BuilderDocument {
@@ -117,4 +117,31 @@ test('getDynamicFieldValidation requires reference doctype only when field valid
   document.metadata.validate_dynamic_fields = false
   const genericResult = getDynamicFieldValidation(document, [], false, null)
   assert.equal(genericResult.issues.length, 0)
+})
+
+test('merge fields become single chips in the editor and plain tokens again when saved', () => {
+  const saved = '<p>Hello {{ first_name }}, from {{ owner.full_name }} and {{ city|default("your city", true) }}!</p>'
+  const editing = tokensToChips(saved)
+  assert.equal((editing.match(/class="merge-chip"/g) || []).length, 3)
+  assert.ok(editing.includes('contenteditable="false"'))
+  assert.ok(editing.includes('>First name</span>'))
+  assert.ok(editing.includes('>Owner · full name</span>'))
+  assert.ok(editing.includes('data-token="{{ city|default(&quot;your city&quot;, true) }}"'))
+  assert.equal(chipsToTokens(editing), saved)
+})
+
+test('chips are only made in text, never inside tag attributes, and the conversion can be repeated', () => {
+  const html = '<a href="https://x.ch/?n={{ first_name }}">{{ first_name }}</a><p>{{ not valid! }} and {% if x %}</p>'
+  const once = tokensToChips(html)
+  assert.equal((once.match(/class="merge-chip"/g) || []).length, 1)
+  assert.ok(once.includes('href="https://x.ch/?n={{ first_name }}"'))
+  assert.ok(once.includes('{{ not valid! }}'))
+  assert.equal(tokensToChips(once), once)
+  assert.equal(chipsToTokens(once), html)
+})
+
+test('mergeChipLabel makes a readable name and leaves unknown text alone', () => {
+  assert.equal(mergeChipLabel('{{ lead_name }}'), 'Lead name')
+  assert.equal(mergeChipLabel('{{ latest_sales_order.grand_total }}'), 'Latest sales order · grand total')
+  assert.equal(mergeChipLabel('plain'), 'plain')
 })
