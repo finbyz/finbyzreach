@@ -17,6 +17,7 @@ import {
   normalizeColumnWidths,
   normalizeLength,
   rebalanceColumnWidths,
+  buttonActionIssue,
   markCustomisedSharedSections,
   resizeSection,
   sharedSectionState,
@@ -421,4 +422,24 @@ test('resetting a customised shared row does not mark it customised again', () =
   reset.sections[0].columns[0].blocks.push(block('shared-content'))
   assert.deepEqual(markCustomisedSharedSections(before, reset), [])
   assert.equal(reset.sections[0].component_customised, false)
+})
+
+test('button action values are checked for every action type', () => {
+  assert.equal(buttonActionIssue('url', 'https://megasol.ch/offer'), '')
+  assert.equal(buttonActionIssue('url', 'megasol.ch'), '')
+  assert.match(buttonActionIssue('url', 'javascript:alert(1)'), /web address/)
+  assert.equal(buttonActionIssue('email', 'info@megasol.ch'), '')
+  assert.equal(buttonActionIssue('email', 'mailto:info@megasol.ch?subject=Hi'), '')
+  assert.match(buttonActionIssue('email', 'not an email'), /email address/)
+  assert.equal(buttonActionIssue('telephone', '+41 44 123 45 67'), '')
+  assert.match(buttonActionIssue('telephone', 'abc'), /phone number/)
+  assert.equal(buttonActionIssue('sms', '+41791234567'), '')
+  assert.equal(buttonActionIssue('sms', 'sms:+41791234567?body=Hello%20there'), '')
+  assert.match(buttonActionIssue('sms', 'abc'), /mobile number/)
+  assert.match(buttonActionIssue('sms', 'sms:abc'), /mobile number/)
+  assert.equal(buttonActionIssue('file', '/files/brochure.pdf'), '')
+  assert.match(buttonActionIssue('file', '/private/files/brochure.pdf'), /public file/)
+  assert.match(buttonActionIssue('file', 'brochure.pdf'), /public file address/)
+  assert.equal(buttonActionIssue('sms', '{{ mobile_no }}'), '', 'a merge field is checked when the email is sent')
+  assert.equal(buttonActionIssue('sms', ''), '')
 })

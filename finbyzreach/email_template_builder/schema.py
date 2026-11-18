@@ -309,10 +309,14 @@ def _validate_block(block):
 		href = str(content.get("href") or "").strip()
 		if action == "email" and href and ("{{" in href or "@" in href) and not href.startswith("mailto:"):
 			href = f"mailto:{href}"
-		elif action == "telephone" and href and ("{{" in href or re.fullmatch(r"[+0-9(). -]{3,40}", href)) and not href.startswith("tel:"):
-			href = f"tel:{href}"
-		elif action == "sms" and href and ("{{" in href or re.fullmatch(r"[+0-9(). -]{3,40}", href)) and not href.startswith("sms:"):
-			href = f"sms:{href}"
+		elif action == "telephone" and href:
+			number = href[4:] if href.lower().startswith("tel:") else href
+			href = f"tel:{number}" if "{{" in number or re.fullmatch(r"\+?[0-9(). -]{3,40}", number) else "#"
+		elif action == "sms" and href:
+			# EM-06: an SMS link must have a real number. "?body=text" pre-fills the message.
+			number = href[4:] if href.lower().startswith("sms:") else href
+			valid = "{{" in number or re.fullmatch(r"\+?[0-9(). -]{3,40}(?:[?&]body=[^\s{}<>\"']{0,300})?", number)
+			href = f"sms:{number}" if valid else "#"
 		out["href"] = _url(href, allow_full_token=True)
 		if action == "file" and _is_private_url(out["href"]):
 			frappe.throw(_("Email file buttons must use public files"))

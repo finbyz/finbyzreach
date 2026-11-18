@@ -3,7 +3,7 @@ import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type Chang
 
 import { useFrappeGetCall, useFrappePostCall } from 'frappe-react-sdk'
 
-import { BLOCKS, findSelected, LAYOUTS, normalizeColumnWidths, rebalanceColumnWidths, sharedSectionState, TEXT_STYLES } from '../lib/builder'
+import { BLOCKS, BUTTON_ACTION_PLACEHOLDERS, buttonActionIssue, findSelected, LAYOUTS, normalizeColumnWidths, rebalanceColumnWidths, sharedSectionState, TEXT_STYLES } from '../lib/builder'
 import { API_METHODS, makeCallKey } from '../lib/api'
 import { conditionFieldOptions, conditionNeedsValue, conditionOperatorOptions, defaultConditionOperator, defaultConditionValue, isCheckField, isMultiSelectField, isSelectField, normalizeConditionForField } from '../lib/conditionFields'
 import { getErrorMessage } from '../lib/errors'
@@ -659,7 +659,8 @@ function BlockContent({ block, props }: { block: BuilderBlock; props: InspectorP
   if (block.type === 'button') return <Group title="Button action">
     <PersonalizedTextField label="Button text" value={content.text} onChange={(value) => update('text', value)} props={props} />
     <Field label="Action type"><SelectInput value={content.action || 'url'} onChange={(value) => update('action', value)} options={[['url', 'URL'], ['email', 'Email'], ['file', 'Public file'], ['telephone', 'Telephone'], ['sms', 'SMS']]} /></Field>
-    <PersonalizedTextField label="Action value" value={content.href} onChange={(value) => update('href', value)} props={props} placeholder="https://example.com" />
+    <PersonalizedTextField label="Action value" value={content.href} onChange={(value) => update('href', value)} props={props} placeholder={BUTTON_ACTION_PLACEHOLDERS[String(content.action || 'url')] || 'https://example.com'} />
+    {buttonActionIssue(String(content.action || 'url'), content.href) && <p className="field-error" role="alert" data-testid="button-action-issue">{buttonActionIssue(String(content.action || 'url'), content.href)} Until it is fixed, the button does nothing.</p>}
     <Toggle label="Full-width button" checked={Boolean(content.full_width)} onChange={(value) => update('full_width', value)} />
   </Group>
   if (block.type === 'divider') return <Group title="Divider"><Field label="Line style"><SelectInput value={content.style || 'solid'} onChange={(value) => update('style', value)} options={[['solid', 'Solid'], ['dotted', 'Dotted'], ['dashed', 'Dashed']]} /></Field><Field label="Thickness"><NumberInput value={content.thickness || 1} min={1} max={20} suffix="px" onChange={(value) => update('thickness', value)} /></Field></Group>

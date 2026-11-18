@@ -192,6 +192,32 @@ export function typographyCss(settings: Record<string, unknown>, scope = '.canva
   return rules.join('\n')
 }
 
+/** EM-06: what is wrong with the value of a button action, or '' when it is fine. Mirrors the checks made when the email is saved. */
+export function buttonActionIssue(action: string, value: unknown) {
+  const text = String(value ?? '').trim()
+  if (!text || text.includes('{{')) return ''
+  switch (action) {
+    case 'email':
+      return /^(?:mailto:)?[^\s@]+@[^\s@]+\.[^\s@]+(?:\?.*)?$/i.test(text) ? '' : 'Enter an email address like name@company.ch.'
+    case 'telephone':
+      return /^(?:tel:)?\+?[0-9(). -]{3,40}$/i.test(text) ? '' : 'Enter a phone number like +41 44 123 45 67.'
+    case 'sms':
+      return /^(?:sms:)?\+?[0-9(). -]{3,40}(?:[?&]body=[^\s{}<>"']{0,300})?$/i.test(text) ? '' : 'Enter a mobile number like +41 79 123 45 67. Add ?body=Your text to fill in the message.'
+    case 'file':
+      return /^\/private\//.test(text) || /\/private\/files\//.test(text) ? 'Choose a public file. Private files cannot be opened by recipients.' : /^(?:\/files\/|https?:\/\/)/i.test(text) ? '' : 'Use a public file address that starts with /files/ or https://.'
+    default:
+      return /^https?:\/\//i.test(text) || /^[\w-]+(?:\.[\w-]+)+(?:[/?#].*)?$/.test(text) ? '' : 'Enter a web address like https://megasol.ch.'
+  }
+}
+
+export const BUTTON_ACTION_PLACEHOLDERS: Record<string, string> = {
+  url: 'https://example.com',
+  email: 'name@company.ch',
+  file: '/files/brochure.pdf',
+  telephone: '+41 44 123 45 67',
+  sms: '+41 79 123 45 67',
+}
+
 export const SHARED_CATEGORIES = ['Header', 'Footer']
 
 /** Header and footer: is this row linked to a shared saved Header or Footer block? */
