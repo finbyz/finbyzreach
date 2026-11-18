@@ -45,3 +45,11 @@ class StudioTestSendTest(TestCase):
 		self.assertEqual(sent["recipients"], ["ok@example.com"])
 		self.assertEqual(result["recipients"], ["ok@example.com"])
 		self.assertEqual(result["blocked"], [{"email": "bounced@example.com", "reason": "Hard bounce"}])
+
+
+class StudioTimezoneTest(TestCase):
+	def test_studio_times_are_europe_zurich_unless_site_config_overrides(self):
+		with patch.object(frappe, "conf", frappe._dict()):
+			self.assertEqual(studio._studio_timezone().key, "Europe/Zurich")
+		with patch.object(frappe, "conf", frappe._dict(marketing_timezone="Europe/Berlin")):
+			self.assertEqual(studio._studio_timezone().key, "Europe/Berlin")

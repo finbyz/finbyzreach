@@ -1,6 +1,7 @@
 """Rule 4.5 / EM-24: daily sending windows, including windows across midnight."""
 from datetime import datetime, time
 from unittest import TestCase
+from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 import frappe
@@ -40,3 +41,21 @@ class SendingWindowTest(TestCase):
 		c = campaign("22:00:00", "06:00:00")
 		slot = em._next_valid_slot(datetime(2026, 11, 19, 2, 30, tzinfo=ZURICH), c, ZURICH)
 		self.assertEqual((slot.day, slot.hour, slot.minute), (19, 2, 30))
+
+
+class DefaultWindowSettingTest(TestCase):
+	def _window(self, values):
+		with patch.object(frappe.db, "get_single_value", side_effect=lambda doctype, field: values.get(field)):
+			return em.default_sending_window()
+
+	def test_unsaved_settings_fall_back_to_office_hours_off(self):
+		window = self._window({})
+		self.assertEqual((window["enabled"], window["start"], window["end"], window["weekdays"]), (0, "08:00:00", "17:00:00", [0, 1, 2, 3, 4]))
+		self.assertEqual(window["timezone"], "Europe/Zurich")
+
+	def test_saved_settings_are_used_including_an_overnight_window(self):
+		values = {"default_window_enabled": 1, "default_window_start": "22:00:00", "default_window_end": "06:00:00",
+			**{f"default_send_{d}": 1 for d in ("monday", "tuesday", "wednesday", "thursday", "friday")},
+			"default_send_saturday": 0, "default_send_sunday": 0}
+		window = self._window(values)
+		self.assertEqual((window["enabled"], window["start"], window["end"], window["weekdays"]), (1, "22:00:00", "06:00:00", [0, 1, 2, 3, 4]))

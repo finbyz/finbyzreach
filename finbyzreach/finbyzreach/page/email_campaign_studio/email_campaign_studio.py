@@ -56,9 +56,16 @@ def _time_string(value):
 	return str(value)
 
 
+MARKETING_TIMEZONE = "Europe/Zurich"
+
+
 def _studio_timezone():
-	"""Use the same user timezone that Frappe uses for Datetime controls."""
-	name = frappe.get_cached_value("User", frappe.session.user, "time_zone") or get_system_timezone()
+	"""Every Studio time is Europe/Zurich (EM-23); site_config `marketing_timezone` overrides it.
+
+	Using each user's own zone meant the same "09:00" meant different moments for
+	different users, and the page never said which zone it used.
+	"""
+	name = frappe.conf.get("marketing_timezone") or MARKETING_TIMEZONE
 	try:
 		return ZoneInfo(name)
 	except ZoneInfoNotFoundError:
@@ -724,6 +731,8 @@ def get_bootstrap(campaign_name=None):
 		],
 		"default_email_account": accounts[0].name if accounts else "",
 		"default_test_recipient": frappe.session.user if "@" in frappe.session.user else "",
+		"timezone": _studio_timezone().key,
+		"default_window": email_marketing.default_sending_window(),
 		"campaign": _campaign_for_studio(campaign_name),
 	}
 

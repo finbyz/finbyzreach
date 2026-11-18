@@ -277,8 +277,11 @@ class EmailCampaignStudio {
 			{ fieldname: "reply_to", label: __("Reply-To"), fieldtype: "Data", options: "Email", description: __("Optional address that receives replies instead of the sending mailbox."), change },
 		]);
 		this.scheduleForm = this.makeForm("#ecs-schedule-form", [
+			// EM-22: send now starts at the current moment; EM-23: the time zone is always shown.
+			{ fieldname: "send_now", label: __("Send now"), fieldtype: "Check", default: 0, description: __("Start right away. Uncheck to pick a date and time."),
+				change: () => { if (!this.applyingBootstrap) this.applySendNow(); change(); } },
 			{ fieldname: "start_date", label: __("Start Date"), fieldtype: "Date", reqd: 1, description: __("The first date on which this campaign may begin sending."), change },
-			{ fieldname: "start_time", label: __("Start Time"), fieldtype: "Time", reqd: 1, description: __("The time when the first eligible batch becomes due."), change },
+			{ fieldname: "start_time", label: __("Start Time"), fieldtype: "Time", reqd: 1, description: __("The time when the first eligible batch becomes due. Time zone: {0}.", [this.timezone || "Europe/Zurich"]), change },
 			{ fieldtype: "Column Break" },
 			{ fieldname: "batch_size", label: __("Emails per Batch"), fieldtype: "Int", default: 100, reqd: 1, description: __("Recipients assigned to each scheduled batch. No Studio maximum is enforced."), change },
 			{ fieldtype: "Column Break" },
@@ -1094,6 +1097,9 @@ class EmailCampaignStudio {
 			this.emailGroupOptions = data.email_groups || [];
 			this.senderForm.get_field("email_account").set_data(data.email_accounts || []);
 			this.defaultTestRecipient = data.default_test_recipient || "";
+			this.timezone = data.timezone || "Europe/Zurich";
+			this.defaultWindow = data.default_window || null;
+			this.scheduleForm?.set_df_property("start_time", "description", __("The time when the first eligible batch becomes due. Time zone: {0}.", [this.timezone]));
 			const apply = this.waitForPreviousBootstrap(previousApply).then(() => {
 				return this.filtersReady || Promise.resolve();
 			}).then(() => {
@@ -1193,16 +1199,8 @@ class EmailCampaignStudio {
 				batch_size: 100,
 				repeat_every: 1,
 				repeat_unit: "Hours",
-				send_monday: 1,
-				send_tuesday: 1,
-				send_wednesday: 1,
-				send_thursday: 1,
-				send_friday: 1,
-				send_saturday: 0,
-				send_sunday: 0,
-				restrict_sending_window: 0,
-				window_start: "",
-				window_end: "",
+				// The one default window from the settings (rule 4.5); it can still be changed per email.
+				...this.defaultWindowValues(data.default_window),
 			}));
 			await this.runBootstrapStep(__("Loading tracking settings"), () => this.setBootstrapFormValues(this.trackingForm, {
 				enable_open_tracking: 1,
@@ -1450,6 +1448,32 @@ class EmailCampaignStudio {
 		this.setupOptionToggles();
 		this.updateFilterCount();
 		this.updateSummary();
+	}
+
+	// "Send now": start at the current Europe/Zurich time, one minute ahead so the job can pick it up.
+	defaultWindowValues(window) {
+		const days = (window && window.weekdays) || [0, 1, 2, 3, 4];
+		const names = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
+		const values = {};
+		names.forEach((name, index) => { values["send_" + name] = days.includes(index) ? 1 : 0; });
+		values.restrict_sending_window = window && window.enabled ? 1 : 0;
+		values.window_start = window && window.enabled ? window.start : "";
+		values.window_end = window && window.enabled ? window.end : "";
+		return values;
+	}
+
+	sendNowStamp() {
+		return new Date(Date.now() + 60000).toLocaleString("sv-SE", { timeZone: this.timezone || "Europe/Zurich", hour12: false });
+	}
+
+	applySendNow() {
+		const form = this.scheduleForm;
+		const sendNow = Boolean(Number(form.get_value("send_now")));
+		["start_date", "start_time"].forEach((name) => form.set_df_property(name, "read_only", sendNow ? 1 : 0));
+		if (!sendNow) return;
+		const [date, time] = this.sendNowStamp().split(" ");
+		form.set_value("start_date", date);
+		form.set_value("start_time", time);
 	}
 
 	segmentListField(fieldname, label, description) {
@@ -1925,6 +1949,13 @@ class EmailCampaignStudio {
 		const schedule = this.formValues(this.scheduleForm, requireReady);
 		const tracking = this.formValues(this.trackingForm, requireReady);
 		if (!content || !sender || !schedule || !tracking) return null;
+		if (Number(schedule.send_now)) {
+			// "Send now" means now at launch, not the moment the box was ticked.
+			const [date, time] = this.sendNowStamp().split(" ");
+			schedule.start_date = date;
+			schedule.start_time = time;
+		}
+		delete schedule.send_now;
 		if (requireTitle && !String(content.campaign_title || "").trim()) {
 			frappe.msgprint(__("Give the draft a Campaign Title before saving."));
 			return null;

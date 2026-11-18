@@ -231,6 +231,37 @@ def _is_email_broadcast(campaign):
 	return _is_email_broadcast(name)
 
 
+SETTINGS_DOCTYPE = "Subscription Center Settings"
+WINDOW_DAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
+
+
+def default_sending_window():
+	"""The one default sending window (rule 4.5): used by new emails and, as a starting point, workflows.
+
+	Settings that were never saved read as empty, so each value has a fallback:
+	off, 08:00-17:00, Monday to Friday. An end before the start is an overnight window.
+	"""
+	def value(fieldname):
+		try:
+			return frappe.db.get_single_value(SETTINGS_DOCTYPE, fieldname)
+		except Exception:
+			return None
+
+	def clock(raw, fallback):
+		text = str(raw or fallback)
+		return text if text.count(":") == 2 else text + ":00"
+
+	saved = any(value(f"default_send_{day}") is not None for day in WINDOW_DAYS)
+	weekdays = [i for i, day in enumerate(WINDOW_DAYS) if cint(value(f"default_send_{day}"))] if saved else [0, 1, 2, 3, 4]
+	return {
+		"enabled": cint(value("default_window_enabled")),
+		"start": clock(value("default_window_start"), "08:00:00"),
+		"end": clock(value("default_window_end"), "17:00:00"),
+		"weekdays": weekdays or [0, 1, 2, 3, 4],
+		"timezone": "Europe/Zurich",
+	}
+
+
 def _system_zone():
 	timezone_name = get_system_timezone() or "UTC"
 	try:
@@ -1054,6 +1085,9 @@ def validate_schedule_preflight(campaign, eligible_count=None):
 	personalization_doctype = campaign.get("custom_personalization_doctype") or audience_doctype
 	if snapshot.reference_doctype and snapshot.reference_doctype != personalization_doctype:
 		frappe.throw(_("Campaign templates must use {0} personalization").format(personalization_doctype))
+	from finbyzreach.consent import UNSUBSCRIBE_MISSING, email_has_unsubscribe
+	if campaign.custom_subscription_topic != "Transactional" and not email_has_unsubscribe(snapshot.html):
+		frappe.throw(_(UNSUBSCRIBE_MISSING), title=_("Unsubscribe link missing"))
 	return snapshot
 
 
@@ -1085,9 +1119,6 @@ def resume_campaign(campaign_name):
 	if frappe.db.table_exists(STAGING) and frappe.db.count(STAGING, {"campaign": campaign.name}):
 		campaign.db_set("custom_broadcast_status", "Preparing Audience")
 		frappe.enqueue("finbyzreach.email_marketing.schedule_campaign", campaign_name=campaign.name,
-	from finbyzreach.consent import UNSUBSCRIBE_MISSING, email_has_unsubscribe
-	if campaign.custom_subscription_topic != "Transactional" and not email_has_unsubscribe(snapshot.html):
-		frappe.throw(_(UNSUBSCRIBE_MISSING), title=_("Unsubscribe link missing"))
 			queue="long", enqueue_after_commit=True)
 		return {"message": _("Audience preparation resumed")}
 	planned = frappe.get_all(

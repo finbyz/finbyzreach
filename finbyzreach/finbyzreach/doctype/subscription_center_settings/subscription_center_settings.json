@@ -9,7 +9,19 @@
   "design_section",
   "draft_config_json",
   "published_config_json",
-  "published_on"
+  "published_on",
+  "sending_window_section",
+  "default_window_enabled",
+  "default_window_start",
+  "default_window_end",
+  "default_days_column",
+  "default_send_monday",
+  "default_send_tuesday",
+  "default_send_wednesday",
+  "default_send_thursday",
+  "default_send_friday",
+  "default_send_saturday",
+  "default_send_sunday"
  ],
  "fields": [
   {
@@ -29,7 +41,7 @@
    "fieldtype": "Section Break",
    "label": "Preference center design",
    "collapsible": 1,
-   "description": "Edited in Megasol Marketing \u2192 Subscriptions & consent \u2192 Preference center."
+   "description": "Edited in Megasol Marketing → Subscriptions & consent → Preference center."
   },
   {
    "fieldname": "draft_config_json",
@@ -52,6 +64,85 @@
    "fieldtype": "Datetime",
    "label": "Published on",
    "read_only": 1
+  },
+  {
+   "fieldname": "sending_window_section",
+   "fieldtype": "Section Break",
+   "label": "Default sending window",
+   "description": "Used for new emails and as the starting point for workflows. Times are Europe/Zurich. An end time before the start time means overnight, e.g. 22:00 to 06:00."
+  },
+  {
+   "fieldname": "default_window_enabled",
+   "fieldtype": "Check",
+   "label": "Restrict sending to a daily window",
+   "default": "0"
+  },
+  {
+   "fieldname": "default_window_start",
+   "fieldtype": "Time",
+   "label": "Window starts",
+   "default": "08:00:00",
+   "depends_on": "default_window_enabled"
+  },
+  {
+   "fieldname": "default_window_end",
+   "fieldtype": "Time",
+   "label": "Window ends",
+   "default": "17:00:00",
+   "depends_on": "default_window_enabled"
+  },
+  {
+   "fieldname": "default_days_column",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "default_send_monday",
+   "fieldtype": "Check",
+   "label": "Monday",
+   "default": "1",
+   "depends_on": "default_window_enabled"
+  },
+  {
+   "fieldname": "default_send_tuesday",
+   "fieldtype": "Check",
+   "label": "Tuesday",
+   "default": "1",
+   "depends_on": "default_window_enabled"
+  },
+  {
+   "fieldname": "default_send_wednesday",
+   "fieldtype": "Check",
+   "label": "Wednesday",
+   "default": "1",
+   "depends_on": "default_window_enabled"
+  },
+  {
+   "fieldname": "default_send_thursday",
+   "fieldtype": "Check",
+   "label": "Thursday",
+   "default": "1",
+   "depends_on": "default_window_enabled"
+  },
+  {
+   "fieldname": "default_send_friday",
+   "fieldtype": "Check",
+   "label": "Friday",
+   "default": "1",
+   "depends_on": "default_window_enabled"
+  },
+  {
+   "fieldname": "default_send_saturday",
+   "fieldtype": "Check",
+   "label": "Saturday",
+   "default": "0",
+   "depends_on": "default_window_enabled"
+  },
+  {
+   "fieldname": "default_send_sunday",
+   "fieldtype": "Check",
+   "label": "Sunday",
+   "default": "0",
+   "depends_on": "default_window_enabled"
   }
  ],
  "permissions": [
@@ -66,5 +157,5 @@
    "write": 1
   }
  ],
- "modified": "2026-11-17 12:00:00.000000"
+ "modified": "2026-11-18 09:00:00.000000"
 }
