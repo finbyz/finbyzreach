@@ -217,10 +217,20 @@ def _ensure_public_subscriber_lead(email):
 	if frappe.db.exists("Lead", {"email_id": email}):
 		return
 	names = frappe.cache.get_value(NAME_CACHE + email) or {}
-	lead = {"doctype": "Lead", "email_id": email, "status": "Lead"}
+	lead = {"doctype": "Lead", "email_id": email, "status": "Lead", "utm_source": _newsletter_signup_source()}
 	lead.update({key: value for key, value in names.items() if key in ("first_name", "last_name") and value})
 	frappe.get_doc(lead).insert(ignore_permissions=True)
 	frappe.cache.delete_value(NAME_CACHE + email)
+
+
+NEWSLETTER_SIGNUP_SOURCE = "Newsletter Sign-up"
+
+
+def _newsletter_signup_source():
+	"""UTM source for Leads from /subscribe, so sales automation can leave them out."""
+	if not frappe.db.exists("UTM Source", NEWSLETTER_SIGNUP_SOURCE):
+		frappe.get_doc({"doctype": "UTM Source", "name": NEWSLETTER_SIGNUP_SOURCE}).insert(ignore_permissions=True)
+	return NEWSLETTER_SIGNUP_SOURCE
 
 
 def confirm(preference, token):

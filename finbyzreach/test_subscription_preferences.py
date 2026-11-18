@@ -153,15 +153,17 @@ class TestSubscriptionPreferences(unittest.TestCase):
 		self.assertNotIn("addEventListener('load'", html)
 		self.assertIn("button.addEventListener('click', confirmNow)", html)
 
+	@patch.object(preferences, "_newsletter_signup_source", return_value="Newsletter Sign-up")
 	@patch.object(preferences.frappe, "get_doc")
 	@patch.object(preferences.frappe, "db", new=MagicMock())
-	def test_public_subscriber_lead_is_created_only_when_missing(self, get_doc):
+	def test_public_subscriber_lead_is_created_only_when_missing(self, get_doc, source):
 		db = preferences.frappe.db
 		db.exists.return_value = None
 		lead = MagicMock()
 		get_doc.return_value = lead
 		preferences._ensure_public_subscriber_lead("person@example.com")
-		get_doc.assert_called_once_with({"doctype": "Lead", "email_id": "person@example.com", "status": "Lead"})
+		# The UTM source keeps newsletter subscribers out of AI sales outreach.
+		get_doc.assert_called_once_with({"doctype": "Lead", "email_id": "person@example.com", "status": "Lead", "utm_source": "Newsletter Sign-up"})
 		lead.insert.assert_called_once_with(ignore_permissions=True)
 		db.exists.return_value = "CRM-LEAD-1"
 		preferences._ensure_public_subscriber_lead("person@example.com")
