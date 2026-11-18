@@ -1148,6 +1148,8 @@ def validate_schedule_preflight(campaign, eligible_count=None):
 	if campaign.custom_subscription_topic != "Transactional" and not email_has_unsubscribe(snapshot.html):
 		frappe.throw(_(UNSUBSCRIBE_MISSING), title=_("Unsubscribe link missing"))
 	check_attachment_limit(campaign_attachment_files(campaign.name))
+	from finbyzreach import ab_test
+	ab_test.validate(campaign)
 	return snapshot
 
 
@@ -1181,12 +1183,13 @@ def resume_campaign(campaign_name):
 		frappe.enqueue("finbyzreach.email_marketing.schedule_campaign", campaign_name=campaign.name,
 			queue="long", enqueue_after_commit=True)
 		return {"message": _("Audience preparation resumed")}
+	planned_filters = {"campaign_name": campaign.name, "custom_delivery_status": "Planned"}
+	if campaign.get("custom_ab_status") == "Testing":
+		# EM-30: the rest of the audience keeps waiting for the winner.
+		planned_filters["custom_ab_phase"] = ["!=", "Rest"]
 	planned = frappe.get_all(
 		"Email Campaign",
-		filters={
-			"campaign_name": campaign.name,
-			"custom_delivery_status": "Planned",
-		},
+		filters=planned_filters,
 		fields=["name"],
 		order_by="custom_batch_number asc, name asc",
 		limit=0,
@@ -1443,9 +1446,11 @@ def _dispatch_recipient(recipient, campaign):
 	from finbyzreach.consent import FOOTER_LABELS
 	from finbyzreach.subscription_preferences import email_language
 	footer_labels = FOOTER_LABELS.get(email_language(campaign.name)) or (_("Unsubscribe"), _("Email preference center"))
+	from finbyzreach.ab_test import variant_content
+	snapshot_subject, snapshot_html = variant_content(campaign, recipient)
 	rendered = render_campaign_snapshot(
-		campaign.custom_snapshot_subject,
-		campaign.custom_snapshot_html,
+		snapshot_subject,
+		snapshot_html,
 		template_doc,
 		extra_context={"email_preview_url": preview_url, "customer": party if audience_doctype == "Customer" else None, "contact": contact, **compliance_urls},
 	)

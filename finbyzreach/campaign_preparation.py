@@ -22,12 +22,31 @@ def stage(campaign):
     if not eligible_count:
         frappe.throw(_('No eligible recipients remain after exclusions'))
     batches = mail.calculate_delivery_batches(campaign, eligible_count)
+    from finbyzreach import ab_test
+    ab = ab_test.enabled(campaign)
+    ab_values = {}
+    if ab:
+        # EM-30: the test group is sent first, the rest waits for the winner.
+        ordered = ab_test.plan(campaign.name, [row for row in resolved if row.eligible], campaign.custom_ab_share)
+        test_count = sum(1 for _row, _variant, phase in ordered if phase == 'Test')
+        ab_snapshot = mail.get_campaign_snapshot(
+            campaign.custom_ab_template_b or campaign.custom_email_template,
+            campaign.custom_ab_subject_b or campaign.custom_subject_override)
+        ab_values = {
+            'custom_ab_status': 'Testing',
+            'custom_ab_ends_at': ab_test.test_end(batches, test_count, campaign.custom_ab_hours),
+            'custom_ab_snapshot_subject': ab_snapshot.subject, 'custom_ab_snapshot_html': ab_snapshot.html,
+        }
 
     def candidates():
-        eligible = (row for row in resolved if row.eligible)
+        eligible = iter(ordered) if ab else ((row, '', '') for row in resolved if row.eligible)
         for batch in batches:
-            for row in islice(eligible, batch.size):
-                yield mail._recipient_values(campaign, row, batch.number, batch.scheduled_at)
+            for row, variant, phase in islice(eligible, batch.size):
+                held = ab_test.HOLD if phase == 'Rest' else batch.scheduled_at
+                values = mail._recipient_values(campaign, row, batch.number, held)
+                if ab:
+                    values.update(custom_ab_variant=variant, custom_ab_phase=phase)
+                yield values
         for row in resolved:
             if not row.eligible:
                 yield mail._recipient_values(campaign, row)
@@ -46,6 +65,7 @@ def stage(campaign):
         'custom_excluded_count': len(resolved)-eligible_count, 'custom_batch_count': len(batches),
         'custom_first_scheduled_at': batches[0].scheduled_at,
         'custom_last_scheduled_at': batches[-1].scheduled_at,
+        **ab_values,
     })
 
 

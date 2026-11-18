@@ -93,8 +93,8 @@ def get_context(context):
 			context.error_message = _("The email content for this campaign is no longer available.")
 			return context
 
-		subject = campaign.custom_snapshot_subject
-		html = campaign.custom_snapshot_html
+		from finbyzreach.ab_test import variant_content
+		subject, html = variant_content(campaign, recipient)
 		mode = campaign.custom_template_mode or "Standard"
 		preheader = campaign.get("custom_preheader_text") or ""
 		sender_name = campaign.get("custom_sender_name") or ""

@@ -636,6 +636,14 @@ def _campaign_for_studio(campaign_name):
 		"contact_mode": campaign.get("custom_contact_mode") or "Primary Contact",
 		"personalization_doctype": campaign.get("custom_personalization_doctype") or "Lead",
 		"subject_override": campaign.custom_subject_override,
+		"ab_enabled": cint(campaign.get("custom_ab_enabled")),
+		"ab_template_b": campaign.get("custom_ab_template_b") or "",
+		"ab_subject_b": campaign.get("custom_ab_subject_b") or "",
+		"ab_share": cint(campaign.get("custom_ab_share")) or 20,
+		"ab_hours": cint(campaign.get("custom_ab_hours")) or 24,
+		"ab_metric": campaign.get("custom_ab_metric") or "Opens",
+		"ab_status": campaign.get("custom_ab_status") or "",
+		"ab_winner": campaign.get("custom_ab_winner") or "",
 		"subscription_topic": campaign.custom_subscription_topic,
 		"content_topic": campaign.get("custom_content_topic") or "",
 		"email_account": campaign.custom_email_account,
@@ -935,6 +943,12 @@ def _campaign_values(payload, context, require_ready=True, preview=None):
 		"custom_broadcast_status": "Draft",
 		"custom_email_template": ready_value("email_template", _("Email Template")),
 		"custom_subject_override": str(payload.get("subject_override") or "").strip()[:140],
+		"custom_ab_enabled": 1 if cint(payload.get("ab_enabled")) else 0,
+		"custom_ab_template_b": str(payload.get("ab_template_b") or "").strip() or None,
+		"custom_ab_subject_b": str(payload.get("ab_subject_b") or "").strip()[:140],
+		"custom_ab_share": cint(_default_if_blank(payload.get("ab_share"), 20)),
+		"custom_ab_hours": cint(_default_if_blank(payload.get("ab_hours"), 24)),
+		"custom_ab_metric": payload.get("ab_metric") if payload.get("ab_metric") in ("Opens", "Clicks") else "Opens",
 		"custom_subscription_topic": ready_value("subscription_topic", _("Subscription Topic")),
 		"custom_content_topic": payload.get("content_topic"),
 		"custom_email_account": ready_value("email_account", _("Email Account")),
@@ -1208,6 +1222,21 @@ def send_test(payload=None, recipient=None, sample_lead=None, recipients=None):
 	)
 	return {"status": "queued", "email_queue": queue.name if queue else None, "recipients": allowed, "blocked": blocked}
 																														
+
+
+@frappe.whitelist(methods=["GET"])
+def ab_results(campaign_name):
+	"""Sent, opened and clicked counts of email A and B in the test group."""
+	campaign = frappe.get_doc("Campaign", campaign_name)
+	campaign.check_permission("read")
+	from finbyzreach import ab_test
+	return {
+		"status": campaign.get("custom_ab_status") or "",
+		"winner": campaign.get("custom_ab_winner") or "",
+		"metric": campaign.get("custom_ab_metric") or "Opens",
+		"ends_at": str(campaign.get("custom_ab_ends_at") or ""),
+		"variants": ab_test.results(campaign.name),
+	}
 
 
 @frappe.whitelist(methods=["POST"])

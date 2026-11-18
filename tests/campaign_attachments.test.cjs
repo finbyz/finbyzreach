@@ -48,3 +48,21 @@ test('a frozen campaign shows its attachments without add or remove buttons', ()
     instance.renderAttachments();
     assert.doesNotMatch(html(), /data-add-attachment|data-remove-attachment/);
 });
+
+test('the A/B test state says what is happening and a tie goes to A', () => {
+    const { instance, html } = studio();
+    let content = '';
+    const wrapper = { html(value) { content = value; return this; } };
+    instance.contentForm = { get_field: () => ({ $wrapper: wrapper }), get_value: () => 1 };
+    instance.abStatus = { status: '', winner: '' };
+    instance.renderAbState();
+    assert.match(content, /tie goes to email A/);
+    instance.abStatus = { status: 'Decided', winner: 'B', variants: { A: { sent: 10, opened: 2, clicked: 0 }, B: { sent: 10, opened: 6, clicked: 1 } } };
+    instance.renderAbState();
+    assert.match(content, /Email B won and was sent to the rest/);
+    assert.match(content, /Email B: 10 sent, 6 opened, 1 clicked/);
+    instance.abStatus = { status: 'Testing', winner: '' };
+    instance.renderAbState();
+    assert.match(content, /test is running/);
+    void html;
+});
