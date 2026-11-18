@@ -159,10 +159,13 @@ def request_subscription(email, topic, source="Preference center", language=None
 		frappe.throw(_("System email types are not subscription preferences"))
 	if is_subscribed(email, topic):
 		return "Subscribed"
-	if option.category == "Topic" or not frappe.utils.cint(option.double_opt_in):
+	# A guest on /subscribe can type any address, so a public sign-up always needs the
+	# double opt-in. The Lead is created only in confirm(), after the person consents.
+	needs_confirmation = source == "Public registration" or (
+		option.category != "Topic" and frappe.utils.cint(option.double_opt_in)
+	)
+	if not needs_confirmation:
 		_save(email, topic, "Subscribed", source, **consent_metadata)
-		if source == "Public registration":
-			_ensure_public_subscriber_lead(email)
 		return "Subscribed"
 
 	existing = frappe.db.get_value(PREFERENCE_DOCTYPE, preference_name(email, topic), ["status", "requested_on"], as_dict=True)

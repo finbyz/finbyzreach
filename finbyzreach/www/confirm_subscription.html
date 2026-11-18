@@ -18,7 +18,7 @@
         <div data-pc-section="intro">{{ pc_text("h") }}<div style="height:6px"></div>{{ pc_text("s") }}</div>
         {% elif section == "button" %}
         <div data-pc-section="button">
-          {# Confirmed by script when the page loads (scanners that only fetch the URL do not run it); the button is the fallback. #}
+          {# The person must click: scanners that open the link must not record consent. #}
           <button id="confirm-subscription" class="pc-save" type="button">{{ pc_text("button") }}</button>
           <p id="confirmation-result" role="status" aria-live="polite" style="margin:12px 0 0;font-size:14px"></p>
         </div>
@@ -35,9 +35,9 @@
 </div>
 {% if valid_link and not preview %}
 <script>
-  // CS-04: clicking the link in the email confirms. It runs from script once the page has
-  // loaded, so link scanners that only fetch the URL do not confirm on the person's behalf.
-  // The button stays as a fallback if the automatic attempt fails.
+  // CS-04: the person confirms with the button. The page never confirms on load, because
+  // mail security scanners (Safe Links, Proofpoint, Mimecast) open links and run scripts,
+  // and that would record consent with no human action.
   (function () {
     const button = document.getElementById('confirm-subscription');
     const result = document.getElementById('confirmation-result');
@@ -55,7 +55,6 @@
       });
     }
     button.addEventListener('click', confirmNow);
-    window.addEventListener('load', function () { if (window.frappe && frappe.call) confirmNow(); });
   })();
 </script>
 {% endif %}

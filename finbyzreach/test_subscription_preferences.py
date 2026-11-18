@@ -121,6 +121,38 @@ class TestSubscriptionPreferences(unittest.TestCase):
 		save.assert_called_once_with("person@example.com", "News", "Subscribed", "Double opt-in confirmation")
 		ensure_lead.assert_called_once_with("person@example.com")
 
+	@patch.object(preferences.frappe, "sendmail", return_value=None)
+	@patch.object(preferences, "_ensure_public_subscriber_lead")
+	@patch.object(preferences, "_save", return_value=SimpleNamespace(name="pref-1"))
+	@patch.object(preferences, "is_subscribed", return_value=False)
+	@patch.object(preferences, "_topic", return_value=SimpleNamespace(category="Topic", double_opt_in=0))
+	def test_public_topic_sign_up_waits_for_double_opt_in(self, topic, subscribed, save, ensure_lead, sendmail):
+		with patch.object(preferences.frappe, "db", new=MagicMock(get_value=MagicMock(return_value=None))), \
+				patch("finbyzreach.consent.suppressed_addresses", return_value=[]), \
+				patch("finbyzreach.consent.policy_ready", return_value=False), \
+				patch.object(preferences, "now_datetime", return_value=datetime(2026, 11, 18, 12, 0)), \
+				patch.object(preferences, "get_url", side_effect=lambda path: "https://example.com" + path):
+			result = preferences.request_subscription("person@example.com", "News", "Public registration")
+		self.assertEqual(result, "Pending")
+		self.assertEqual(save.call_args.args[2], "Pending")
+		ensure_lead.assert_not_called()
+		sendmail.assert_called_once()
+
+	@patch.object(preferences, "_ensure_public_subscriber_lead")
+	@patch.object(preferences, "_save")
+	@patch.object(preferences, "is_subscribed", return_value=False)
+	@patch.object(preferences, "_topic", return_value=SimpleNamespace(category="Topic", double_opt_in=0))
+	def test_preference_center_topic_still_subscribes_at_once(self, topic, subscribed, save, ensure_lead):
+		self.assertEqual(preferences.request_subscription("person@example.com", "News", "Preference center"), "Subscribed")
+		self.assertEqual(save.call_args.args[2], "Subscribed")
+		ensure_lead.assert_not_called()
+
+	def test_confirm_page_does_not_confirm_on_load(self):
+		from pathlib import Path
+		html = (Path(preferences.__file__).parent / "www" / "confirm_subscription.html").read_text()
+		self.assertNotIn("addEventListener('load'", html)
+		self.assertIn("button.addEventListener('click', confirmNow)", html)
+
 	@patch.object(preferences.frappe, "get_doc")
 	@patch.object(preferences.frappe, "db", new=MagicMock())
 	def test_public_subscriber_lead_is_created_only_when_missing(self, get_doc):
