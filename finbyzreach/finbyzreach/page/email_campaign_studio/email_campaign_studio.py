@@ -1201,11 +1201,14 @@ def send_test(payload=None, recipient=None, sample_lead=None, recipients=None):
 	).strip()
 	sender = formataddr((sender_name, account.email_id)) if sender_name else account.email_id
 	# EM-18: a test carries the same attachments the real send will.
-	attachment_names = [str(name) for name in (payload.get("attachments") or []) if name] if not frozen else []
-	attachment_rows = [row for row in (frappe.db.get_value("File", name, ["name", "file_size"], as_dict=True) for name in attachment_names) if row]
+	# Only files the user uploaded in Studio, or this campaign's own mail attachments, qualify.
 	if frozen:
 		attachment_rows = email_marketing.campaign_attachment_files(campaign.name)
-	email_marketing.check_attachment_limit(attachment_rows)
+		email_marketing.check_attachment_limit(attachment_rows)
+	else:
+		attachment_rows = email_marketing.studio_attachment_rows(
+			payload.get("attachments") or [], campaign.name if campaign else None
+		)
 	test_attachments = [{"fid": row.name} for row in attachment_rows]
 	queue = frappe.sendmail(
 		recipients=allowed,

@@ -983,13 +983,23 @@ MAX_ATTACHMENT_BYTES = 12 * 1024 * 1024  # EM-18: all attachments of one email t
 MAX_ATTACHMENT_FILES = 10
 
 
+# EM-18: Studio marks the files it adds for the email. Files added in the Campaign form
+# sidebar have no mark, so they stay internal and never go to recipients.
+MAIL_ATTACHMENT_FIELD = "mail_attachment"
+
+
 def campaign_attachment_files(campaign_name):
-	"""Files attached to a campaign, oldest first. Every recipient email carries them (EM-18)."""
+	"""Files Studio attached to a campaign for the email, oldest first (EM-18)."""
 	if not campaign_name:
 		return []
 	return frappe.get_all(
 		"File",
-		filters={"attached_to_doctype": "Campaign", "attached_to_name": campaign_name, "is_folder": 0},
+		filters={
+			"attached_to_doctype": "Campaign",
+			"attached_to_name": campaign_name,
+			"attached_to_field": MAIL_ATTACHMENT_FIELD,
+			"is_folder": 0,
+		},
 		fields=["name", "file_name", "file_size", "file_url", "is_private"],
 		order_by="creation asc",
 		limit_page_length=0,
@@ -1012,25 +1022,54 @@ def check_attachment_limit(files):
 	return total
 
 
-def set_campaign_attachments(campaign, file_names):
-	"""Make the listed uploaded files the campaign's attachments, and drop removed ones (EM-18)."""
+def studio_attachment_rows(file_names, campaign_name=None):
+	"""Return the File rows a user may send with a campaign email, or throw.
+
+	A file qualifies when the user uploaded it and it is not attached to any document yet,
+	or when Studio already attached it to this campaign for the email.
+	"""
 	names = list(dict.fromkeys(str(name).strip() for name in (file_names or []) if str(name or "").strip()))
 	rows = []
 	for name in names:
-		row = frappe.db.get_value("File", name, ["name", "file_name", "file_size", "attached_to_doctype", "attached_to_name", "owner", "is_folder"], as_dict=True)
+		row = frappe.db.get_value(
+			"File",
+			name,
+			["name", "file_name", "file_size", "attached_to_doctype", "attached_to_name", "attached_to_field", "owner", "is_folder"],
+			as_dict=True,
+		)
 		if not row or row.is_folder:
 			frappe.throw(_("Attachment {0} was not found.").format(name))
-		if (row.attached_to_doctype, row.attached_to_name) not in ((None, None), ("", ""), ("Campaign", campaign.name), (None, ""), ("", None)) and row.owner != frappe.session.user:
-			frappe.throw(_("Attachment {0} belongs to another document.").format(row.file_name or name))
+		if not _is_studio_attachment(row, campaign_name):
+			frappe.throw(
+				_("Attachment {0} cannot be sent. Upload the file in Studio to attach it to this email.").format(row.file_name or name),
+				frappe.PermissionError,
+			)
 		rows.append(row)
 	check_attachment_limit(rows)
+	return rows
+
+
+def _is_studio_attachment(row, campaign_name):
+	if campaign_name and (row.attached_to_doctype, row.attached_to_name, row.attached_to_field) == ("Campaign", campaign_name, MAIL_ATTACHMENT_FIELD):
+		return True
+	return not row.attached_to_doctype and not row.attached_to_name and row.owner == frappe.session.user
+
+
+def set_campaign_attachments(campaign, file_names):
+	"""Make the listed uploaded files the campaign's attachments, and drop removed ones (EM-18)."""
+	rows = studio_attachment_rows(file_names, campaign.name)
 	keep = {row.name for row in rows}
 	for existing in campaign_attachment_files(campaign.name):
 		if existing.name not in keep:
 			frappe.delete_doc("File", existing.name, ignore_permissions=True)
 	for row in rows:
 		if (row.attached_to_doctype, row.attached_to_name) != ("Campaign", campaign.name):
-			frappe.db.set_value("File", row.name, {"attached_to_doctype": "Campaign", "attached_to_name": campaign.name}, update_modified=False)
+			frappe.db.set_value(
+				"File",
+				row.name,
+				{"attached_to_doctype": "Campaign", "attached_to_name": campaign.name, "attached_to_field": MAIL_ATTACHMENT_FIELD},
+				update_modified=False,
+			)
 	return [{"name": row.name, "file_name": row.file_name, "file_size": cint(row.file_size)} for row in rows]
 
 
