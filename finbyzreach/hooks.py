@@ -223,7 +223,7 @@ doc_events = {
         "on_cancel": ["finbyzreach.segment_automation.capture_related_change"],
     },
     "Email Tracking Event": {
-        "after_insert": ["finbyzreach.segment_automation.capture_activity"],
+        "after_insert": ["finbyzreach.segment_automation.capture_activity", "finbyzreach.record_timeline.log_email_event"],
     },
     "Contrast Engagement Event": {
         "after_insert": ["finbyzreach.segment_automation.capture_activity"],
