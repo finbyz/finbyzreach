@@ -133,9 +133,11 @@ class ReachSegmentBuilder {
         const items = excluded ? this.exclusions : parent ? parent.children : this.groups;
         const $group = $(`<div class="rs-rule"><div class="rs-rule-head"><select class="form-control rs-rule-match" aria-label="${__("Match conditions")}"><option value="AND">${__("All conditions")}</option><option value="OR">${__("Any condition")}</option></select><button type="button" class="btn btn-default btn-sm rs-remove-group">${__("Remove")}</button></div><div class="rs-rule-body"></div><div class="rs-group-specials"></div><div class="rs-children"></div>${excluded ? "" : `<div class="rs-special-actions"><button type="button" class="btn btn-primary btn-xs rs-group-pick">${__("Add condition")}</button><button type="button" class="btn btn-default btn-xs rs-group-segment">${__("Segment condition")}</button><button type="button" class="btn btn-default btn-xs rs-group-related">${__("Connected object")}</button><button type="button" class="btn btn-default btn-xs rs-group-activity">${__("Activity")}</button><button type="button" class="btn btn-default btn-xs rs-subgroup">${__("Add subgroup")}</button></div>`}</div>`);
         (parent ? parent.$group.find(".rs-children") : this.$root.find(excluded ? ".rs-exclude" : ".rs-include")).append($group);
-        const item = {match, $group, children:[], specials:[]};
+        const item = {match, $group, children:[], specials:[], excluded};
         item.filter = new frappe.ui.FilterGroup({parent: $group.find(".rs-rule-body"), doctype: this.doctype, on_change: () => this.changed()});
         item.filter.update_filter_button = () => {};
+        // "+ Add a Filter" opens the searchable field picker instead of a blank "ID" row (segment feedback b).
+        item.filter.wrapper.find(".add-filter").off("click").on("click", () => this.canWrite && this.pickerDialog(item));
         const initialized = filters.length ? item.filter.add_filters(filters).then(() => item.filter.toggle_empty_filters(false)) : Promise.resolve();
         $group.find(".rs-rule-match").val(match).prop("disabled", excluded || !this.canWrite).on("change", e => { item.match = e.target.value; this.changed(); });
         $group.find(".rs-remove-group").prop("disabled", !this.canWrite).on("click", () => { items.splice(items.indexOf(item), 1); $group.remove(); this.changed(); });
@@ -255,32 +257,43 @@ class ReachSegmentBuilder {
         }
         const items = [];
         for (const f of fieldsOf(this.doctype)) items.push({group:__("{0} fields", [__(this.doctype)]), label:__(f.label), run:() => this.addField(target, f.fieldname)});
-        for (const f of frappe.meta.get_docfields(this.doctype).filter(d => ["Date","Datetime"].includes(d.fieldtype) && d.label && !d.hidden)) items.push({group:__("Date rules"), label:`${__(f.label)}: ${__("in the last / more than … ago / in the next")}`, run:() => this.relativeDateDialog(group, f.fieldname)});
-        for (const f of ["creation","modified"]) items.push({group:__("Date rules"), label:`${f === "creation" ? __("Created on") : __("Last modified")}: ${__("in the last / more than … ago")}`, run:() => this.relativeDateDialog(group, f)});
-        if (["Lead","Contact","Customer"].includes(this.doctype)) items.push({group:__("Date rules"), label:__("Last activity: more than … ago / in the last …"), run:() => this.relativeDateDialog(group, "__last_activity")});
-        for (const f of frappe.meta.get_docfields(this.doctype).filter(d => d.fieldtype === "Table MultiSelect" && d.label && !d.hidden)) items.push({group:__("Multi-value fields"), label:__("{0}: has any / all / none of", [__(f.label)]), run:() => this.multiselectDialog(group, f)});
+        const fieldsOnly = Boolean(group?.excluded); // exclusion rules hold plain field filters only
+        if (!fieldsOnly) {
+            for (const f of frappe.meta.get_docfields(this.doctype).filter(d => ["Date","Datetime"].includes(d.fieldtype) && d.label && !d.hidden)) items.push({group:__("Date rules"), label:`${__(f.label)}: ${__("in the last / more than … ago / in the next")}`, run:() => this.relativeDateDialog(group, f.fieldname)});
+            for (const f of ["creation","modified"]) items.push({group:__("Date rules"), label:`${f === "creation" ? __("Created on") : __("Last modified")}: ${__("in the last / more than … ago")}`, run:() => this.relativeDateDialog(group, f)});
+            if (["Lead","Contact","Customer"].includes(this.doctype)) items.push({group:__("Date rules"), label:__("Last activity: more than … ago / in the last …"), run:() => this.relativeDateDialog(group, "__last_activity")});
+            for (const f of frappe.meta.get_docfields(this.doctype).filter(d => d.fieldtype === "Table MultiSelect" && d.label && !d.hidden)) items.push({group:__("Multi-value fields"), label:__("{0}: has any / all / none of", [__(f.label)]), run:() => this.multiselectDialog(group, f)});
+        }
         // SEG-17: "contains data" / "does not contain data" for every plain field.
         for (const f of fieldsOf(this.doctype).filter(d => !["Table","Table MultiSelect"].includes(d.fieldtype))) {
             items.push({group:__("Contains data"), label:__("{0}: contains data", [__(f.label)]), run:() => this.addField(target, f.fieldname, "is", "set")});
             items.push({group:__("Contains data"), label:__("{0}: does not contain data", [__(f.label)]), run:() => this.addField(target, f.fieldname, "is", "not set")});
         }
-        for (const t of topics) items.push({group:__("Subscriptions"), label:`${t.name}${t.category === "Topic" ? " · " + __("Topic") : ""}`, run:() => this.subscriptionDialog(group, t.name)});
-        for (const dt of targets) for (const f of (frappe.meta.docfield_list[dt] ? fieldsOf(dt) : [])) items.push({group:linkLabel[dt], label:__(f.label), run:() => this.relatedDialog(group, {doctype:dt, field:f.fieldname})});
-        for (const e of ["Opened","Clicked","Replied","Sent","Unsubscribed","Bounced","Soft-Bounced"]) items.push({group:__("Email activity"), label:__("Email {0}", [__(e).toLowerCase()]), run:() => this.activityDialog(group, e)});
-        for (const e of ["Website visit","Store purchase","Webinar attended"]) items.push({group:__("Website & forms"), label:__(e), run:() => this.activityDialog(group, e)});
-        items.push({group:__("Segment membership"), label:__("Is member of segment"), run:() => this.segmentDialog(group, "in")});
-        items.push({group:__("Segment membership"), label:__("Is not member of segment"), run:() => this.segmentDialog(group, "not in")});
+        if (!fieldsOnly) {
+            for (const t of topics) items.push({group:__("Subscriptions"), label:`${t.name}${t.category === "Topic" ? " · " + __("Topic") : ""}`, run:() => this.subscriptionDialog(group, t.name)});
+            for (const dt of targets) for (const f of (frappe.meta.docfield_list[dt] ? fieldsOf(dt) : [])) items.push({group:linkLabel[dt], label:__(f.label), run:() => this.relatedDialog(group, {doctype:dt, field:f.fieldname})});
+            for (const e of ["Opened","Clicked","Replied","Sent","Unsubscribed","Bounced","Soft-Bounced"]) items.push({group:__("Email activity"), label:__("Email {0}", [__(e).toLowerCase()]), run:() => this.activityDialog(group, e)});
+            for (const e of ["Website visit","Store purchase","Webinar attended"]) items.push({group:__("Website & forms"), label:__(e), run:() => this.activityDialog(group, e)});
+            items.push({group:__("Segment membership"), label:__("Is member of segment"), run:() => this.segmentDialog(group, "in")});
+            items.push({group:__("Segment membership"), label:__("Is not member of segment"), run:() => this.segmentDialog(group, "not in")});
+        }
         const escape = frappe.utils.escape_html;
         const dialog = new frappe.ui.Dialog({title:__("Add condition"), fields:[{fieldname:"search",fieldtype:"Data",label:__("Search fields")},{fieldname:"list",fieldtype:"HTML"}]});
         const $list = dialog.fields_dict.list.$wrapper.addClass("rs-picker");
         const render = () => {
             const q = (dialog.get_value("search") || "").toLowerCase();
             const shown = items.map((item, index) => ({...item, index})).filter(item => !q || item.label.toLowerCase().includes(q) || item.group.toLowerCase().includes(q));
+            // Without a search every group is shown, capped per group, so later groups (email activity,
+            // segment membership) are not cut off by the long field lists.
+            const perGroup = q ? 300 : 40, counts = {};
             let html = "", last = null;
-            for (const item of shown.slice(0, 300)) {
+            for (const item of shown) {
+                counts[item.group] = (counts[item.group] || 0) + 1;
+                if (counts[item.group] > perGroup) continue;
                 if (item.group !== last) { html += `<div class="rs-picker-group">${escape(item.group)}</div>`; last = item.group; }
                 html += `<button type="button" class="btn btn-default btn-xs rs-picker-item" data-pick="${item.index}">${escape(item.label)}</button>`;
             }
+            if (Object.values(counts).some(count => count > perGroup)) html += `<p class="text-muted small">${__("Type in the search box to see more fields.")}</p>`;
             $list.html(html || `<p class="text-muted">${__("No field found")}</p>`);
         };
         $list.on("click", "[data-pick]", e => { const item = items[+$(e.currentTarget).attr("data-pick")]; dialog.hide(); item.run(); });
