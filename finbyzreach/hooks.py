@@ -23,8 +23,8 @@ add_to_apps_screen = [
 
 # include js, css files in header of desk.html
 app_include_css = [
-    "/assets/finbyzreach/css/subscription_preferences.css?v=20261028.1",
-    "/assets/finbyzreach/css/segments.css?v=20261117.2",
+    "/assets/finbyzreach/css/subscription_preferences.css?v=20261119.1",
+    "/assets/finbyzreach/css/segments.css?v=20261119.1",
     "/assets/finbyzreach/css/folder_sidebar.css?v=20261114.3",
     "/assets/finbyzreach/css/email_workspace.css?v=20261114.1",
 ]
@@ -34,11 +34,11 @@ app_include_js = [
     "/assets/finbyzreach/js/manual_workflow_start.js?v=20261118.2",
     "/assets/finbyzreach/js/builder_list_navigation.js?v=20261117.2",
     "/assets/finbyzreach/js/subscription_preferences.js?v=20261117.1",
-    "/assets/finbyzreach/js/email_builder_composer.js?v=20260716.1",
+    "/assets/finbyzreach/js/email_builder_composer.js?v=20261119.1",
     "/assets/finbyzreach/js/email_template_library.js?v=20261114.1",
-    "/assets/finbyzreach/js/email_template_quick_entry.js?v=20260930.3",
+    "/assets/finbyzreach/js/email_template_quick_entry.js?v=20261119.1",
     "/assets/finbyzreach/js/segment_membership.js?v=20261117.2",
-    "/assets/finbyzreach/js/segment_library.js?v=20261113.1",
+    "/assets/finbyzreach/js/segment_library.js?v=20261119.1",
     "/assets/finbyzreach/js/folder_sidebar.js?v=20261114.3",
     "/assets/finbyzreach/js/email_workspace.js?v=20261114.1",
 ]
