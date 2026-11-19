@@ -344,6 +344,7 @@ AI_AGENTS = [{'agent_type': 'LangChain Chain',
 def after_install():
 	from finbyzreach.patches.v1_0.restore_campaign_utm_link import execute as setup_campaign_utm
 	setup_campaign_utm()
+	create_extract_tool()
 	create_ai_agents()
 	create_email_agent()
 	setup_email_template_library()
@@ -374,6 +375,32 @@ def setup_email_template_library():
 				"is_group": 1,
 			}
 		).insert(ignore_permissions=True)
+
+
+EXTRACT_TOOL = "Extract main content from url"
+EXTRACT_TOOL_PATH = (
+	"finbyzreach.finbyzreach.ai_tools.extract_main_content_from_url.extract_main_content_from_url_tool"
+)
+
+
+def create_extract_tool():
+	"""The Company Research agent links to this AI Tool, so it must exist before the agents."""
+	if frappe.db.exists("AI Tool", EXTRACT_TOOL):
+		return EXTRACT_TOOL
+	tool = frappe.new_doc("AI Tool")
+	tool.name = EXTRACT_TOOL
+	tool.tool_type = "Function"
+	tool.enabled = 1
+	tool.execution_side = "Application"
+	tool.from_package = "langchain_community.tools"
+	tool.is_custom = 0
+	tool.module = "Finbyzreach"
+	tool.tool_function = EXTRACT_TOOL_PATH
+	tool.description = "Extracts the text inside the main tag of a website URL, falling back to the page body."
+	tool.insert(ignore_permissions=True)
+	# AI Tool clears tool_function on insert, so set it again after.
+	frappe.db.set_value("AI Tool", EXTRACT_TOOL, "tool_function", EXTRACT_TOOL_PATH)
+	return EXTRACT_TOOL
 
 
 EMAIL_AGENT = "Followup Email Drafting"
