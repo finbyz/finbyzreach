@@ -121,6 +121,7 @@ jinja = {
 after_install = "finbyzreach.install.after_install"
 after_migrate = [
     "finbyzreach.install.setup_email_template_library",
+    "finbyzreach.email_roles.ensure_email_roles",
     "finbyzreach.finbyzreach.doctype.reach_segment_folder.reach_segment_folder.setup_segment_folders",
 ]
 

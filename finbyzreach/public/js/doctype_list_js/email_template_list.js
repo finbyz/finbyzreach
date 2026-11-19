@@ -274,6 +274,23 @@ frappe.listview_settings["Email Template"] = frappe.listview_settings["Email Tem
 			"/assets/finbyzreach/css/email_workspace.css",
 			"/assets/finbyzreach/js/email_workspace.js",
 		], () => frappe.email_workspace?.mount(listview.page, "emails"));
+		// EM-40: sending status (draft, scheduled, sending, sent) as a filter and a badge.
+		if (!listview._sending_status_filter) {
+			listview._sending_status_filter = true;
+			const apply = status => {
+				listview.filter_area.remove("name");
+				if (!status) return listview.refresh();
+				frappe.call({method: "finbyzreach.email_status.emails_by_sending_status", args: {status}}).then(({message}) => {
+					listview.filter_area.add([["Email Template", "name", "in", message.length ? message : ["__none__"]]]);
+				});
+			};
+			// Toolbar buttons, not a header field: Frappe would filter a header field on a real column.
+			const group = __("Sending status");
+			listview.page.add_inner_button(__("All e-mails"), () => apply(""), group);
+			for (const status of ["Draft", "Scheduled", "Sending", "Paused", "Completed", "Cancelled", "Failed"]) {
+				listview.page.add_inner_button(__(status), () => apply(status), group);
+			}
+		}
 		if (!listview._email_row_actions_added && typeof listview.page.add_action_item === "function") {
 			listview._email_row_actions_added = true;
 			// EM-41: duplicate (one or several) and move to a folder, from the row selection.
