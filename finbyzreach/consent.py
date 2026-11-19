@@ -69,15 +69,35 @@ def consent_exclusion(email, email_type, *, policy=None, status=None, status_loa
 	return _("No confirmed subscription to {0}").format(email_type)
 
 
+SOFT_BOUNCE_LIMIT = 3
+SOFT_BOUNCE_DAYS = 90
+
+
+def _soft_bounce_limit_reached(email):
+	"""EM-38: a temporary failure blocks the address only after several of them (default 3 in 90 days)."""
+	from frappe.utils import add_days
+	limit = max(cint(frappe.conf.get("soft_bounce_limit")) or SOFT_BOUNCE_LIMIT, 1)
+	count = frappe.db.count("Communication", {
+		"sent_or_received": "Sent",
+		"delivery_status": "Soft-Bounced",
+		"recipients": ["like", f"%{email}%"],
+		"creation": [">=", add_days(now_datetime(), -SOFT_BOUNCE_DAYS)],
+	})
+	return count >= limit
+
+
 def capture_delivery_failure(doc, method=None):
 	if not frappe.db.table_exists("Email Delivery Suppression") or doc.get("sent_or_received") != "Sent":
 		return
-	reason = {"Bounced": "Hard bounce", "Marked As Spam": "Spam complaint"}.get(doc.get("delivery_status"))
+	status = doc.get("delivery_status")
+	reason = {"Bounced": "Hard bounce", "Marked As Spam": "Spam complaint", "Soft-Bounced": "Repeated soft bounce"}.get(status)
 	if not reason:
 		return
 	for _, address in getaddresses([str(doc.get("recipients") or "")]):
 		email = address.strip().lower()
 		if not frappe.utils.validate_email_address(email, throw=False):
+			continue
+		if status == "Soft-Bounced" and not _soft_bounce_limit_reached(email):
 			continue
 		name = frappe.db.get_value("Email Delivery Suppression", {"email": email}, "name")
 		if not name:
