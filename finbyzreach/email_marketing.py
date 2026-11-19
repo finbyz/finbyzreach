@@ -75,6 +75,8 @@ WEEKDAY_FIELDS = (
 from finbyzreach.consent import email_policy, consent_exclusion, suppressed_addresses
 
 FEEDBACK_DELIVERY_STATUSES = ("Bounced", "Soft-Bounced", "Marked As Spam")
+# Delivery outcomes also written as Email Tracking Events, for segment and workflow conditions.
+ACTIVITY_DELIVERY_EVENTS = ("Sent", "Bounced", "Soft-Bounced")
 TERMINAL_DELIVERY_STATUSES = ("Sent", "Failed", "Skipped", "Cancelled", *FEEDBACK_DELIVERY_STATUSES)
 REPEAT_UNITS = ("Minutes", "Hours", "Days")
 MAX_AUDIENCE_FILTERS = 50
@@ -1918,6 +1920,10 @@ def sync_marketing_email_statuses():
 				update_modified=False,
 			)
 			affected_campaigns.add(row.campaign_name)
+			new_status = updates.get("custom_delivery_status")
+			if new_status in ACTIVITY_DELIVERY_EVENTS and new_status != row.custom_delivery_status:
+				# EM-36: delivery outcomes are activities too ("Email sent / bounced" conditions).
+				_log_event(new_status, frappe._dict(row), communication=row.custom_communication)
 			if updates.get("custom_opened") and row.name in open_event_names:
 				_log_event(
 					"Opened",
@@ -2166,6 +2172,9 @@ def track_marketing_click(campaign_recipient=None, url=None):
 				},
 				update_modified=False,
 			)
+		if updates.get("custom_opened"):
+			# A click proves the open; log it so "Email opened" segment and workflow conditions see it.
+			_log_event("Opened", recipient, communication=recipient.custom_communication)
 		_log_event(
 			"Clicked",
 			recipient,
