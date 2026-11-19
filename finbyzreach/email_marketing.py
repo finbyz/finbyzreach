@@ -809,7 +809,7 @@ def resolve_campaign_audience(campaign):
 		if not lead:
 			reason = "Lead unavailable"
 		elif lead_name in exclude_leads:
-			reason = "Excluded by Lead filters"
+			reason = "Excluded by exclusion filters or segments"
 		elif cint(lead.disabled):
 			reason = "Lead disabled"
 		elif cint(policy.consent_required) and (cint(lead.unsubscribed)):

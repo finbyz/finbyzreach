@@ -125,7 +125,7 @@ def resolve_customer_audience(campaign):
 			unconfirmed_topic = None
 			policy_reason = consent_exclusion(normalized, campaign.get("custom_subscription_topic"), policy=policy, status=preference_statuses.get(campaign.get("custom_subscription_topic")), status_loaded=True, suppressions=blocks) if campaign.get("custom_subscription_topic") else None
 			if customer_name in exclude:
-				reason = "Excluded by Customer filters"
+				reason = "Excluded by exclusion filters or segments"
 			elif cint(customer.disabled):
 				reason = "Customer disabled"
 			elif cint(policy.consent_required) and (cint(contact.unsubscribed)):
