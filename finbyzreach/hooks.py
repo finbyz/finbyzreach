@@ -184,6 +184,7 @@ extend_doctype_class = {
 doc_events = {
     "Email Subscription Preference": {"on_update": "finbyzreach.segment_automation.capture_change"},
     "Email Template": {"validate": "finbyzreach.email_template_builder.languages.validate_metadata"},
+    "Email Builder Component": {"on_update": "finbyzreach.email_template_builder.shared_sections.propagate_component_change"},
     "Communication": {
         "after_insert": [
             "finbyzreach.doc_events.communication.after_insert",

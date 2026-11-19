@@ -59,3 +59,66 @@ def refresh_shared_sections(schema: dict) -> dict:
 	if not changed:
 		return schema
 	return validate_schema({**schema, "sections": sections})
+
+
+def propagate_component_change(doc, method=None) -> None:
+	"""EM-17: a changed shared Header/Footer/CTA/Social reaches every unsent e-mail still linked to it.
+
+	Without this, linked rows refreshed only when an e-mail was opened in the builder, so an
+	e-mail scheduled or used in a workflow kept sending the old section. Sent campaigns keep
+	their frozen snapshot and do not change.
+	"""
+	if doc.get("component_type") != "Section" or doc.get("category") not in SHARED_CATEGORIES:
+		return
+	before = doc.get_doc_before_save()
+	if before and before.get("definition_json") == doc.get("definition_json") and before.get("enabled") == doc.get("enabled"):
+		return
+	frappe.enqueue(
+		"finbyzreach.email_template_builder.shared_sections.recompile_linked_templates",
+		component=doc.name,
+		queue="long",
+		enqueue_after_commit=True,
+		job_id=f"shared-section:{doc.name}",
+		deduplicate=True,
+	)
+
+
+def recompile_linked_templates(component: str) -> list[str]:
+	"""Recompile visual templates and masters whose linked rows use this saved section."""
+	import hashlib
+
+	from .compiler import compile_schema
+	from .constants import BUILDER_TARGET_DOCTYPES
+	from .schema import validate_schema
+
+	updated = []
+	needle = json.dumps(component)
+	for doctype in sorted(BUILDER_TARGET_DOCTYPES):
+		meta = frappe.get_meta(doctype)
+		if not meta.has_field("custom_builder_schema"):
+			continue
+		names = frappe.get_all(
+			doctype,
+			filters={"custom_builder_mode": "Visual", "custom_builder_schema": ["like", f"%{needle}%"]},
+			pluck="name",
+			limit_page_length=0,
+		)
+		for name in names:
+			doc = frappe.get_doc(doctype, name)
+			try:
+				schema = validate_schema(doc.get("custom_builder_schema"))
+				if not any(is_linked(section) and section.get("saved_component") == component for section in schema.get("sections") or []):
+					continue
+				compiled = compile_schema(refresh_shared_sections(schema), doc.get("custom_preheader_text") or "", normalized=True)
+				if compiled["html"] == doc.get("response_html"):
+					continue
+				doc.custom_builder_schema = json.dumps(compiled["schema"], separators=(",", ":"))
+				doc.custom_builder_content_hash = hashlib.sha256(str(compiled["html"]).encode()).hexdigest()
+				doc.response_html = compiled["html"]
+				doc.use_html = 1
+				doc.flags.ignore_permissions = True
+				doc.save()
+				updated.append(f"{doctype}:{name}")
+			except Exception:
+				frappe.log_error(title=f"Shared section {component} not applied to {doctype} {name}", message=frappe.get_traceback())
+	return updated
