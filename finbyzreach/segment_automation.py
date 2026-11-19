@@ -258,6 +258,10 @@ def refresh_time_segments():
 
 
 def validate_main_customer(doc, method=None):
+    customers = {row.link_name for row in doc.get('links') or [] if row.link_doctype == 'Customer' and row.link_name}
+    if not doc.get('custom_reach_main_customer') and len(customers) == 1 and doc.meta.has_field('custom_reach_main_customer'):
+        # SEG-14: a contact with exactly one Customer has an unambiguous main customer.
+        doc.custom_reach_main_customer = customers.pop()
     main = doc.get('custom_reach_main_customer')
     if main and not any(row.link_doctype == 'Customer' and row.link_name == main for row in doc.get('links') or []):
         frappe.throw(frappe._('The main Customer must be linked to this Contact'))

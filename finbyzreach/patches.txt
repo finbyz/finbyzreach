@@ -22,3 +22,5 @@ finbyzreach.patches.v1_0.show_email_type_in_email_list
 finbyzreach.patches.v1_0.social_icons_to_png
 
 finbyzreach.patches.v1_0.sms_buttons_to_landing_page
+
+finbyzreach.patches.v1_0.default_single_main_customer
