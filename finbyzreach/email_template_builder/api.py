@@ -782,6 +782,55 @@ def list_revisions(template_name, start=0, page_length=50, template_doctype=None
 	return revisions
 
 
+THEME_KEYS = {
+	"content_width", "body_background", "content_background", "font_family", "font_size", "text_color", "link_color",
+	"link_decoration", "button_background", "button_text_color", "button_radius", "section_padding",
+	"dark_mode", "dark_body_background", "dark_content_background", "dark_text_color", "dark_link_color",
+} | {f"{tag}_{part}" for tag in ("h1", "h2", "h3", "p") for part in ("font_family", "font_size", "font_weight")}
+
+
+@frappe.whitelist(methods=["GET"])
+def list_themes():
+	"""EM-14: saved design settings (colours, fonts, buttons) that can be applied to any e-mail."""
+	_require_designer()
+	frappe.has_permission("Email Builder Theme", "read", throw=True)
+	rows = frappe.get_list("Email Builder Theme", fields=["name", "theme_name", "settings_json", "modified"], order_by="theme_name asc", limit=100)
+	for row in rows:
+		row["settings"] = json.loads(row.pop("settings_json") or "{}")
+	return rows
+
+
+@frappe.whitelist(methods=["POST"])
+def save_theme(theme_name, settings):
+	"""Create or update a theme with this name. Only design keys are kept, and each value is validated like a template's."""
+	_require_designer()
+	name = str(theme_name or "").strip()[:140]
+	if not name:
+		frappe.throw(_("Theme name is required"))
+	payload = _payload(settings, max_bytes=20_000, label="theme settings")
+	cleaned = validate_schema({"version": 1, "settings": {key: value for key, value in payload.items() if key in THEME_KEYS}, "sections": []})["settings"]
+	cleaned = {key: cleaned[key] for key in THEME_KEYS if key in cleaned and key in payload}
+	if frappe.db.exists("Email Builder Theme", name):
+		doc = frappe.get_doc("Email Builder Theme", name)
+		doc.check_permission("write")
+	else:
+		frappe.has_permission("Email Builder Theme", "create", throw=True)
+		doc = frappe.new_doc("Email Builder Theme")
+		doc.theme_name = name
+	doc.settings_json = json.dumps(cleaned, separators=(",", ":"))
+	doc.save()
+	return {"name": doc.name, "theme_name": doc.theme_name, "settings": cleaned}
+
+
+@frappe.whitelist(methods=["POST"])
+def delete_theme(name):
+	_require_designer()
+	doc = frappe.get_doc("Email Builder Theme", name)
+	doc.check_permission("delete")
+	frappe.delete_doc("Email Builder Theme", name)
+	return {"deleted": name}
+
+
 @frappe.whitelist(methods=["POST"])
 def save_component(component):
 	_require_designer()
