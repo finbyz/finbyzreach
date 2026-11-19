@@ -167,7 +167,7 @@ class ReachSegmentBuilder {
     }
     activityDialog(group=null, event="Opened") {
         frappe.prompt([
-            {fieldname:"event",fieldtype:"Select",options:"Opened\nClicked\nReplied\nSent\nUnsubscribed\nWebsite visit\nWebinar attended\nStore purchase",label:__("Event"),reqd:1,default:event},
+            {fieldname:"event",fieldtype:"Select",options:"Opened\nClicked\nReplied\nSent\nUnsubscribed\nBounced\nSoft-Bounced\nWebsite visit\nWebinar attended\nStore purchase",label:__("Event"),reqd:1,default:event},
             {fieldname:"days",fieldtype:"Int",label:__("In the last days"),default:30,reqd:1},
             {fieldname:"campaign",fieldtype:"Link",options:"Campaign",label:__("Campaign (optional)")},
             {fieldname:"site",fieldtype:"Int",label:__("Tracking site ID (optional)")}
@@ -266,7 +266,7 @@ class ReachSegmentBuilder {
         }
         for (const t of topics) items.push({group:__("Subscriptions"), label:`${t.name}${t.category === "Topic" ? " · " + __("Topic") : ""}`, run:() => this.subscriptionDialog(group, t.name)});
         for (const dt of targets) for (const f of (frappe.meta.docfield_list[dt] ? fieldsOf(dt) : [])) items.push({group:linkLabel[dt], label:__(f.label), run:() => this.relatedDialog(group, {doctype:dt, field:f.fieldname})});
-        for (const e of ["Opened","Clicked","Replied","Sent","Unsubscribed"]) items.push({group:__("Email activity"), label:__("Email {0}", [__(e).toLowerCase()]), run:() => this.activityDialog(group, e)});
+        for (const e of ["Opened","Clicked","Replied","Sent","Unsubscribed","Bounced","Soft-Bounced"]) items.push({group:__("Email activity"), label:__("Email {0}", [__(e).toLowerCase()]), run:() => this.activityDialog(group, e)});
         for (const e of ["Website visit","Store purchase","Webinar attended"]) items.push({group:__("Website & forms"), label:__(e), run:() => this.activityDialog(group, e)});
         items.push({group:__("Segment membership"), label:__("Is member of segment"), run:() => this.segmentDialog(group, "in")});
         items.push({group:__("Segment membership"), label:__("Is not member of segment"), run:() => this.segmentDialog(group, "not in")});

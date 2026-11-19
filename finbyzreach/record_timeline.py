@@ -1,8 +1,15 @@
-"""EM-36: opens and clicks of marketing emails appear on the Lead, Contact or Customer timeline."""
+"""EM-36: opens, clicks, bounces and unsubscribes of marketing emails appear on the Lead, Contact or Customer timeline."""
 import frappe
 from frappe import _
 
-TIMELINE_EVENTS = ("Opened", "Clicked")
+TIMELINE_EVENTS = ("Opened", "Clicked", "Bounced", "Soft-Bounced", "Unsubscribed")
+EVENT_TEXT = {
+	"Opened": "Opened the email",
+	"Clicked": "Clicked a link in the email",
+	"Bounced": "The email could not be delivered (hard bounce)",
+	"Soft-Bounced": "The email was not delivered for now (soft bounce)",
+	"Unsubscribed": "Unsubscribed through the email",
+}
 
 
 def log_email_event(doc, method=None):
@@ -23,7 +30,7 @@ def log_email_event(doc, method=None):
 		return
 	campaign = frappe.db.get_value("Campaign", doc.get("marketing_email_campaign"), "campaign_name") or doc.get("marketing_email_campaign") or ""
 	subject = frappe.db.get_value("Communication", doc.get("communication"), "subject") if doc.get("communication") else ""
-	what = _("Opened the email") if doc.event_type == "Opened" else _("Clicked a link in the email")
+	what = _(EVENT_TEXT[doc.event_type])
 	text = what + (f" “{subject}”" if subject else "") + (f" ({campaign})" if campaign else "") + "."
 	if doc.event_type == "Clicked" and doc.get("url"):
 		text += " " + _("Link: {0}").format(doc.url)

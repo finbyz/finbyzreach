@@ -222,7 +222,7 @@ def activity_condition(doctype, node):
         return visitor_activity_condition(doctype, node)
     if event == 'Webinar attended':
         return webinar_activity_condition(doctype, node)
-    if event not in ('Opened', 'Clicked', 'Replied', 'Sent', 'Unsubscribed'):
+    if event not in ('Opened', 'Clicked', 'Replied', 'Sent', 'Unsubscribed', 'Bounced', 'Soft-Bounced'):
         frappe.throw(_('Unsupported email activity'))
     if not frappe.db.table_exists('Email Tracking Event'):
         frappe.throw(_('Email tracking is not installed on this site'))

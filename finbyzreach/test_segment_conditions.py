@@ -123,3 +123,16 @@ class TestStaticSegmentWithoutFilter(IntegrationTestCase):
 		with self.assertRaises(frappe.ValidationError):
 			frappe.get_doc({"doctype": "Reach Segment", "segment_name": f"ZZTEST Active Empty {frappe.generate_hash(length=5)}",
 				"audience_doctype": "Lead", "segment_type": "Active"}).insert()
+
+
+class TestBounceSegmentFilter(IntegrationTestCase):
+	def test_bounced_is_an_accepted_email_activity_for_segment_filters(self):
+		from finbyzreach import segment_service as service
+
+		frappe.set_user("Administrator")
+		if not frappe.db.table_exists("Email Tracking Event"):
+			self.skipTest("Email tracking is not installed")
+		for event in ("Bounced", "Soft-Bounced"):
+			service.activity_condition("Lead", {"kind": "activity", "event": event, "days": 30})
+		with self.assertRaises(frappe.ValidationError):
+			service.activity_condition("Lead", {"kind": "activity", "event": "Nonsense", "days": 30})

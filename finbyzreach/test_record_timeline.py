@@ -35,6 +35,13 @@ class RecordTimelineTest(TestCase):
 		self.assertIn("Clicked a link in the email", added[0]["content"])
 		self.assertIn("https://megasol.ch/offer", added[0]["content"])
 
+	def test_bounces_and_unsubscribes_are_on_the_timeline_too(self):
+		for event_type, words in (("Bounced", "hard bounce"), ("Soft-Bounced", "soft bounce"), ("Unsubscribed", "Unsubscribed through the email")):
+			with self.subTest(event_type):
+				added = self._run(event(event_type))
+				self.assertEqual(len(added), 1)
+				self.assertIn(words, added[0]["content"])
+
 	def test_other_events_and_missing_records_add_nothing(self):
 		self.assertEqual(self._run(event("Sent")), [])
 		self.assertEqual(self._run(event("Opened"), exists=False), [])
