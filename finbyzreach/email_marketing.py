@@ -679,7 +679,12 @@ def test_recipient_exclusion(email, subscription_topic=None, audience_doctype="L
 			return _(blocks[normalized_email])
 	if subscription_topic:
 		policy = email_policy(subscription_topic)
-		reason = consent_exclusion(normalized_email, subscription_topic, policy=policy)
+		# EM-28: a test goes to a reviewer, not to the audience. An explicit opt-out, bounce or
+		# spam complaint blocks it; a missing or pending subscription does not.
+		status = frappe.db.get_value("Email Subscription Preference", {"email": normalized_email, "subscription_topic": subscription_topic}, "status")
+		if status == "Unsubscribed" and cint(policy.consent_required):
+			return _("Unsubscribed from {0}").format(subscription_topic)
+		reason = consent_exclusion(normalized_email, subscription_topic, policy=policy, status="Subscribed", status_loaded=True)
 		if reason:
 			return reason
 		if not cint(policy.consent_required):
