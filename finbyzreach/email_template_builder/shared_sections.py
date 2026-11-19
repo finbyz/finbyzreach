@@ -11,7 +11,7 @@ import json
 
 import frappe
 
-SHARED_CATEGORIES = {"Header", "Footer"}
+SHARED_CATEGORIES = {"Header", "Footer", "CTA", "Social"}
 
 
 def is_linked(section: dict) -> bool:

@@ -218,12 +218,12 @@ export const BUTTON_ACTION_PLACEHOLDERS: Record<string, string> = {
   sms: '+41 79 123 45 67',
 }
 
-export const SHARED_CATEGORIES = ['Header', 'Footer']
+export const SHARED_CATEGORIES = ['Header', 'Footer', 'CTA', 'Social']
 
 /** Header and footer: is this row linked to a shared saved Header or Footer block? */
 export function sharedSectionState(section: { saved_component?: string; saved_component_category?: string; component_customised?: boolean }) {
   if (!section.saved_component || !SHARED_CATEGORIES.includes(String(section.saved_component_category))) return null
-  return { name: section.saved_component, category: section.saved_component_category as 'Header' | 'Footer', customised: Boolean(section.component_customised) }
+  return { name: section.saved_component, category: section.saved_component_category as NonNullable<BuilderSection['saved_component_category']>, customised: Boolean(section.component_customised) }
 }
 
 /** Header and footer: a change to a linked row means this email now has its own version; return the rows that changed. */

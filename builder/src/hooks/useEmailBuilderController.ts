@@ -651,7 +651,7 @@ export function useEmailBuilderController() {
           const found = findSection(next.schema, selection.id)
           if (found) {
             found.section.saved_component = savedName
-            if (SHARED_CATEGORIES.includes(componentCategory)) { found.section.saved_component_category = componentCategory as 'Header' | 'Footer'; found.section.component_customised = false }
+            if (SHARED_CATEGORIES.includes(componentCategory)) { found.section.saved_component_category = componentCategory as BuilderSection['saved_component_category']; found.section.component_customised = false }
           }
         }, false)
       }
@@ -712,7 +712,7 @@ export function useEmailBuilderController() {
       const copy = cloneNode(source as BuilderBlock | BuilderSection)
       if (kind === 'section') {
         (copy as BuilderSection).saved_component = componentNameToInsert
-        if (SHARED_CATEGORIES.includes(String(doc.category))) { (copy as BuilderSection).saved_component_category = doc.category as 'Header' | 'Footer'; (copy as BuilderSection).component_customised = false }
+        if (SHARED_CATEGORIES.includes(String(doc.category))) { (copy as BuilderSection).saved_component_category = doc.category as BuilderSection['saved_component_category']; (copy as BuilderSection).component_customised = false }
       }
       commit((next) => {
         if (kind === 'section') next.schema.sections.push(copy as BuilderSection)

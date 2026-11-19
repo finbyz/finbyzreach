@@ -65,3 +65,11 @@ class SharedSectionsTest(IntegrationTestCase):
 			result = shared_sections.refresh_shared_sections(schema)
 		ids = [node["id"] for section in result["sections"] for node in [section] + section["columns"]]
 		self.assertEqual(len(ids), len(set(ids)))
+
+	def test_call_to_action_and_social_blocks_are_shared_too_but_content_is_not(self):
+		for category in ("CTA", "Social"):
+			schema = _email(saved_component_category=category)
+			self.assertEqual(schema["sections"][0]["saved_component_category"], category)
+			with patch.object(frappe.db, "get_value", return_value=_component(category=category)):
+				self.assertIn("Shared header v2", _texts(shared_sections.refresh_shared_sections(schema))[0])
+		self.assertNotIn("saved_component_category", _email(saved_component_category="Other")["sections"][0])
