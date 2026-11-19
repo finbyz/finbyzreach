@@ -257,6 +257,44 @@ def get_overview(period="previous_month", from_date=None, to_date=None):
 
 
 @frappe.whitelist()
+def get_workflow_overview(period="previous_month", from_date=None, to_date=None):
+    """EM-27: e-mails sent by automation workflows, shown next to the campaigns and never mixed with them."""
+    first, last, selected_range = _period_range(period, from_date, to_date)
+    _read_reporting_permissions()
+    summary = {"sent": 0, "opened": 0, "clicked": 0, "hard_bounce": 0, "soft_bounce": 0, "spam": 0, "unsubscribed": 0}
+    emails = set()
+    if frappe.db.table_exists("Automation Effect Ledger") and frappe.db.table_exists("Email Tracking Event"):
+        rows = frappe.db.sql(
+            """select JSON_UNQUOTE(JSON_EXTRACT(result_json, '$.communication')) as communication,
+                      JSON_UNQUOTE(JSON_EXTRACT(result_json, '$.email_template')) as template
+               from `tabAutomation Effect Ledger`
+               where status = 'COMPLETED' and completed_at >= %(first)s and completed_at < %(end)s
+                 and JSON_EXTRACT(result_json, '$.email_queue') is not null
+                 and JSON_UNQUOTE(JSON_EXTRACT(result_json, '$.email_queue')) != 'null'""",
+            {"first": first, "end": last + timedelta(days=1)},
+            as_dict=True,
+        )
+        communications = [row.communication for row in rows if row.communication and row.communication != "null"]
+        summary["sent"] = len(rows)
+        emails = {row.template for row in rows if row.template and row.template != "null"}
+        kinds = {"Opened": "opened", "Clicked": "clicked", "Bounced": "hard_bounce", "Soft-Bounced": "soft_bounce", "Unsubscribed": "unsubscribed"}
+        seen = {key: set() for key in kinds.values()}
+        for offset in range(0, len(communications), 5000):
+            for event in frappe.get_all(
+                "Email Tracking Event",
+                filters={"communication": ["in", communications[offset:offset + 5000]], "event_type": ["in", list(kinds)]},
+                fields=["communication", "event_type"], limit_page_length=0,
+            ):
+                seen[kinds[event.event_type]].add(event.communication)
+        for key, values in seen.items():
+            summary[key] = len(values)
+    accepted = summary["sent"]
+    summary["open_rate"] = round(100 * summary["opened"] / accepted, 1) if accepted else None
+    summary["click_rate"] = round(100 * summary["clicked"] / accepted, 1) if accepted else None
+    return {"summary": summary, "email_count": len(emails), "range": selected_range}
+
+
+@frappe.whitelist()
 def get_comparison(scope="campaign", values=None, period="previous_month", from_date=None, to_date=None):
     first, last, selected_range = _period_range(period, from_date, to_date)
     if isinstance(values, str):

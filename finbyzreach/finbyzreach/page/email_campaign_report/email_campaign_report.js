@@ -32,11 +32,12 @@ class EmailCampaignReport {
 			["spam", __("Marked as spam")], ["replied", __("Replied")], ["failed", __("Failed")],
 			["skipped", __("Skipped")],
 		];
-		this.page.set_primary_action(__("Refresh"), () => this.view === "single" ? this.load() : this.loadCohort(), "refresh");
+		this.page.set_primary_action(__("Refresh"), () => { this.loadWorkflowUsage(); return this.view === "single" ? this.load() : this.loadCohort(); }, "refresh");
 		this.render();
 		this.makeControls();
 		this.bind();
 		this.applyRoute();
+		this.loadWorkflowUsage();
 	}
 
 	render() {
@@ -485,6 +486,13 @@ class EmailCampaignReport {
 			const counts = data.summary || {};
 			this.page.main.find(".ecr-overview-period").text(data.range?.label || "");
 			body.html(`<tr><td><strong>${this.esc(__("All campaigns ({0})", [data.campaign_count || 0]))}</strong></td><td>${this.number(counts.sent)}</td><td>${this.rate(counts.open_rate)}</td><td>${this.rate(counts.click_rate)}</td><td>${this.number(counts.replied)}</td><td>${this.number(Number(counts.hard_bounce || 0) + Number(counts.soft_bounce || 0))}</td><td>${this.number(counts.unsubscribed)}</td><td>${this.number(counts.failed)}</td></tr>`);
+			// EM-27: e-mails sent by workflows are counted on their own row, never inside the campaign numbers.
+			try {
+				const workflow = await frappe.call({method: this.method + "get_workflow_overview", args: range.days ? {period: String(range.days)} : {period: "custom", ...range}});
+				if (requestId !== this.requestId) return;
+				const w = workflow.message?.summary || {};
+				body.append(`<tr><td><strong>${this.esc(__("Workflow emails ({0})", [workflow.message?.email_count || 0]))}</strong></td><td>${this.number(w.sent)}</td><td>${this.rate(w.open_rate)}</td><td>${this.rate(w.click_rate)}</td><td>-</td><td>${this.number(Number(w.hard_bounce || 0) + Number(w.soft_bounce || 0))}</td><td>${this.number(w.unsubscribed)}</td><td>-</td></tr>`);
+			} catch (workflowError) { /* the campaign row stays; workflow numbers are optional */ }
 		} catch (error) {
 			if (requestId === this.requestId) body.html(`<tr><td colspan="8" class="ecr-empty">${__("Could not load overall statistics.")}</td></tr>`);
 		}
@@ -587,6 +595,23 @@ class EmailCampaignReport {
 		}
 	}
 
+	async loadWorkflowUsage() {
+		// EM-27: e-mails sent by workflows are counted here, apart from the campaigns above.
+		if (!this.$workflowUsage) this.$workflowUsage = $('<section class="ecr-workflow-usage" aria-label="' + this.esc(__("E-mails sent by workflows")) + '"></section>').appendTo(this.page.main);
+		try {
+			const {message: data} = await frappe.call({method: "finbyzreach.workflow_email_stats.workflow_email_usage", type: "GET", args: {days: this.days || 30}});
+			const rows = data.rows || [];
+			const body = rows.map(r => `<tr><td>${this.esc(r.workflow_title)}</td><td>${this.esc(r.email_template || "—")}</td><td>${this.number(r.sent)}</td><td>${this.number(r.opened)}</td><td>${this.number(r.clicked)}</td><td>${this.number(r.bounced)}</td><td>${this.number(r.unsubscribed)}</td></tr>`).join("");
+			const totals = data.totals || {};
+			this.$workflowUsage.html(`<h4>${this.esc(__("E-mails sent by workflows"))} <small class="text-muted">${this.esc(__("Last {0} days", [data.days || 30]))}</small></h4>
+				<p class="text-muted">${this.esc(__("Counted separately from the campaigns above."))}</p>
+				<table class="table table-bordered"><thead><tr><th>${this.esc(__("Workflow"))}</th><th>${this.esc(__("E-mail"))}</th><th>${this.esc(__("Sent"))}</th><th>${this.esc(__("Opened"))}</th><th>${this.esc(__("Clicked"))}</th><th>${this.esc(__("Bounced"))}</th><th>${this.esc(__("Unsubscribed"))}</th></tr></thead>
+				<tbody>${body || `<tr><td colspan="7" class="text-muted">${this.esc(__("No workflow e-mails were sent in this period."))}</td></tr>`}</tbody>
+				${rows.length ? `<tfoot><tr><th colspan="2">${this.esc(__("Total"))}</th><th>${this.number(totals.sent)}</th><th>${this.number(totals.opened)}</th><th>${this.number(totals.clicked)}</th><th>${this.number(totals.bounced)}</th><th>${this.number(totals.unsubscribed)}</th></tr></tfoot>` : ""}</table>`);
+		} catch (error) {
+			this.$workflowUsage.empty();
+		}
+	}
 	number(value) { return new Intl.NumberFormat().format(Number(value || 0)); }
 	esc(value) { return frappe.utils.escape_html(String(value ?? "")); }
 }
