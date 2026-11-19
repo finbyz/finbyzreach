@@ -6,6 +6,16 @@ from finbyzai.ai.agent.agent_service import AgentService
 SUPPORTED_RESEARCH_PARTIES = {"Lead", "Customer"}
 
 
+def _get_agent_name(fieldname: str):
+    """The follow-up job is configured on Lead Followup Setting; Followup Settings is the older place."""
+    for doctype in ("Lead Followup Setting", "Followup Settings"):
+        if frappe.db.exists("DocType", doctype):
+            value = frappe.db.get_single_value(doctype, fieldname)
+            if value:
+                return value
+    return None
+
+
 def research_company(party_type: str, party_name: str, enforce_permissions: bool = False, **kwargs) -> str:
     """Research about a lead or customer using internal data or fallback to Perplexity."""
     if party_type not in SUPPORTED_RESEARCH_PARTIES:
@@ -39,10 +49,16 @@ def research_company(party_type: str, party_name: str, enforce_permissions: bool
         }
         
     # get prompt template from settings
-    setting = frappe.get_single("Followup Settings")
-    if not setting.company_research_agent:
-        frappe.throw("Please set Company Research Agent in Followup Settings.")
-    company_research_service = AgentService(setting.company_research_agent)
+    company_agent = _get_agent_name("company_research_agent")
+    if not company_agent:
+        frappe.throw("Please set Company Research Agent in Lead Followup Setting.")
+    company_research_service = AgentService(company_agent)
+
+    # The Company Research prompt asks the model to pick from these lists.
+    lead_type_field = frappe.get_meta("Lead").get_field("type")
+    lead_types = [o.strip() for o in (lead_type_field.options or "").split("\n") if o.strip()] if lead_type_field else []
+    lead_info["available_lead_types"] = ", ".join(lead_types) or "Client, Channel Partner, Consultant"
+    lead_info["available_industry_types"] = ", ".join(frappe.get_all("Industry Type", pluck="name", limit=200))
 
     result = company_research_service.invoke(**lead_info)
     frappe.logger("finbyzreach").info(f"Company research result: {frappe.as_json(result)}")
@@ -116,10 +132,10 @@ def research_person(contact_name: str, enforce_permissions: bool = False) -> str
         "full_name": " ".join(filter(None, [contact.first_name, contact.middle_name, contact.last_name])),
     })
     # Get agent service from Followup Settings
-    setting = frappe.get_single("Followup Settings")
-    if not setting.person_research_agent:
-        frappe.throw("Please set Person Research Agent in Followup Settings.")
-    person_research_service = AgentService(setting.person_research_agent)
+    person_agent = _get_agent_name("person_research_agent")
+    if not person_agent:
+        frappe.throw("Please set Person Research Agent in Lead Followup Setting.")
+    person_research_service = AgentService(person_agent)
 
     # Call research agent
     result = person_research_service.invoke(**lead_info)
