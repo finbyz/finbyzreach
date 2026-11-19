@@ -2,13 +2,34 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 
 import frappe
 from frappe import _
 from frappe.utils.jinja import validate_template
 
-from .tokens import compile_tokens, validate_semantic_tokens
+from .tokens import compile_attribute, compile_tokens, validate_semantic_tokens
 from .targets import normalize_template_doctype
+
+
+PREHEADER_STYLE = "display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;"
+_PREHEADER_RE = re.compile(r'<div style="' + re.escape(PREHEADER_STYLE) + r'">.*?</div>', re.S)
+_BODY_RE = re.compile(r"<body\b[^>]*>", re.I)
+
+
+def _with_preheader(html: str, override: str) -> str:
+	"""EM-26: put the campaign preview text into the sent HTML as the hidden preheader.
+
+	The template HTML is precompiled with the template's own preheader (or none), so an
+	override only in the snapshot metadata never reached the inbox.
+	"""
+	block = f'<div style="{PREHEADER_STYLE}">{compile_attribute(str(override).strip())}</div>'
+	if _PREHEADER_RE.search(html):
+		return _PREHEADER_RE.sub(lambda _match: block, html, count=1)
+	body = _BODY_RE.search(html)
+	if body:
+		return html[: body.end()] + block + html[body.end() :]
+	return block + html
 
 
 def get_campaign_snapshot(
@@ -33,6 +54,8 @@ def get_campaign_snapshot(
 		# EM-26: preview text chosen for this campaign only; the template keeps its own.
 		preheader = compile_tokens(validate_semantic_tokens(str(preheader_override).strip()), "ebt")
 	html = template.response_html if template.use_html else template.response
+	if str(preheader_override or "").strip() and str(html or "").strip():
+		html = _with_preheader(html, preheader_override)
 	if subject_override:
 		subject = compile_tokens(validate_semantic_tokens(subject_override), "ebt")
 	else:
