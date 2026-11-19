@@ -22,6 +22,21 @@ frappe.provide("frappe.reach_segment_library");
         }, __("New Folder"), __("Create"));
     }
 
+    // SEG-33: name, object type, segment type, folder and description in one step, then the filters.
+    function create_segment(defaults = {}) {
+        frappe.prompt([
+            { fieldname: "segment_name", fieldtype: "Data", label: __("Name"), reqd: 1 },
+            { fieldname: "audience_doctype", fieldtype: "Select", label: __("Object type"), reqd: 1,
+                options: "Lead\nContact\nCustomer\nOpportunity\nSales Order", default: defaults.audience_doctype || "Lead",
+                description: __("Cannot be changed after the segment is created.") },
+            { fieldname: "segment_type", fieldtype: "Select", label: __("Segment type"), reqd: 1,
+                options: "Active\nStatic", default: defaults.segment_type || "Active",
+                description: __("Active updates itself. Static keeps the members you choose.") },
+            { fieldname: "folder", fieldtype: "Link", options: FOLDER, label: __("Folder"), default: defaults.folder || "" },
+            { fieldname: "description", fieldtype: "Small Text", label: __("Description") }
+        ], values => frappe.new_doc(SEGMENT, { ...values, segment_name: values.segment_name.trim() }), __("New Segment"), __("Continue"));
+    }
+
     function move_segment(name, folder, on_moved) {
         frappe.prompt({ fieldname: "folder", fieldtype: "Link", options: FOLDER, label: __("Folder"),
             default: folder || "", description: __("Clear this field to move the segment to Without Folder.") }, async values => {
@@ -62,10 +77,27 @@ frappe.provide("frappe.reach_segment_library");
                 </div>
             </div></div>`);
             this.$root.on("click", "[data-folder]", event => {
-                if ($(event.target).closest("[data-new-child]").length) return;
+                if ($(event.target).closest("[data-new-child],[data-rename-folder],[data-delete-folder]").length) return;
                 const folder = this.folders[Number($(event.currentTarget).attr("data-folder"))];
                 this.path.push({ name: folder.name, label: folder.folder_name });
                 this.navigate();
+            });
+            this.$root.on("click", "[data-rename-folder]", event => {
+                event.stopPropagation();
+                const folder = this.folders[Number($(event.currentTarget).attr("data-rename-folder"))];
+                frappe.prompt({ fieldname: "name", fieldtype: "Data", label: __("New name"), default: folder.folder_name, reqd: 1 }, values => {
+                    const name = values.name.trim();
+                    if (!name || name === folder.folder_name) return;
+                    frappe.call({ method: "frappe.client.rename_doc", args: { doctype: FOLDER, old_name: folder.name, new_name: name } })
+                        .then(() => { frappe.show_alert({ message: __("Folder renamed"), indicator: "green" }); this.load(); });
+                }, __("Rename Folder"), __("Rename"));
+            });
+            this.$root.on("click", "[data-delete-folder]", event => {
+                event.stopPropagation();
+                const folder = this.folders[Number($(event.currentTarget).attr("data-delete-folder"))];
+                frappe.confirm(__("Delete the folder {0}? It must be empty.", [frappe.utils.escape_html(folder.folder_name)]), () =>
+                    frappe.call({ method: "frappe.client.delete", args: { doctype: FOLDER, name: folder.name } })
+                        .then(() => { frappe.show_alert({ message: __("Folder deleted"), indicator: "green" }); this.load(); }));
             });
             this.$root.on("click", "[data-new-child]", event => {
                 event.stopPropagation();
@@ -113,7 +145,7 @@ frappe.provide("frappe.reach_segment_library");
             this.$root.find(".rs-library-new-folder").on("click", () => new_folder(this.folder || ROOT, () => this.load()));
             this.$root.find(".rs-library-new").on("click", () => {
                 this.dialog.hide();
-                frappe.new_doc(SEGMENT, { folder: this.folder || "", ...(this.audience ? { audience_doctype: this.audience } : {}) });
+                create_segment({ folder: this.folder || "", ...(this.audience ? { audience_doctype: this.audience } : {}) });
             });
             this.$root.find(".rs-library-tree").on("click", () => { this.dialog.hide(); frappe.set_route("Tree", FOLDER); });
             this.dialog.show();
@@ -181,6 +213,8 @@ frappe.provide("frappe.reach_segment_library");
                 <div class="etl5-folder-text"><div class="etl5-folder-name" title="${escape(label)}">${escape(label)}</div></div>
                 <div class="etl5-folder-arrow" aria-hidden="true">›</div>
                 ${index !== null && frappe.model.can_create(FOLDER) ? `<button type="button" class="etl5-add-child" data-new-child="${index}" title="${escape(__("Add subfolder"))}" aria-label="${escape(__("Add subfolder"))}">+</button>` : ""}
+                ${index !== null && frappe.model.can_write(FOLDER) ? `<button type="button" class="etl5-add-child" data-rename-folder="${index}" title="${escape(__("Rename folder"))}" aria-label="${escape(__("Rename folder"))}">✎</button>` : ""}
+                ${index !== null && frappe.model.can_delete(FOLDER) ? `<button type="button" class="etl5-add-child" data-delete-folder="${index}" title="${escape(__("Delete folder"))}" aria-label="${escape(__("Delete folder"))}">×</button>` : ""}
             </div>`;
             const unfiled = this.folder === ROOT && this.page === 0 && (!this.search || __("Without Folder").toLowerCase().includes(this.search.toLowerCase()));
             const folderCount = this.folders.length + Number(unfiled);
@@ -211,4 +245,5 @@ frappe.provide("frappe.reach_segment_library");
         return new SegmentLibrary(options);
     };
     frappe.reach_segment_library.new_folder = new_folder;
+    frappe.reach_segment_library.create_segment = create_segment;
 })();

@@ -2,6 +2,7 @@
 class ReachSegmentBuilder {
     constructor(frm) {
         this.frm = frm;
+        this.docName = frm.doc.name;
         this.groups = [];
         this.exclusions = [];
         this.specials = [];
@@ -32,6 +33,7 @@ class ReachSegmentBuilder {
                 <button type="button" class="btn btn-default btn-sm" role="tab" data-tab="excluded">${__("Excluded")}</button>
                 <button type="button" class="btn btn-default btn-sm" role="tab" data-tab="used">${__("Used in")}</button>
                 <button type="button" class="btn btn-default btn-sm" role="tab" data-tab="history">${__("History")}</button>
+                <button type="button" class="btn btn-default btn-sm" role="tab" data-tab="changes">${__("Changes")}</button>
             </div><p class="rs-summary text-muted"></p><div class="rs-members-view"><div class="rs-toolbar">
                 <strong class="rs-count"></strong><input type="search" class="form-control rs-search" aria-label="${escape(__("Search members"))}" placeholder="${escape(__("Search members"))}">
                 <button type="button" class="btn btn-default btn-sm rs-refresh">${__("Refresh")}</button></div>
@@ -44,7 +46,8 @@ class ReachSegmentBuilder {
                 <button type="button" class="btn btn-default btn-sm rs-excluded-export">${__("Export")}</button></div><div class="rs-excluded-results"></div><div class="rs-pagination">
                 <button type="button" class="btn btn-default btn-sm rs-excluded-prev">${__("Previous")}</button><span class="rs-excluded-page"></span>
                 <button type="button" class="btn btn-default btn-sm rs-excluded-next">${__("Next")}</button>
-            </div></div><div class="rs-used-view" hidden><div class="rs-used-results"></div></div><div class="rs-history-view" hidden><div class="rs-chart"></div><div class="rs-history-results"></div>
+            </div></div><div class="rs-used-view" hidden><div class="rs-used-results"></div></div><div class="rs-changes-view" hidden><div class="rs-changes-results"></div>
+                <button type="button" class="btn btn-default btn-sm rs-changes-more" hidden>${__("Older changes")}</button></div><div class="rs-history-view" hidden><div class="rs-chart"></div><div class="rs-history-results"></div>
                 <button type="button" class="btn btn-default btn-sm rs-history-next">${__("Next changes")}</button>
             </div></section></div>`);
         this.$root.on("click","[data-tab]",e=>this.setTab($(e.currentTarget).attr("data-tab")));
@@ -101,6 +104,14 @@ class ReachSegmentBuilder {
         this.setTab(this.frm._segment_tab || "members",false);
         this.load(true);
     }
+    afterSave() {
+        // The saved definition is this editor's own, so there is nothing to reload.
+        this.definitionSignature = JSON.stringify(this.definition());
+        this.frm.toggle_display("static_leads_json", false);
+        this.frm.toggle_display("exclude_filters_json", false);
+        this.actions();
+        this.load(true);
+    }
     dispose() {
         this.disposed = true;
         this.ready = false;
@@ -142,7 +153,7 @@ class ReachSegmentBuilder {
         const items = group ? group.specials : this.specials;
         items.push(condition);
         const escape = frappe.utils.escape_html;
-        const title = condition.kind === "subscription" ? `${condition.topic}: ${__(condition.status || "Subscribed")}` : condition.kind === "segment" ? `${condition.operator}: ${condition.segment}` : condition.kind === "related" ? `${condition.quantifier}: ${condition.doctype}` : `${condition.event}: ${condition.days} ${__("days")}`;
+        const title = condition.kind === "subscription" ? `${condition.topic}: ${__(condition.status || "Subscribed")}` : condition.kind === "segment" ? `${condition.operator}: ${condition.segment}` : condition.kind === "related" ? `${condition.quantifier}: ${condition.doctype}` : condition.kind === "relative_date" ? this.relativeDateTitle(condition) : condition.kind === "multiselect" ? this.multiselectTitle(condition) : `${condition.event}: ${condition.days} ${__("days")}`;
         const $row = $(`<div class="rs-rule rs-special-rule"><strong>${escape(title)}</strong><button type="button" class="btn btn-default btn-sm">${__("Remove")}</button></div>`);
         (group ? group.$group.find(".rs-group-specials") : this.$root.find(".rs-specials")).append($row);
         $row.find("button").prop("disabled", !this.canWrite).on("click", () => { items.splice(items.indexOf(condition),1); $row.remove(); this.changed(); });
@@ -161,6 +172,47 @@ class ReachSegmentBuilder {
             {fieldname:"campaign",fieldtype:"Link",options:"Campaign",label:__("Campaign (optional)")},
             {fieldname:"site",fieldtype:"Int",label:__("Tracking site ID (optional)")}
         ], values => this.addSpecial({kind:"activity",...values},group));
+    }
+    fieldLabel(fieldname) {
+        if (fieldname === "__last_activity") return __("Last activity");
+        const df = frappe.meta.get_docfield(this.doctype, fieldname);
+        return df ? __(df.label || fieldname) : fieldname;
+    }
+    relativeDateTitle(c) {
+        const unit = __(c.unit || "days");
+        const rule = c.comparison === "older_than" ? __("more than {0} {1} ago", [c.amount, unit])
+            : c.comparison === "within_next" ? __("in the next {0} {1}", [c.amount, unit]) : __("in the last {0} {1}", [c.amount, unit]);
+        return `${this.fieldLabel(c.field)}: ${rule}`;
+    }
+    multiselectTitle(c) {
+        const mode = {any: __("has any of"), all: __("has all of"), none: __("has none of")}[c.mode] || c.mode;
+        return `${this.fieldLabel(c.field)} ${mode}: ${(c.values || []).join(", ")}`;
+    }
+    relativeDateDialog(group=null, field="__last_activity") {
+        // SEG-18: "in the last 30 days", "more than 6 months ago", "in the next 2 weeks" on any date field.
+        const lastActivity = field === "__last_activity";
+        frappe.prompt([
+            {fieldtype:"HTML", options:`<p class="text-muted">${__("Date field")}: <strong>${frappe.utils.escape_html(this.fieldLabel(field))}</strong></p>`},
+            {fieldname:"comparison",fieldtype:"Select",label:__("Rule"),reqd:1,default:"older_than",
+                options: lastActivity ? [{value:"older_than",label:__("More than … ago (or never)")},{value:"within_last",label:__("In the last …")}]
+                    : [{value:"within_last",label:__("In the last …")},{value:"older_than",label:__("More than … ago")},{value:"within_next",label:__("In the next …")}]},
+            {fieldname:"amount",fieldtype:"Int",label:__("Number"),reqd:1,default:6},
+            {fieldname:"unit",fieldtype:"Select",label:__("Unit"),reqd:1,default:"months",options:"days\nweeks\nmonths\nyears"}
+        ], values => this.addSpecial({kind:"relative_date", field, comparison:values.comparison, amount:cint(values.amount), unit:values.unit}, group),
+        lastActivity ? __("Last activity") : __("Date rule"));
+    }
+    async multiselectDialog(group, df) {
+        // SEG-13: fields that hold several values, such as interests or topics.
+        await frappe.model.with_doctype(df.options);
+        const link = frappe.meta.get_docfields(df.options).find(f => f.fieldtype === "Link");
+        if (!link) return frappe.msgprint(__("This field has no selectable values."));
+        frappe.prompt([
+            {fieldname:"mode",fieldtype:"Select",label:__("Condition"),reqd:1,default:"any",
+                options:[{value:"any",label:__("Has any of")},{value:"all",label:__("Has all of")},{value:"none",label:__("Has none of")}]},
+            {fieldname:"values",fieldtype:"MultiSelectList",label:__(link.label || df.label),reqd:1,
+                get_data: txt => frappe.db.get_link_options(link.options, txt)}
+        ], values => this.addSpecial({kind:"multiselect", field:df.fieldname, mode:values.mode,
+            values:(values.values || []).map(v => v.value || v)}, group), __(df.label || df.fieldname));
     }
     relatedTargets() {
         return ["Opportunity","Sales Order"].includes(this.doctype) ? ["Customer"] : this.doctype === "Lead" ? ["Customer","Quotation","Opportunity"]
@@ -203,6 +255,15 @@ class ReachSegmentBuilder {
         }
         const items = [];
         for (const f of fieldsOf(this.doctype)) items.push({group:__("{0} fields", [__(this.doctype)]), label:__(f.label), run:() => this.addField(target, f.fieldname)});
+        for (const f of frappe.meta.get_docfields(this.doctype).filter(d => ["Date","Datetime"].includes(d.fieldtype) && d.label && !d.hidden)) items.push({group:__("Date rules"), label:`${__(f.label)}: ${__("in the last / more than … ago / in the next")}`, run:() => this.relativeDateDialog(group, f.fieldname)});
+        for (const f of ["creation","modified"]) items.push({group:__("Date rules"), label:`${f === "creation" ? __("Created on") : __("Last modified")}: ${__("in the last / more than … ago")}`, run:() => this.relativeDateDialog(group, f)});
+        if (["Lead","Contact","Customer"].includes(this.doctype)) items.push({group:__("Date rules"), label:__("Last activity: more than … ago / in the last …"), run:() => this.relativeDateDialog(group, "__last_activity")});
+        for (const f of frappe.meta.get_docfields(this.doctype).filter(d => d.fieldtype === "Table MultiSelect" && d.label && !d.hidden)) items.push({group:__("Multi-value fields"), label:__("{0}: has any / all / none of", [__(f.label)]), run:() => this.multiselectDialog(group, f)});
+        // SEG-17: "contains data" / "does not contain data" for every plain field.
+        for (const f of fieldsOf(this.doctype).filter(d => !["Table","Table MultiSelect"].includes(d.fieldtype))) {
+            items.push({group:__("Contains data"), label:__("{0}: contains data", [__(f.label)]), run:() => this.addField(target, f.fieldname, "is", "set")});
+            items.push({group:__("Contains data"), label:__("{0}: does not contain data", [__(f.label)]), run:() => this.addField(target, f.fieldname, "is", "not set")});
+        }
         for (const t of topics) items.push({group:__("Subscriptions"), label:`${t.name}${t.category === "Topic" ? " · " + __("Topic") : ""}`, run:() => this.subscriptionDialog(group, t.name)});
         for (const dt of targets) for (const f of (frappe.meta.docfield_list[dt] ? fieldsOf(dt) : [])) items.push({group:linkLabel[dt], label:__(f.label), run:() => this.relatedDialog(group, {doctype:dt, field:f.fieldname})});
         for (const e of ["Opened","Clicked","Replied","Sent","Unsubscribed"]) items.push({group:__("Email activity"), label:__("Email {0}", [__(e).toLowerCase()]), run:() => this.activityDialog(group, e)});
@@ -228,10 +289,10 @@ class ReachSegmentBuilder {
         dialog.show();
         setTimeout(() => dialog.fields_dict.search.$input.trigger("focus"), 100);
     }
-    async addField(group, fieldname) {
+    async addField(group, fieldname, condition=null, value=null) {
         const item = group || this.groups[0] || null;
-        if (!item) { await this.addGroup([[this.doctype, fieldname, "=", ""]], false); return; }
-        await item.filter.add_filter(this.doctype, fieldname);
+        if (!item) { await this.addGroup([[this.doctype, fieldname, condition || "=", value ?? ""]], false); return; }
+        await item.filter.add_filter(this.doctype, fieldname, condition || undefined, value ?? undefined);
         this.changed();
     }
     groupDefinition(item) {
@@ -282,6 +343,7 @@ class ReachSegmentBuilder {
         if (!this.ready || this.disposed) return;
         if (this.tab === "excluded") return this.loadExcluded();
         if (this.tab === "history") return this.loadHistory();
+        if (this.tab === "changes") return this.loadChanges(0);
         if (this.tab === "used") return this.loadUsage();
         const sequence = ++this.sequence;
         if (reset) { this.page = 0; this.cursors = [null]; }
@@ -305,7 +367,10 @@ class ReachSegmentBuilder {
             if (["Queued","Building"].includes(data.snapshot_status)) this.snapshotTimer = setTimeout(()=>this.load(true),2000);
             const escape = frappe.utils.escape_html;
             this.columns = data.columns;
-            this.$root.find(".rs-summary").text(`${__(data.segment_type || this.frm.doc.segment_type)} · ${__(data.snapshot_status || "Ready")}${this.stamps()}`);
+            // SEG-36: segment type and size sit at the top right of the records panel.
+            this.summaryBase = `${__(data.segment_type || this.frm.doc.segment_type)} · ${__(data.snapshot_status || "Ready")}${this.stamps()}`;
+            if (data.count !== null) this.summaryCount = __("{0} members", [data.count]);
+            this.$root.find(".rs-summary").text(this.summaryCount ? `${this.summaryBase} · ${this.summaryCount}` : this.summaryBase);
             if (data.count !== null) this.$root.find(".rs-count").text(__("{0} members · {1} excluded", [data.count, data.excluded_count ?? 0]));
             const showActions = this.canWrite && !this.frm.is_new();
             const columns = data.columns.map(c => `<col class="${c === "name" ? "rs-name-column" : "rs-data-column"}">`).join("");
@@ -356,8 +421,24 @@ class ReachSegmentBuilder {
     setTab(tab, load=true) {
         this.tab = tab;
         this.frm._segment_tab = tab;
-        for (const name of ["members","excluded","used","history"]) this.$root.find(`.rs-${name}-view`).prop("hidden",name !== tab);
+        for (const name of ["members","excluded","used","changes","history"]) this.$root.find(`.rs-${name}-view`).prop("hidden",name !== tab);
         if (load) this.load(true);
+    }
+    async loadChanges(start=0) {
+        // SEG-51: who changed which filter or exclusion, in plain words.
+        if (this.frm.is_new()) return;
+        const sequence = ++this.sequence;
+        const {message:data} = await frappe.call({method:"finbyzreach.segment_changelog.definition_changes",type:"GET",
+            args:{segment_name:this.frm.doc.name,start,page_length:20}});
+        if (this.disposed || sequence !== this.sequence) return;
+        const escape = frappe.utils.escape_html;
+        const icon = {added:"+", removed:"−", changed:"~"};
+        const html = data.entries.map(entry => `<div class="rs-change"><div class="text-muted">${escape(frappe.datetime.str_to_user(entry.when))} · ${escape(entry.by)}</div>
+            <ul class="list-unstyled">${entry.changes.map(c => `<li class="rs-change-${c.type}"><strong>${icon[c.type] || ""}</strong> ${escape(c.text)}</li>`).join("") || `<li class="text-muted">${__("Settings saved")}</li>`}</ul></div>`).join("");
+        const $results = this.$root.find(".rs-changes-results");
+        $results.html(start ? $results.html() + html : html || `<p class="text-muted">${__("No filter or exclusion has been changed yet.")}</p>`);
+        this.changesNext = start + 20;
+        this.$root.find(".rs-changes-more").prop("hidden", !data.has_more).off("click").on("click", () => this.loadChanges(this.changesNext));
     }
     async loadExcluded() {
         if (this.frm.is_new()) return;
@@ -512,12 +593,21 @@ frappe.ui.form.on("Reach Segment", {
     onload(frm) { ensureFilterField(frm); },
     refresh(frm) {
         if (ensureFilterField(frm)) frm.refresh_field("filter_groups_json");
-        frm.builder?.dispose();
+        const current = frm.builder;
+        // Frappe refreshes the form after every save, including autosave. When this editor just saved
+        // its own filters, keep the rows on screen so a condition being typed is not wiped.
+        if (current?.ready && !current.disposed && current.docName === frm.doc.name && Date.now() - (frm._rs_saved_at || 0) < 20000) {
+            frm._rs_saved_at = 0;
+            current.afterSave();
+            return;
+        }
+        current?.dispose();
         frm.builder = new ReachSegmentBuilder(frm);
     },
     audience_doctype(frm) { if (frm.is_new()) { frm.doc.filter_groups_json = "[]"; frm.doc.filter_expression_json = ""; frm.trigger("refresh"); } },
     async validate(frm) {
         await frm.builder?.initialized;
         frm.builder?.serialize();
+        frm._rs_saved_at = Date.now();
     }
 });

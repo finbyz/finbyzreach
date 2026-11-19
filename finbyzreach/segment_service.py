@@ -81,6 +81,10 @@ def expression_condition(doctype, expression, seen=()):
             return related_condition(doctype, node)
         if node.get('kind') == 'activity':
             return activity_condition(doctype, node)
+        if node.get('kind') == 'relative_date':
+            return relative_date_condition(doctype, node)
+        if node.get('kind') == 'multiselect':
+            return multiselect_condition(doctype, node)
         if node.get('kind') == 'segment':
             other = frappe.get_doc('Reach Segment', node.get('segment'))
             other.check_permission('read')
@@ -135,6 +139,80 @@ def related_condition(doctype, node):
     if node.get('quantifier', 'any') == 'all':
         return exists & table.name.notin(base.where(~match).select(key))
     return table.name.isin(base.where(match).select(key))
+
+
+RELATIVE_COMPARISONS = ('within_last', 'older_than', 'within_next')
+RELATIVE_UNITS = ('days', 'weeks', 'months', 'years')
+RELATIVE_LIMITS = {'days': 36500, 'weeks': 5200, 'months': 1200, 'years': 100}
+LAST_ACTIVITY = '__last_activity'
+
+
+def relative_date_condition(doctype, node):
+    """A date field relative to today: in the last N days, more than N months ago, or in the next N weeks.
+
+    ``__last_activity`` is the most recent Communication (e-mail or call note) on the record;
+    "more than N ago" then also matches records that never had any activity.
+    """
+    from frappe.utils import add_to_date, getdate
+    from pypika.terms import ExistsCriterion
+    comparison = node.get('comparison')
+    unit = node.get('unit') or 'days'
+    amount = cint(node.get('amount'))
+    if comparison not in RELATIVE_COMPARISONS or unit not in RELATIVE_UNITS:
+        frappe.throw(_('Choose a valid relative date rule'))
+    if not 1 <= amount <= RELATIVE_LIMITS[unit]:
+        frappe.throw(_('Enter a number between 1 and {0} {1}').format(RELATIVE_LIMITS[unit], _(unit)))
+    now = now_datetime()
+    table = frappe.qb.DocType(doctype)
+    field = node.get('field')
+    if field == LAST_ACTIVITY:
+        if comparison == 'within_next':
+            frappe.throw(_('Last activity can only look back in time'))
+        frappe.has_permission('Communication', 'read', throw=True)
+        communication = frappe.qb.DocType('Communication')
+        cutoff = add_to_date(now, **{unit: -amount})
+        newer = (frappe.qb.from_(communication).select(communication.name)
+                 .where(communication.reference_doctype == doctype)
+                 .where(communication.reference_name == table.name)
+                 .where(communication.communication_date >= cutoff))
+        return ~ExistsCriterion(newer) if comparison == 'older_than' else ExistsCriterion(newer)
+    df = frappe.get_meta(doctype).get_field(field) if field not in ('creation', 'modified') else None
+    if field not in ('creation', 'modified') and not (df and df.fieldtype in ('Date', 'Datetime')):
+        frappe.throw(_('{0} is not a date field').format(field))
+    column = table[field]
+    is_date = bool(df and df.fieldtype == 'Date')
+    shift = lambda value: getdate(value) if is_date else value
+    if comparison == 'older_than':
+        return column < shift(add_to_date(now, **{unit: -amount}))
+    if comparison == 'within_last':
+        return (column >= shift(add_to_date(now, **{unit: -amount}))) & (column <= shift(now))
+    return (column >= shift(now)) & (column <= shift(add_to_date(now, **{unit: amount})))
+
+
+def multiselect_condition(doctype, node):
+    """Several values stored in a Table MultiSelect field (interests, topics): any, all or none of them."""
+    field = node.get('field')
+    mode = node.get('mode') or 'any'
+    values = [str(v) for v in (node.get('values') or []) if str(v or '').strip()]
+    meta = frappe.get_meta(doctype)
+    df = meta.get_field(field)
+    if mode not in ('any', 'all', 'none') or not values or len(values) > 50:
+        frappe.throw(_('Choose any, all or none and between 1 and 50 values'))
+    if not df or df.fieldtype != 'Table MultiSelect':
+        frappe.throw(_('{0} is not a multi-value field').format(field))
+    link = next((f for f in frappe.get_meta(df.options).fields if f.fieldtype == 'Link'), None)
+    if not link:
+        frappe.throw(_('{0} has no value column').format(field))
+    table = frappe.qb.DocType(doctype)
+    child = frappe.qb.DocType(df.options)
+    base = (frappe.qb.from_(child).where(child.parenttype == doctype).where(child.parentfield == field))
+    value = child[link.fieldname]
+    any_of = table.name.isin(base.where(value.isin(values)).select(child.parent))
+    if mode == 'any':
+        return any_of
+    if mode == 'none':
+        return ~any_of
+    return Criterion.all([table.name.isin(base.where(value == item).select(child.parent)) for item in values])
 
 
 def activity_condition(doctype, node):

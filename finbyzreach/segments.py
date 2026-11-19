@@ -205,6 +205,9 @@ def preview_segment_page(segment_name=None, definition=None, after=None, page_le
     """SQL pagination: never return/download the complete audience for a page."""
     from frappe.utils import cint
     from finbyzreach.segment_service import member_query, parsed_list
+    if definition and segment_name and not frappe.has_permission('Reach Segment', 'write', doc=segment_name):
+        # A read-only user cannot edit filters, so show the saved segment instead of refusing.
+        definition = None
     if definition:
         frappe.has_permission('Reach Segment', 'create' if not segment_name else 'write', throw=True)
         base = _segment(segment_name, 'write') if segment_name else None

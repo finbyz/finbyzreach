@@ -222,3 +222,6 @@
 .rs-excluded-view .rs-toolbar .rs-excluded-search {
     max-width: 260px;
 }
+
+/* SEG-36: type and size at the top right of the records panel. */
+.rs-summary { text-align: right; font-weight: 600; margin: 0 0 8px; }
