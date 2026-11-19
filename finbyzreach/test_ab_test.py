@@ -110,3 +110,43 @@ class AbVariantContentTest(TestCase):
 		self.assertEqual(ab_test.variant_content(campaign, frappe._dict()), ("Subject A", "<p>A</p>"))
 		off = frappe._dict(campaign, custom_ab_enabled=0)
 		self.assertEqual(ab_test.variant_content(off, frappe._dict(custom_ab_variant="B")), ("Subject A", "<p>A</p>"))
+
+
+class AbManyVersionsTest(TestCase):
+	"""EM-31: up to four versions."""
+
+	def _campaign(self, **values):
+		return frappe._dict(values)
+
+	def test_versions_are_a_and_b_plus_every_extra_one_that_has_content(self):
+		self.assertEqual(ab_test.variants(self._campaign()), ["A", "B"])
+		self.assertEqual(ab_test.variants(self._campaign(custom_ab_subject_c="Third")), ["A", "B", "C"])
+		self.assertEqual(ab_test.variants(self._campaign(custom_ab_template_c="T3", custom_ab_subject_d="Fourth")), ["A", "B", "C", "D"])
+
+	def test_the_test_group_is_split_equally_between_all_versions(self):
+		plan = ab_test.plan("CAMP", rows(100), 20, ("A", "B", "C", "D"))
+		test = [v for _r, v, p in plan if p == "Test"]
+		self.assertEqual(len(test), 20)
+		self.assertEqual({v: test.count(v) for v in "ABCD"}, {"A": 5, "B": 5, "C": 5, "D": 5})
+		three = [v for _r, v, p in ab_test.plan("CAMP", rows(100), 20, ("A", "B", "C")) if p == "Test"]
+		self.assertEqual(len(three), 18)
+		self.assertEqual({v: three.count(v) for v in "ABC"}, {"A": 6, "B": 6, "C": 6})
+
+	def test_test_size_never_drops_below_one_person_per_version(self):
+		self.assertEqual(ab_test.test_size(100, 9, 4), 8)
+		self.assertEqual(ab_test.test_size(10, 5, 4), 4)
+		self.assertEqual(ab_test.test_size(3, 50, 4), 3)
+
+	def test_the_best_of_several_versions_wins_and_a_tie_goes_to_the_earlier_one(self):
+		def many(*hits):
+			return {v: {"sent": 10, "opened": h, "clicked": 0} for v, h in zip("ABCD", hits)}
+		self.assertEqual(ab_test.choose_winner(many(2, 3, 6, 4), "Opens"), "C")
+		self.assertEqual(ab_test.choose_winner(many(2, 5, 5, 1), "Opens"), "B")
+		self.assertEqual(ab_test.choose_winner(many(4, 4, 4, 4), "Opens"), "A")
+
+	def test_versions_c_and_d_send_their_own_frozen_email(self):
+		campaign = frappe._dict(custom_ab_enabled=1, custom_snapshot_subject="S", custom_snapshot_html="H",
+			custom_ab_snapshot_subject="SB", custom_ab_snapshot_html="HB",
+			custom_ab_snapshot_subject_c="SC", custom_ab_snapshot_html_c="HC", custom_ab_snapshot_html_d="HD")
+		pick = lambda v: ab_test.variant_content(campaign, {"custom_ab_variant": v})
+		self.assertEqual([pick("A"), pick("B"), pick("C"), pick("D")], [("S", "H"), ("SB", "HB"), ("SC", "HC"), ("S", "HD")])

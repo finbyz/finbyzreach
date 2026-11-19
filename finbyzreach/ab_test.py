@@ -1,8 +1,8 @@
-"""EM-30: A/B test for a campaign.
+"""EM-30 and EM-31: A/B test for a campaign, with two to four versions (A, B, C, D).
 
-A share of the audience takes part in the test and is split equally between email A and email B
-(different subject, different content, or both). The rest waits. When the test time is over, the
-variant with the higher open or click rate wins (a tie goes to A) and the winner is sent to the rest.
+A share of the audience takes part in the test and is split equally between the versions
+(different subject, different content, or both). Email C and D are optional. The rest waits. When the test time is over, the
+variant with the higher open or click rate wins (a tie goes to the earlier version, so A) and the winner is sent to the rest.
 """
 import hashlib
 from math import ceil
@@ -14,11 +14,31 @@ from frappe.utils import add_to_date, cint, get_datetime, now_datetime
 HOLD = "2999-01-01 00:00:00"  # the rest of the audience waits here until a winner is chosen
 MIN_TEST_RECIPIENTS = 2
 MIN_SHARE, MAX_SHARE = 5, 50
+ALL_VARIANTS = ("A", "B", "C", "D")
 METRICS = {"Opens": "custom_opened", "Clicks": "custom_clicked"}
 
 
 def enabled(campaign):
 	return bool(cint(campaign.get("custom_ab_enabled")))
+
+
+def _field(kind, variant):
+	"""Campaign field of a version. B keeps its original names, C and D add a suffix."""
+	v = variant.lower()
+	if kind == "snapshot_subject":
+		return "custom_ab_snapshot_subject" if v == "b" else f"custom_ab_snapshot_subject_{v}"
+	if kind == "snapshot_html":
+		return "custom_ab_snapshot_html" if v == "b" else f"custom_ab_snapshot_html_{v}"
+	return f"custom_ab_{kind}_{v}"
+
+
+def variants(campaign):
+	"""The versions in this test: A, B, and C or D when they have their own email or subject."""
+	out = ["A", "B"]
+	for variant in ("C", "D"):
+		if campaign.get(_field("template", variant)) or str(campaign.get(_field("subject", variant)) or "").strip():
+			out.append(variant)
+	return out
 
 
 def validate(campaign):
@@ -36,23 +56,23 @@ def validate(campaign):
 		frappe.throw(_("Choose whether opens or clicks decide the winner."), title=_("A/B test"))
 
 
-def test_size(eligible_count, share):
-	"""Even number of test recipients, at least two, never more than the audience."""
-	size = max(MIN_TEST_RECIPIENTS, ceil(eligible_count * cint(share) / 100))
+def test_size(eligible_count, share, count=2):
+	"""A test group that splits equally between the versions, at least one person each, never above the audience."""
+	size = max(count, ceil(eligible_count * cint(share) / 100))
 	size = min(size, eligible_count)
-	return size - (size % 2) if size > 1 else size
+	return size - (size % count) if size >= count else size
 
 
 def _order_key(campaign_name, row):
 	return hashlib.sha256(f"{campaign_name}\0{row.normalized_email or row.email}".encode()).hexdigest()
 
 
-def plan(campaign_name, eligible_rows, share):
-	"""Return [(row, variant, phase)]: the test group first (alternating A and B), then the rest."""
+def plan(campaign_name, eligible_rows, share, letters=("A", "B")):
+	"""Return [(row, variant, phase)]: the test group first (rotating through the versions), then the rest."""
 	ordered = sorted(eligible_rows, key=lambda row: _order_key(campaign_name, row))
-	size = test_size(len(ordered), share)
+	size = test_size(len(ordered), share, len(letters))
 	return [
-		(row, ("A" if index % 2 == 0 else "B") if index < size else "", "Test" if index < size else "Rest")
+		(row, letters[index % len(letters)] if index < size else "", "Test" if index < size else "Rest")
 		for index, row in enumerate(ordered)
 	]
 
@@ -68,9 +88,10 @@ def test_end(batches, test_count, hours):
 
 
 def variant_content(campaign, recipient):
-	"""Subject and HTML for this recipient: variant B has its own frozen copy."""
-	if enabled(campaign) and recipient.get("custom_ab_variant") == "B" and campaign.get("custom_ab_snapshot_html"):
-		return campaign.custom_ab_snapshot_subject or campaign.custom_snapshot_subject, campaign.custom_ab_snapshot_html
+	"""Subject and HTML for this recipient: versions B, C and D have their own frozen copy."""
+	variant = recipient.get("custom_ab_variant")
+	if enabled(campaign) and variant in ("B", "C", "D") and campaign.get(_field("snapshot_html", variant)):
+		return campaign.get(_field("snapshot_subject", variant)) or campaign.custom_snapshot_subject, campaign.get(_field("snapshot_html", variant))
 	return campaign.custom_snapshot_subject, campaign.custom_snapshot_html
 
 
@@ -92,7 +113,7 @@ def results(campaign_name):
 		.groupby(table.custom_ab_variant)
 		.run(as_dict=True)
 	)
-	out = {"A": {"sent": 0, "opened": 0, "clicked": 0}, "B": {"sent": 0, "opened": 0, "clicked": 0}}
+	out = {variant: {"sent": 0, "opened": 0, "clicked": 0} for variant in ALL_VARIANTS}
 	for row in rows:
 		if row.custom_ab_variant in out:
 			out[row.custom_ab_variant] = {"sent": cint(row.sent), "opened": cint(row.opened), "clicked": cint(row.clicked)}
@@ -100,14 +121,18 @@ def results(campaign_name):
 
 
 def choose_winner(stats, metric):
-	"""The higher rate wins. A tie, or no data at all, goes to A."""
+	"""The highest rate wins. A tie, or no data at all, goes to the earlier version, so to A."""
 	key = "opened" if metric == "Opens" else "clicked"
 
 	def rate(variant):
 		sent = stats[variant]["sent"]
 		return stats[variant][key] / sent if sent else 0.0
 
-	return "B" if rate("B") > rate("A") else "A"
+	winner = "A"
+	for variant in ALL_VARIANTS[1:]:
+		if variant in stats and stats[variant]["sent"] and rate(variant) > rate(winner):
+			winner = variant
+	return winner
 
 
 def decide(campaign_name):

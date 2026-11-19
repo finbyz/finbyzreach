@@ -267,16 +267,22 @@ class EmailCampaignStudio {
 			{ fieldname: "attachments_panel", fieldtype: "HTML" },
 			// EM-30: send two versions to a small share, then the better one to everyone else.
 			{ fieldtype: "Section Break", label: __("A/B test") },
-			{ fieldname: "ab_enabled", label: __("Test two versions first"), fieldtype: "Check", default: 0,
-				description: __("Send email A and email B to a small share of the audience. The better one goes to everyone else."),
+			{ fieldname: "ab_enabled", label: __("Test versions first"), fieldtype: "Check", default: 0,
+				description: __("Send email A and email B, and optionally C and D, to a small share of the audience. The best one goes to everyone else."),
 				change: () => { change(); this.renderAbState(); } },
 			{ fieldname: "ab_template_b", label: __("Email B"), fieldtype: "Link", options: "Email Template", depends_on: "eval:doc.ab_enabled",
 				description: __("Leave empty to test only the subject."), change },
 			{ fieldname: "ab_subject_b", label: __("Subject B"), fieldtype: "Data", depends_on: "eval:doc.ab_enabled",
 				description: __("Leave empty to keep the subject of email A."), change },
+			{ fieldname: "ab_template_c", label: __("Email C (optional)"), fieldtype: "Link", options: "Email Template", depends_on: "eval:doc.ab_enabled",
+				description: __("A third version. Leave empty and clear Subject C to test only A and B."), change },
+			{ fieldname: "ab_subject_c", label: __("Subject C (optional)"), fieldtype: "Data", depends_on: "eval:doc.ab_enabled", change },
+			{ fieldname: "ab_template_d", label: __("Email D (optional)"), fieldtype: "Link", options: "Email Template", depends_on: "eval:doc.ab_enabled",
+				description: __("A fourth version."), change },
+			{ fieldname: "ab_subject_d", label: __("Subject D (optional)"), fieldtype: "Data", depends_on: "eval:doc.ab_enabled", change },
 			{ fieldtype: "Column Break" },
 			{ fieldname: "ab_share", label: __("Share of audience in the test (%)"), fieldtype: "Int", default: 20, depends_on: "eval:doc.ab_enabled",
-				description: __("5 to 50. Split equally between A and B."), change },
+				description: __("5 to 50. Split equally between the versions."), change },
 			{ fieldname: "ab_hours", label: __("Test duration (hours)"), fieldtype: "Int", default: 24, depends_on: "eval:doc.ab_enabled",
 				description: __("Counted from the last test email."), change },
 			{ fieldname: "ab_metric", label: __("The winner is the one with more"), fieldtype: "Select", options: "Opens\nClicks", default: "Opens", depends_on: "eval:doc.ab_enabled", change },
@@ -1288,6 +1294,10 @@ class EmailCampaignStudio {
 				ab_enabled: campaign.ab_enabled || 0,
 				ab_template_b: campaign.ab_template_b || "",
 				ab_subject_b: campaign.ab_subject_b || "",
+				ab_template_c: campaign.ab_template_c || "",
+				ab_subject_c: campaign.ab_subject_c || "",
+				ab_template_d: campaign.ab_template_d || "",
+				ab_subject_d: campaign.ab_subject_d || "",
 				ab_share: campaign.ab_share || 20,
 				ab_hours: campaign.ab_hours || 24,
 				ab_metric: campaign.ab_metric || "Opens",
@@ -2037,10 +2047,10 @@ class EmailCampaignStudio {
 		let text = "";
 		if (status.status === "Testing") text = __("The test is running. The winner is chosen when the test time is over.");
 		else if (status.status === "Decided") text = __("Email {0} won and was sent to the rest of the audience.", [status.winner || "A"]);
-		else if (this.contentForm.get_value("ab_enabled")) text = __("A tie goes to email A. The winner is sent to the rest of the audience automatically.");
-		const rows = ["A", "B"].map((key) => {
+		else if (this.contentForm.get_value("ab_enabled")) text = __("A tie goes to the earlier email, so A. The winner is sent to the rest of the audience automatically.");
+		const rows = ["A", "B", "C", "D"].map((key) => {
 			const stats = (status.variants || {})[key];
-			return stats ? "<div class='text-muted'>" + __("Email {0}: {1} sent, {2} opened, {3} clicked", [key, stats.sent, stats.opened, stats.clicked]) + "</div>" : "";
+			return stats && (stats.sent || key < "C") ? "<div class='text-muted'>" + __("Email {0}: {1} sent, {2} opened, {3} clicked", [key, stats.sent, stats.opened, stats.clicked]) + "</div>" : "";
 		}).join("");
 		field.$wrapper.html((text ? "<div class='text-muted'>" + frappe.utils.escape_html(text) + "</div>" : "") + rows);
 	}

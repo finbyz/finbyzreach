@@ -27,17 +27,21 @@ def stage(campaign):
     ab_values = {}
     if ab:
         # EM-30: the test group is sent first, the rest waits for the winner.
-        ordered = ab_test.plan(campaign.name, [row for row in resolved if row.eligible], campaign.custom_ab_share)
+        letters = ab_test.variants(campaign)
+        ordered = ab_test.plan(campaign.name, [row for row in resolved if row.eligible], campaign.custom_ab_share, letters)
         test_count = sum(1 for _row, _variant, phase in ordered if phase == 'Test')
-        ab_snapshot = mail.get_campaign_snapshot(
-            campaign.custom_ab_template_b or campaign.custom_email_template,
-            campaign.custom_ab_subject_b or campaign.custom_subject_override,
-            preheader_override=campaign.get('custom_preheader_override'))
         ab_values = {
             'custom_ab_status': 'Testing',
             'custom_ab_ends_at': ab_test.test_end(batches, test_count, campaign.custom_ab_hours),
-            'custom_ab_snapshot_subject': ab_snapshot.subject, 'custom_ab_snapshot_html': ab_snapshot.html,
         }
+        # EM-31: every version after A keeps its own frozen copy of subject and email.
+        for letter in letters[1:]:
+            snapshot_b = mail.get_campaign_snapshot(
+                campaign.get(ab_test._field('template', letter)) or campaign.custom_email_template,
+                campaign.get(ab_test._field('subject', letter)) or campaign.custom_subject_override,
+                preheader_override=campaign.get('custom_preheader_override'))
+            ab_values[ab_test._field('snapshot_subject', letter)] = snapshot_b.subject
+            ab_values[ab_test._field('snapshot_html', letter)] = snapshot_b.html
 
     def candidates():
         eligible = iter(ordered) if ab else ((row, '', '') for row in resolved if row.eligible)
