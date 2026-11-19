@@ -77,7 +77,7 @@ export type BuilderSection = {
   id: string
   saved_component?: string
   // Header and footer: a row from a saved Header or Footer block follows the shared version until it is customised.
-  saved_component_category?: 'Header' | 'Footer'
+  saved_component_category?: 'Header' | 'Footer' | 'CTA' | 'Social'
   component_customised?: boolean
   layout: LayoutType
   column_widths?: number[]
@@ -101,6 +101,12 @@ export type BuilderSettings = {
   button_text_color: string
   button_radius: string
   section_padding: string
+  // EM-15: reader's dark mode.
+  dark_mode?: 'auto' | 'off'
+  dark_body_background?: string
+  dark_content_background?: string
+  dark_text_color?: string
+  dark_link_color?: string
   // EM-14: optional fonts per text style; empty means the same as the rest of the email.
   h1_font_family?: string
   h1_font_size?: string

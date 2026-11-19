@@ -376,7 +376,7 @@ def _compile_block(block, settings, normalized=False):
 		inner = (
 			f'<div style="{style}"><table role="presentation" align="{align}"{width} cellpadding="0" cellspacing="0" border="0">'
 			f'<tr><td bgcolor="{html.escape(background, quote=True)}" style="{td_style}" align="center">'
-			f'<a href="{href}" style="{button_style}">{label}</a></td></tr></table></div>'
+			f'<a class="etb-btn" href="{href}" style="{button_style};mso-padding-alt:{block_style.get("button_padding_y") or "12px"} {block_style.get("button_padding_x") or "22px"}">{label}</a></td></tr></table></div>'
 		)
 	elif type_ == "divider":
 		block_style = block.get("style") or {}
@@ -555,6 +555,28 @@ def _validation_issues(schema, html_output):
 	return issues
 
 
+def _dark_mode_css(settings) -> str:
+	"""Dark-mode rules for mail apps that follow the reader's setting (Apple Mail, Gmail app, Outlook.com).
+
+	Colours that the author left at the template default are swapped for the dark palette. A colour the
+	author chose on purpose (a brand heading, a button) is kept as it is.
+	"""
+	text, link, content = settings["text_color"], settings["link_color"], settings["content_background"]
+	dark_page, dark_content = settings["dark_body_background"], settings["dark_content_background"]
+	dark_text, dark_link = settings["dark_text_color"], settings["dark_link_color"]
+
+	def rules(prefix=""):
+		return (
+			f"{prefix}.etb-page{{background-color:{dark_page}!important}}"
+			f"{prefix}.etb-content,{prefix}.etb-content [style*=\"background-color:{content}\"]{{background-color:{dark_content}!important}}"
+			f"{prefix}.etb-content,{prefix}.etb-content [style^=\"color:{text}\"],{prefix}.etb-content [style*=\";color:{text}\"]{{color:{dark_text}!important}}"
+			f"{prefix}.etb-content a:not(.etb-btn){{color:{dark_link}!important}}"
+		)
+
+	# Outlook.com marks the document with data-ogsc / data-ogsb instead of using the media query.
+	return f"@media (prefers-color-scheme:dark){{{rules()}}}{rules('[data-ogsc] ')}"
+
+
 def compile_schema(value, preheader="", normalized=False) -> dict:
 	"""Compile either a raw schema or a trusted schema already normalized by validate_schema."""
 	schema = value if normalized else validate_schema(value)
@@ -571,6 +593,8 @@ def compile_schema(value, preheader="", normalized=False) -> dict:
 		"table.etb-content{width:100%!important}.etb-stack .etb-column,.etb-stack-reverse .etb-column{display:block!important;width:100%!important;max-width:100%!important}"
 		".etb-no-stack .etb-column{display:table-cell!important}.etb-stack-reverse>tbody>tr{display:flex!important;flex-direction:column-reverse!important;width:100%!important}}</style>"
 	)
+	if settings.get("dark_mode") != "off":
+		css = css.replace("</style>", _dark_mode_css(settings) + "</style>")
 	for section in schema["sections"]:
 		columns = []
 		plain_columns = []
@@ -601,7 +625,22 @@ def compile_schema(value, preheader="", normalized=False) -> dict:
 		body.append(_conditions(section["visibility"], section_row, wrapper=None))
 		plain_sections.append("\n\n".join(filter(None, plain_columns)))
 	preheader_html = f'<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">{compile_attribute(preheader)}</div>' if preheader else ""
-	html_output = f'<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0">{css}</head><body style="margin:0;padding:0;background-color:{settings["body_background"]};font-family:{settings["font_family"]};color:{settings["text_color"]};"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:{settings["body_background"]};"><tr><td align="center">{preheader_html}<table role="presentation" class="etb-content" width="{width}" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:{width}px;background-color:{settings["content_background"]};">{"".join(body)}</table></td></tr></table></body></html>'
+	scheme_meta = '<meta name="color-scheme" content="light dark"><meta name="supported-color-schemes" content="light dark">' if settings.get("dark_mode") != "off" else ""
+	# Outlook for Windows renders with Word: fix table spacing and let it honour the fixed width.
+	mso_head = (
+		'<!--[if mso]><xml><o:OfficeDocumentSettings><o:AllowPNG/><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml>'
+		'<style>table,td{border-collapse:collapse;mso-table-lspace:0pt;mso-table-rspace:0pt}</style><![endif]-->'
+	)
+	mso_open = f'<!--[if mso]><table role="presentation" align="center" width="{width}" cellpadding="0" cellspacing="0" border="0"><tr><td><![endif]-->'
+	mso_close = '<!--[if mso]></td></tr></table><![endif]-->'
+	html_output = (
+		f'<!doctype html><html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">'
+		f'<head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">{scheme_meta}{mso_head}{css}</head>'
+		f'<body class="etb-page" style="margin:0;padding:0;background-color:{settings["body_background"]};font-family:{settings["font_family"]};color:{settings["text_color"]};">'
+		f'<table role="presentation" class="etb-page" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:{settings["body_background"]};"><tr><td align="center">{preheader_html}'
+		f'{mso_open}<table role="presentation" class="etb-content" width="{width}" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:{width}px;background-color:{settings["content_background"]};">{"".join(body)}</table>{mso_close}'
+		'</td></tr></table></body></html>'
+	)
 	issues = _validation_issues(schema, html_output)
 	return {
 		"html": html_output,

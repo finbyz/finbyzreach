@@ -11,7 +11,11 @@ from .tokens import validate_semantic_tokens
 # sup/sub keep units and trademarks (m², CO₂, ®); strike is what browsers emit for strikethrough (EM-03).
 RICH_TAGS = {"p", "div", "br", "ul", "ol", "li", "strong", "b", "em", "i", "u", "s", "strike", "sup", "sub", "a", "span", "font", "h1", "h2", "h3"}
 CODE_TAGS = RICH_TAGS | {"div", "table", "thead", "tbody", "tfoot", "tr", "td", "th", "img", "pre", "code", "blockquote"}
+# EM-10: the HTML block keeps common inline styles. Anything not listed here is removed when the block is
+# saved: positioning, scripts-adjacent properties, behaviour (animation, transition) and url(data:) images.
 ALLOWED_CSS = {
+	"background", "background-position", "background-repeat", "background-size", "border-style", "border-width",
+	"text-transform", "text-indent", "white-space", "border-collapse", "border-spacing", "opacity", "word-break",
 	"background-color", "border", "border-bottom", "border-color", "border-left", "border-radius", "border-right",
 	"border-top", "color", "display", "font-family", "font-size", "font-style", "font-weight", "height", "letter-spacing",
 	"line-height", "margin", "margin-bottom", "margin-left", "margin-right", "margin-top", "max-width", "padding",

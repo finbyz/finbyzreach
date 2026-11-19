@@ -71,4 +71,10 @@ DEFAULT_SETTINGS = {
 	"button_text_color": "#ffffff",
 	"button_radius": "4px",
 	"section_padding": "0px",
+	# EM-15: how the e-mail looks when the reader's mail app is in dark mode.
+	"dark_mode": "auto",
+	"dark_body_background": "#0f172a",
+	"dark_content_background": "#1e293b",
+	"dark_text_color": "#e5e7eb",
+	"dark_link_color": "#93c5fd",
 }

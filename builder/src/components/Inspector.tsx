@@ -8,6 +8,7 @@ import { API_METHODS, makeCallKey } from '../lib/api'
 import { conditionFieldOptions, conditionNeedsValue, conditionOperatorOptions, defaultConditionOperator, defaultConditionValue, isCheckField, isMultiSelectField, isSelectField, normalizeConditionForField } from '../lib/conditionFields'
 import { getErrorMessage } from '../lib/errors'
 import { insertLineBreakAtSelection } from '../lib/editorDom'
+import { ThemePanel } from './ThemePanel'
 import type { ApiResponse, BuilderBlock, BuilderDocument, BuilderSettings, BuilderSection, InspectorTab, LayoutType, LinkMergeFieldsResponse, MergeField, NodeStyle, Selection, Spacing, Visibility, VisibilityCondition } from '../types'
 import { PersonalizationDialog } from './PersonalizationPicker'
 
@@ -306,7 +307,7 @@ function SelectInput({ value, onChange, options }: { value: unknown; onChange: (
   return <select value={String(value ?? '')} onChange={(event) => onChange(event.target.value)}>{options.map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select>
 }
 
-// Header and footer: a row from a shared Header or Footer: follow the shared version, or customise it in this email only.
+// Header and footer: a row from a shared Header, Footer, CTA or Social block: follow the shared version, or customise it in this email only.
 function SharedSectionPanel({ section, readOnly, onCustomise, onReset }: { section: BuilderSection; readOnly?: boolean; onCustomise?: (sectionId: string) => void; onReset?: (sectionId: string) => void }) {
   const state = sharedSectionState(section)
   if (!state) return null
@@ -577,6 +578,19 @@ function TemplateInspector({ props }: { props: InspectorProps }) {
         <AppearanceColorField label="Link color" value={settings.link_color} onChange={(value) => props.onSetting('link_color', value)} />
       </div>
     </Group>
+    <Group title="Dark mode">
+      <Toggle label="Adapt to dark mode in the reader's mail app" checked={settings.dark_mode !== 'off'} onChange={(on) => props.onSetting('dark_mode', on ? 'auto' : 'off')} />
+      {settings.dark_mode !== 'off' && <div className="appearance-color-grid template-color-grid">
+        <AppearanceColorField label="Email background" value={settings.dark_body_background || '#0f172a'} onChange={(value) => props.onSetting('dark_body_background', value)} />
+        <AppearanceColorField label="Content background" value={settings.dark_content_background || '#1e293b'} onChange={(value) => props.onSetting('dark_content_background', value)} />
+        <AppearanceColorField label="Text color" value={settings.dark_text_color || '#e5e7eb'} onChange={(value) => props.onSetting('dark_text_color', value)} />
+        <AppearanceColorField label="Link color" value={settings.dark_link_color || '#93c5fd'} onChange={(value) => props.onSetting('dark_link_color', value)} />
+      </div>}
+      <p className="helper-text">Only colors left at the template default change. Colors you chose for a block stay as they are.</p>
+    </Group>
+    <Group title="Saved themes">
+      <ThemePanel settings={settings} readOnly={props.readOnly} onSetting={props.onSetting} />
+    </Group>
     <Group title="Button defaults">
       <div className="appearance-color-grid button-default-color-grid">
         <AppearanceColorField label="Button fill" value={settings.button_background} onChange={(value) => props.onSetting('button_background', value)} />
@@ -676,7 +690,7 @@ function BlockContent({ block, props }: { block: BuilderBlock; props: InspectorP
     <Field label="Link text"><TextInput value={content.text} onChange={(value) => update('text', value)} /></Field>
     <p className="helper-text">Set this link's font color and alignment in Style. Its recipient-specific URL is added when a campaign sends the template.</p>
   </Group>
-  if (block.type === 'code') return <Group title="Restricted HTML"><Field label="Email-safe HTML"><textarea className="code-input" rows={12} value={String(content.html || '')} onChange={(event) => update('html', event.target.value)} /></Field><p className="helper-text">Scripts, forms, iframes, external CSS, and unsafe URLs are removed server-side.</p></Group>
+  if (block.type === 'code') return <Group title="Restricted HTML"><Field label="Email-safe HTML"><textarea className="code-input" rows={12} value={String(content.html || '')} onChange={(event) => update('html', event.target.value)} /></Field><p className="helper-text">Scripts, forms, iframes, external CSS, and unsafe URLs are removed server-side. Inline styles kept: background, color, font, size and weight, line height, text align and transform, padding, margin, border, width, height and display. Anything else is removed when you save.</p></Group>
   const items = Array.isArray(content.items) ? content.items as Array<{ platform: string; href: string; label?: string }> : []
   const display = String(content.display || 'icon')
   const changeItem = (index: number, values: Partial<(typeof items)[number]>) => {
@@ -754,6 +768,7 @@ function StyleInspector({ selection, style = {}, blockType, props }: { selection
   const typographyFields = <div className="appearance-type-grid">
     <Field label="Font size"><LengthInput value={style.font_size || props.document.schema.settings.font_size || '16px'} onChange={(value) => set('font_size', value)} max={144} /></Field>
     <Field label="Weight"><SelectInput value={style.font_weight || 'normal'} onChange={(value) => set('font_weight', value)} options={[["normal", "Regular"], ["500", "Medium"], ["600", "Semibold"], ["bold", "Bold"]]} /></Field>
+    <Field label="Line height"><SelectInput value={style.line_height || ''} onChange={(value) => set('line_height', value)} options={[["", "Default"], ["110%", "Tight"], ["130%", "Compact"], ["150%", "Normal"], ["170%", "Relaxed"], ["200%", "Double"]]} /></Field>
   </div>
 
   if (type === 'compliance_links' || type === 'unsubscribe_link' || type === 'preference_center_link') return <>

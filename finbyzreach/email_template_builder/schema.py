@@ -466,7 +466,7 @@ def _validate_section(section, seen_ids):
 	if saved_component and isinstance(saved_component, str):
 		normalized["saved_component"] = saved_component[:140]
 		# Shared Header or Footer rows keep their link and whether this email has its own version.
-		if section.get("saved_component_category") in ("Header", "Footer"):
+		if section.get("saved_component_category") in ("Header", "Footer", "CTA", "Social"):
 			normalized["saved_component_category"] = section["saved_component_category"]
 			normalized["component_customised"] = bool(section.get("component_customised"))
 	return normalized
@@ -504,6 +504,9 @@ def validate_schema(value) -> dict:
 	# element with no inline font-size of its own to override it.
 	for key in ("body_background", "content_background", "text_color", "link_color", "button_background", "button_text_color"):
 		settings[key] = _css(settings.get(key), "color", DEFAULT_SETTINGS[key])
+	for key in ("dark_body_background", "dark_content_background", "dark_text_color", "dark_link_color"):
+		settings[key] = _css(settings.get(key), "color", DEFAULT_SETTINGS[key])
+	settings["dark_mode"] = "off" if str(settings.get("dark_mode") or "auto").lower() in {"off", "false", "0", "no"} else "auto"
 	for key in ("font_size", "button_radius", "section_padding"):
 		fallback = DEFAULT_SETTINGS[key]
 		val = _css(settings.get(key), default=fallback)
