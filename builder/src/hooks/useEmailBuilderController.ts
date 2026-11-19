@@ -11,6 +11,7 @@ import { useBuilderPanels } from './useBuilderPanels'
 import { useBuilderPreviewTest } from './useBuilderPreviewTest'
 import { useBuilderRealtime, type BuilderRealtimeEvent, type BuilderAssetEvent } from './useBuilderRealtime'
 import { useBuilderTemplateState } from './useBuilderTemplateState'
+import { useBuilderTheme } from './useBuilderTheme'
 import { useNotifications } from './useNotifications'
 import { useRevisionPreview } from './useRevisionPreview'
 import { useTextEditorBridge } from './useTextEditorBridge'
@@ -759,7 +760,8 @@ export function useEmailBuilderController() {
   const mergeFields = sdk.mergeFields.data?.message ?? EMPTY_MERGE_FIELDS
   const revisions = sdk.revisions.data?.message ?? EMPTY_REVISIONS
   const suggestions = useMemo(() => document ? collectBuilderSuggestions(document, mergeFields, sdk.mergeFields.isLoading, sdk.mergeFields.error) : [], [document, mergeFields, sdk.mergeFields.error, sdk.mergeFields.isLoading])
-  const appClassName = `builder-app mode-${uiMode}${sidebarOpen ? ' has-sidebar' : ''}${inspectorOpen ? ' has-inspector' : ''}${exclusivePanels ? ' has-exclusive-panels' : ''}${isReadOnly ? ' is-read-only' : ''}${readOnlyReason ? ` read-only-${readOnlyReason}` : ''}`
+  const theme = useBuilderTheme()
+  const appClassName = `builder-app theme-${theme}${theme === 'dark' ? ' dark' : ''} mode-${uiMode}${sidebarOpen ? ' has-sidebar' : ''}${inspectorOpen ? ' has-inspector' : ''}${exclusivePanels ? ' has-exclusive-panels' : ''}${isReadOnly ? ' is-read-only' : ''}${readOnlyReason ? ` read-only-${readOnlyReason}` : ''}`
 
   const addDefaultSection = useCallback(() => { addSection('1') }, [addSection])
   const addSidebarBlock = useCallback((type: BlockType) => { addBlock(type) }, [addBlock])
@@ -806,6 +808,7 @@ export function useEmailBuilderController() {
     cancelReferenceDoctypeChange,
     keepReferenceDependentContent,
     removeReferenceDependentFields,
+    theme,
     appClassName,
     setShellElement,
     sidebarOpen,

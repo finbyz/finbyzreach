@@ -7,6 +7,31 @@
   <meta name="robots" content="noindex,nofollow" />
   <title>Email Template Builder</title>
   <link rel="icon" type="image/svg+xml" href="{{ boot.favicon }}" />
+  <script>
+    (function () {
+      try {
+        var params = new URLSearchParams(window.location.search);
+        var theme = params.get('theme');
+        if (!theme && window.parent && window.parent !== window) {
+          try {
+            theme = (window.parent.frappe && window.parent.frappe.ui && window.parent.frappe.ui.get_current_theme && window.parent.frappe.ui.get_current_theme()) ||
+                    window.parent.document.documentElement.getAttribute('data-theme') ||
+                    window.parent.document.documentElement.getAttribute('data-theme-mode');
+          } catch (e) {}
+        }
+        if (theme === 'automatic' || !theme) {
+          theme = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+        }
+        if (theme === 'dark') {
+          document.documentElement.setAttribute('data-theme', 'dark');
+          document.documentElement.classList.add('dark');
+        } else {
+          document.documentElement.setAttribute('data-theme', 'light');
+          document.documentElement.classList.remove('dark');
+        }
+      } catch (e) {}
+    })();
+  </script>
 </head>
 
 <body>

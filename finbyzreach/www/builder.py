@@ -22,14 +22,20 @@ def get_context():
 			)
 			or "/assets/frappe/images/frappe-favicon.svg"
 		)
+	desk_theme = (
+		frappe.db.get_value("User", frappe.session.user, "desk_theme")
+		if frappe.session.user and frappe.session.user != "Guest"
+		else None
+	) or "Light"
 	context = frappe._dict()
-	context.boot = frappe._dict(csrf_token=csrf_token, favicon=favicon)
+	context.boot = frappe._dict(csrf_token=csrf_token, favicon=favicon, desk_theme=desk_theme)
 	context.boot_json = frappe.as_json(
 		{
 			"csrf_token": csrf_token,
 			"site_name": frappe.local.site,
 			"user": frappe.session.user,
 			"favicon": favicon,
+			"desk_theme": desk_theme,
 		}
 	)
 	return context

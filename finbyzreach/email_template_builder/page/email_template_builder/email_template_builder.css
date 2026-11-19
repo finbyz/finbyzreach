@@ -1,5 +1,5 @@
-.email-builder-desk { padding: 0 !important; overflow: hidden; }
-.email-builder-desk-frame { display: block; width: 100%; height: calc(100dvh - 110px); min-height: 600px; border: 0; background: var(--fg-color); }
+.email-builder-desk { padding: 0 !important; overflow: hidden; background: var(--bg-color); }
+.email-builder-desk-frame { display: block; width: 100%; height: calc(100dvh - 110px); min-height: 600px; border: 0; background: var(--bg-color); }
 @media (max-width: 767px) {
  .email-builder-desk-frame { height: calc(100dvh - 100px); min-height: 480px; }
 }
