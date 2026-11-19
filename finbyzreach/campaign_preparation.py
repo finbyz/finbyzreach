@@ -31,7 +31,8 @@ def stage(campaign):
         test_count = sum(1 for _row, _variant, phase in ordered if phase == 'Test')
         ab_snapshot = mail.get_campaign_snapshot(
             campaign.custom_ab_template_b or campaign.custom_email_template,
-            campaign.custom_ab_subject_b or campaign.custom_subject_override)
+            campaign.custom_ab_subject_b or campaign.custom_subject_override,
+            preheader_override=campaign.get('custom_preheader_override'))
         ab_values = {
             'custom_ab_status': 'Testing',
             'custom_ab_ends_at': ab_test.test_end(batches, test_count, campaign.custom_ab_hours),

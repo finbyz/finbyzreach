@@ -260,6 +260,7 @@ class EmailCampaignStudio {
 			},
 			{ fieldtype: "Column Break" },
 			{ fieldname: "subject_override", label: __("Subject Override"), fieldtype: "Data", description: __("Optional-leave blank to use the template subject."), change },
+			{ fieldname: "preheader_override", label: __("Preview Text"), fieldtype: "Data", description: __("Optional: the short text shown after the subject in the inbox. Leave blank to use the template's preview text."), change },
 			{ fieldtype: "Section Break" },
 			{ fieldname: "template_state", fieldtype: "HTML" },
 			{ fieldtype: "Section Break", label: __("Attachments") },
@@ -675,7 +676,7 @@ class EmailCampaignStudio {
 		}
 		this.$root.find("#ecs-step-3").toggle(this.wizardStep === "sender" && this.wizardUsage !== "workflow");
 		this.$root.find("[data-wizard-create]").toggle(Boolean(this.editable));
-		this.$root.find("#ecs-content-form [data-fieldname='campaign_title'], #ecs-content-form [data-fieldname='content_topic'], #ecs-content-form [data-fieldname='subject_override']").toggle(this.wizardUsage !== "workflow");
+		this.$root.find("#ecs-content-form [data-fieldname='campaign_title'], #ecs-content-form [data-fieldname='content_topic'], #ecs-content-form [data-fieldname='subject_override'], #ecs-content-form [data-fieldname='preheader_override']").toggle(this.wizardUsage !== "workflow");
 		this.$root.find(".ecs-summary-title h3").text(this.wizardUsage === "workflow" ? __("Email summary") : __("Launch summary"));
 		this.$root.toggleClass("ecs-wizard-design", this.wizardStep === "design");
 		this.$root.toggleClass("ecs-wizard-check", this.wizardStep === "check");
@@ -1210,6 +1211,7 @@ class EmailCampaignStudio {
 				content_topic: "",
 				email_template: "",
 				subject_override: "",
+				preheader_override: "",
 			}));
 			await this.runBootstrapStep(__("Loading sender identity"), () => this.setBootstrapFormValues(this.senderForm, {
 				email_account: data.default_email_account || "",
@@ -1280,6 +1282,7 @@ class EmailCampaignStudio {
 				content_topic: campaign.content_topic || "",
 				email_template: campaign.email_template || "",
 				subject_override: campaign.subject_override || "",
+				preheader_override: campaign.preheader_override || "",
 			}));
 			await this.runBootstrapStep(__("Loading A/B test"), () => this.setBootstrapFormValues(this.contentForm, {
 				ab_enabled: campaign.ab_enabled || 0,

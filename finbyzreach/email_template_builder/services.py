@@ -16,6 +16,7 @@ def get_campaign_snapshot(
 	subject_override: str | None = None,
 	check_permission: bool = True,
 	template_doctype: str | None = None,
+	preheader_override: str | None = None,
 ) -> frappe._dict:
 	"""Return send-ready source directly from a saved builder target."""
 	template_doctype = normalize_template_doctype(template_doctype)
@@ -28,6 +29,9 @@ def get_campaign_snapshot(
 		template.get("custom_reference_doctype") if meta.has_field("custom_reference_doctype") else ""
 	) or ""
 	preheader = template.get("custom_preheader_text") if meta.has_field("custom_preheader_text") else ""
+	if str(preheader_override or "").strip():
+		# EM-26: preview text chosen for this campaign only; the template keeps its own.
+		preheader = compile_tokens(validate_semantic_tokens(str(preheader_override).strip()), "ebt")
 	html = template.response_html if template.use_html else template.response
 	if subject_override:
 		subject = compile_tokens(validate_semantic_tokens(subject_override), "ebt")

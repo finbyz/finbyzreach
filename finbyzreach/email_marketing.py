@@ -1179,6 +1179,7 @@ def validate_schedule_preflight(campaign, eligible_count=None):
 	snapshot = get_campaign_snapshot(
 		campaign.custom_email_template,
 		campaign.custom_subject_override,
+		preheader_override=campaign.get("custom_preheader_override"),
 	)
 	personalization_doctype = campaign.get("custom_personalization_doctype") or audience_doctype
 	if snapshot.reference_doctype and snapshot.reference_doctype != personalization_doctype:
@@ -2081,6 +2082,7 @@ def send_campaign_test(campaign_name, recipient, sample_lead):
 		snapshot = get_campaign_snapshot(
 			campaign.custom_email_template,
 			campaign.custom_subject_override,
+			preheader_override=campaign.get("custom_preheader_override"),
 		)
 	test_params = {"is_test": "1", "campaign": campaign.name}
 	if lead and hasattr(lead, "name"):

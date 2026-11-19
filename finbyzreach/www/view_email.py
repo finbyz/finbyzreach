@@ -139,6 +139,7 @@ def get_context(context):
 				campaign.custom_email_template,
 				campaign.custom_subject_override,
 				check_permission=False,
+				preheader_override=campaign.get("custom_preheader_override"),
 			)
 			subject = snapshot.subject
 			html = snapshot.html

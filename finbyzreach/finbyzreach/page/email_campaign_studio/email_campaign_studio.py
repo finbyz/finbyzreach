@@ -636,6 +636,7 @@ def _campaign_for_studio(campaign_name):
 		"contact_mode": campaign.get("custom_contact_mode") or "Primary Contact",
 		"personalization_doctype": campaign.get("custom_personalization_doctype") or "Lead",
 		"subject_override": campaign.custom_subject_override,
+		"preheader_override": campaign.get("custom_preheader_override") or "",
 		"ab_enabled": cint(campaign.get("custom_ab_enabled")),
 		"ab_template_b": campaign.get("custom_ab_template_b") or "",
 		"ab_subject_b": campaign.get("custom_ab_subject_b") or "",
@@ -827,6 +828,7 @@ def preview_email(payload=None, sample_lead=None):
 		snapshot = get_campaign_snapshot(
 			_required(payload, "email_template", _("Email Template")),
 			payload.get("subject_override"),
+			preheader_override=payload.get("preheader_override"),
 		)
 		expected_doctype = payload.get("personalization_doctype") if payload.get("audience_doctype") == "Customer" else (payload.get("audience_doctype") or "Lead")
 		if snapshot.reference_doctype and snapshot.reference_doctype != expected_doctype:
@@ -943,6 +945,7 @@ def _campaign_values(payload, context, require_ready=True, preview=None):
 		"custom_broadcast_status": "Draft",
 		"custom_email_template": ready_value("email_template", _("Email Template")),
 		"custom_subject_override": str(payload.get("subject_override") or "").strip()[:140],
+		"custom_preheader_override": str(payload.get("preheader_override") or "").strip()[:140],
 		"custom_ab_enabled": 1 if cint(payload.get("ab_enabled")) else 0,
 		"custom_ab_template_b": str(payload.get("ab_template_b") or "").strip() or None,
 		"custom_ab_subject_b": str(payload.get("ab_subject_b") or "").strip()[:140],
@@ -1143,7 +1146,8 @@ def send_test(payload=None, recipient=None, sample_lead=None, recipients=None):
 		)
 	else:
 		snapshot = get_campaign_snapshot(
-			_required(payload, "email_template", _("Email Template")), payload.get("subject_override")
+			_required(payload, "email_template", _("Email Template")), payload.get("subject_override"),
+			preheader_override=payload.get("preheader_override"),
 		)
 		expected_doctype = payload.get("personalization_doctype") if payload.get("audience_doctype") == "Customer" else (payload.get("audience_doctype") or "Lead")
 		if snapshot.reference_doctype and snapshot.reference_doctype != expected_doctype:
