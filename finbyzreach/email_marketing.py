@@ -2187,6 +2187,14 @@ def track_marketing_click(campaign_recipient=None, url=None):
 	frappe.local.response["location"] = url
 
 
+UNSUBSCRIBED_PAGE = {
+	"de": ("Abgemeldet", "Sie wurden von «{0}» abgemeldet."),
+	"fr": ("Désabonnement confirmé", "Vous êtes désabonné(e) de «{0}»."),
+	"it": ("Disiscrizione confermata", "La sua iscrizione a «{0}» è stata annullata."),
+	"en": ("Unsubscribed", "You have been unsubscribed from {0}."),
+}
+
+
 @frappe.whitelist(allow_guest=True, methods=["GET", "POST"])
 def unsubscribe_marketing(**kwargs):
 	from finbyzreach.subscription_preferences import signed_recipient, unsubscribe
@@ -2202,7 +2210,9 @@ def unsubscribe_marketing(**kwargs):
 	_mark_campaign_recipient_unsubscribed(recipient)
 	# GET requests are rolled back by Frappe's transaction finalizer unless committed.
 	frappe.db.commit()
-	frappe.respond_as_web_page(_("Unsubscribed"), _("You have been unsubscribed from {0}.").format(topic), indicator_color="green")
+	# The link carries the e-mail language; a guest would otherwise get the site language (English).
+	title, message = UNSUBSCRIBED_PAGE.get(frappe.form_dict.get("lang"), UNSUBSCRIBED_PAGE["en"])
+	frappe.respond_as_web_page(title, message.format(topic), indicator_color="green")
 
 
 def _mark_campaign_recipient_unsubscribed(recipient):
