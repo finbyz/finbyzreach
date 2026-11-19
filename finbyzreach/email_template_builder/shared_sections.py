@@ -83,8 +83,12 @@ def propagate_component_change(doc, method=None) -> None:
 	)
 
 
-def recompile_linked_templates(component: str) -> list[str]:
-	"""Recompile visual templates and masters whose linked rows use this saved section."""
+def recompile_linked_templates(component: str | None = None) -> list[str]:
+	"""Recompile visual templates and masters whose linked rows use this saved section.
+
+	With no component, every visual template and master is recompiled from its stored design,
+	so compiler improvements (dark mode, Outlook markup, alt text) reach e-mails nobody re-saved.
+	"""
 	import hashlib
 
 	from .compiler import compile_schema
@@ -92,14 +96,14 @@ def recompile_linked_templates(component: str) -> list[str]:
 	from .schema import validate_schema
 
 	updated = []
-	needle = json.dumps(component)
+	needle = json.dumps(component) if component else ""
 	for doctype in sorted(BUILDER_TARGET_DOCTYPES):
 		meta = frappe.get_meta(doctype)
 		if not meta.has_field("custom_builder_schema"):
 			continue
 		names = frappe.get_all(
 			doctype,
-			filters={"custom_builder_mode": "Visual", "custom_builder_schema": ["like", f"%{needle}%"]},
+			filters={"custom_builder_mode": "Visual", **({"custom_builder_schema": ["like", f"%{needle}%"]} if component else {})},
 			pluck="name",
 			limit_page_length=0,
 		)
@@ -107,7 +111,7 @@ def recompile_linked_templates(component: str) -> list[str]:
 			doc = frappe.get_doc(doctype, name)
 			try:
 				schema = validate_schema(doc.get("custom_builder_schema"))
-				if not any(is_linked(section) and section.get("saved_component") == component for section in schema.get("sections") or []):
+				if component and not any(is_linked(section) and section.get("saved_component") == component for section in schema.get("sections") or []):
 					continue
 				compiled = compile_schema(refresh_shared_sections(schema), doc.get("custom_preheader_text") or "", normalized=True)
 				if compiled["html"] == doc.get("response_html"):
@@ -120,5 +124,5 @@ def recompile_linked_templates(component: str) -> list[str]:
 				doc.save()
 				updated.append(f"{doctype}:{name}")
 			except Exception:
-				frappe.log_error(title=f"Shared section {component} not applied to {doctype} {name}", message=frappe.get_traceback())
+				frappe.log_error(title=f"Visual e-mail {doctype} {name} not recompiled", message=frappe.get_traceback())
 	return updated

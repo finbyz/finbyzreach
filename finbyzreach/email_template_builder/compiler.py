@@ -413,14 +413,16 @@ def _compile_block(block, settings, normalized=False):
 			href = compile_url(_absolute_file_url(item.get("href") or "#"))
 			label = compile_attribute(item.get("label") or meta["label"])
 			icon = ""
+			# Icon-only links show the platform name when images are blocked (Outlook, Gmail default).
+			icon_alt = accessible if display == "icon" else ""
 			if display != "text":
 				if shape == "none":
 					# No background: the symbol alone, in the chosen colour (else the background colour, else the brand colour).
 					asset = html.escape(social_icon_url(meta, glyph_color or _hex6(color) or _hex6(meta["color"])), quote=True)
-					icon = f'<img src="{asset}" width="{size}" height="{size}" alt="" border="0" style="display:inline-block;width:{size}px;height:{size}px;border:0;outline:none;text-decoration:none;vertical-align:middle;" />'
+					icon = f'<img src="{asset}" width="{size}" height="{size}" alt="{icon_alt}" border="0" style="display:inline-block;width:{size}px;height:{size}px;border:0;outline:none;text-decoration:none;vertical-align:middle;" />'
 				else:
 					asset = html.escape(social_icon_url(meta, glyph_color), quote=True)
-					img = f'<img src="{asset}" width="{inner_size}" height="{inner_size}" alt="" border="0" style="display:block;width:{inner_size}px;height:{inner_size}px;border:0;outline:none;text-decoration:none;margin:{inset}px auto 0 auto;" />'
+					img = f'<img src="{asset}" width="{inner_size}" height="{inner_size}" alt="{icon_alt}" border="0" style="display:block;width:{inner_size}px;height:{inner_size}px;border:0;outline:none;text-decoration:none;margin:{inset}px auto 0 auto;" />'
 					icon = f'<span style="display:inline-block;width:{size}px;height:{size}px;border-radius:{radius};background:{color};text-align:center;vertical-align:middle;line-height:{size}px;">{img}</span>'
 			text = ""
 			if display != "icon":
