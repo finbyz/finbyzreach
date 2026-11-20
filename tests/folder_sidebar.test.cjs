@@ -4,11 +4,11 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-function setup(doctype='Reach Segment', {create=true, folders=true, read=true}={}) {
+function setup(doctype='Reach Segment', {create=true, folders=true, read=true, write=true}={}) {
     const calls=[],html=new Map();
     let filters=[[doctype,'name','like','%search%'],[doctype,'owner','=','someone@example.invalid']];
     const root={closest(){return this;},addClass(){return this;},prependTo(){return this;},html(value){html.set('root',value);return this;},on(){return this;},find(key){return {html(value){html.set(key,value);return this;}};}};
-    const frappe={reach_folder_sidebar:{},provide(){},utils:{escape_html:value=>String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;'),icon:()=>''},model:{can_read:dt=>dt===doctype?read:folders,can_create:()=>create},
+    const frappe={reach_folder_sidebar:{},provide(){},utils:{escape_html:value=>String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;'),icon:()=>''},model:{can_read:dt=>dt===doctype?read:folders,can_create:()=>create,can_write:()=>write},
         call:async options=>{calls.push(JSON.parse(JSON.stringify(options)));return {message: options.method.endsWith('get_count')?3:[]};},
         prompt(fields,action){frappe.promptFields=fields;frappe.promptAction=action;},show_alert(){},set_route(){}};
     const list={doctype,page:{main:root,add_menu_item(){}},settings:{refresh(){list.nativeRefreshes=(list.nativeRefreshes||0)+1;}},start:100,on_filter_change(){this.filterChanges=(this.filterChanges||0)+1;},
@@ -154,4 +154,75 @@ test('workflow root folder creation supplies the existing path-based folder iden
     const insert=calls.find(call=>call.method==='frappe.client.insert');
     assert.equal(insert.args.doc.path,'Events');
     assert.equal(insert.args.doc.parent_folder,null);
+});
+
+test('rename is available only for writable folders and never for system roots',async()=>{
+    for (const doctype of ['Reach Segment','Email Template Master','Email Template','Automation Workflow']) {
+        const {sidebar}=setup(doctype);
+        assert.ok(sidebar.row('Existing','Existing',0,true).includes('data-rename="Existing"'));
+        assert.ok(!sidebar.row(sidebar.config.root,'Root',0,true).includes('data-rename='));
+        assert.ok(!sidebar.row('@all','All').includes('data-rename='));
+        const readonly=setup(doctype,{write:false});
+        assert.ok(!readonly.sidebar.row('Existing','Existing',0,true).includes('data-rename='));
+        readonly.sidebar.rename_folder('Existing');
+        assert.equal(readonly.frappe.promptAction,undefined);
+    }
+});
+
+test('rename uses the server permission-checked action and preserves active search/folder filters',async()=>{
+    for (const doctype of ['Reach Segment','Email Template Master','Email Template','Automation Workflow']) {
+        const {sidebar,list,frappe,calls}=setup(doctype);
+        await sidebar.reload();
+        sidebar.branches.set(sidebar.config.root,{rows:[{name:'Existing',folder_name:'Existing'}]});
+        await sidebar.select('folder:Existing');
+        const originalCall=frappe.call;
+        frappe.call=async options=>{
+            if(options.method==='finbyzreach.folder_sidebar.rename_folder') {
+                calls.push(options);
+                return {message:{name:'Renamed',renamed_folders:{Existing:'Renamed'}}};
+            }
+            return originalCall(options);
+        };
+        sidebar.rename_folder('Existing');
+        assert.equal(frappe.promptFields[0].default,'Existing');
+        await frappe.promptAction({folder_name:' Renamed '});
+        const rename=calls.find(call=>call.method==='finbyzreach.folder_sidebar.rename_folder');
+        assert.equal(rename.type,'POST');
+        assert.deepEqual(JSON.parse(JSON.stringify(rename.args)),{doctype:sidebar.config.folder,name:'Existing',new_name:'Renamed'});
+        assert.deepEqual(list.filter_area.get(),[
+            [doctype,'name','like','%search%'],[doctype,'owner','=','someone@example.invalid'],[doctype,sidebar.config.field,'=','Renamed']
+        ]);
+        assert.equal(list.start,0);
+    }
+});
+
+test('renaming a workflow parent preserves the selected descendant and expanded branch',async()=>{
+    const {sidebar,list,frappe}=setup('Automation Workflow');
+    await sidebar.reload();
+    sidebar.branches.set('',{rows:[{name:'Parent',folder_name:'Parent'}]});
+    sidebar.expanded.add('Parent');
+    await sidebar.select('folder:Parent/Child');
+    const originalCall=frappe.call;
+    frappe.call=async options=>options.method==='finbyzreach.folder_sidebar.rename_folder'
+        ? {message:{name:'New',renamed_folders:{Parent:'New','Parent/Child':'New/Child'}}}
+        : originalCall(options);
+    sidebar.rename_folder('Parent');
+    await frappe.promptAction({folder_name:'New'});
+    assert.equal(sidebar.selected(),'folder:New/Child');
+    assert.ok(sidebar.expanded.has('New'));
+    assert.ok(sidebar.branches.has('New'));
+    assert.equal(list.start,0);
+});
+
+test('a refused rename leaves the selection and branch cache untouched',async()=>{
+    const {sidebar,list,frappe}=setup();
+    await sidebar.reload();
+    sidebar.branches.set(sidebar.config.root,{rows:[{name:'Existing',folder_name:'Existing'}]});
+    await sidebar.select('folder:Existing');
+    const before=JSON.stringify(list.filter_area.get());
+    frappe.call=async()=>{throw Error('No permission');};
+    sidebar.rename_folder('Existing');
+    await assert.rejects(frappe.promptAction({folder_name:'Renamed'}),/No permission/);
+    assert.equal(JSON.stringify(list.filter_area.get()),before);
+    assert.equal(sidebar.branches.get(sidebar.config.root).rows[0].name,'Existing');
 });

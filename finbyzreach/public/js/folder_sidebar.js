@@ -30,6 +30,11 @@ frappe.provide("frappe.reach_folder_sidebar");
             this.$root.on("click", "[data-expand]", event => this.toggle($(event.currentTarget).attr("data-expand")));
             this.$root.on("click", "[data-more]", event => this.load($(event.currentTarget).attr("data-more"), true));
             this.$root.on("click", '[data-action="new"]', () => this.new_folder());
+            this.$root.on("click", "[data-rename]", event => {
+                event.preventDefault();
+                event.stopPropagation();
+                this.rename_folder($(event.currentTarget).attr("data-rename"));
+            });
             const previous = list.settings.refresh;
             list.settings.refresh = view => {
                 previous?.(view);
@@ -112,7 +117,8 @@ frappe.provide("frappe.reach_folder_sidebar");
             return `<div class="reach-folder-row${active ? " active" : ""}" style="--folder-depth:${depth}">
                 ${folder ? `<button type="button" class="reach-folder-toggle" data-expand="${escape(value)}" aria-expanded="${this.expanded.has(value)}" aria-label="${escape(__("Expand folder {0}", [label]))}">${frappe.utils.icon(this.expanded.has(value) ? "chevron-down" : "chevron-right", "xs")}</button>` : ""}
                 <button type="button" class="reach-folder-select" data-select="${escape(key)}" ${active ? 'aria-current="page"' : ""} title="${escape(label)}">${frappe.utils.icon(folder || value === "@without" ? "folder-normal" : "list", "sm")}<span class="reach-folder-label">${escape(label)}</span></button>
-                <span class="reach-folder-count text-muted">${count == null ? "" : escape(count)}</span></div>`;
+                <span class="reach-folder-count text-muted">${count == null ? "" : escape(count)}</span>
+                ${folder && this.can_rename(value) ? `<button type="button" class="reach-folder-rename" data-rename="${escape(value)}" title="${escape(__("Rename folder"))}" aria-label="${escape(__("Rename folder {0}", [label]))}">${frappe.utils.icon("edit", "sm")}</button>` : ""}</div>`;
         }
 
         renderBranch(parent, depth = 0, seen = new Set()) {
@@ -156,6 +162,44 @@ frappe.provide("frappe.reach_folder_sidebar");
                 // Counts are optional; folder navigation remains usable.
                 if (sequence === this.countSequence) { this.counts = {}; this.render(); }
             }
+        }
+
+        can_rename(name) {
+            return this.list.doctype !== "Form" && name !== this.config.root &&
+                frappe.model.can_write(this.config.folder);
+        }
+
+        rename_folder(name) {
+            if (!this.can_rename(name)) return;
+            const folder = [...this.branches.values()].flatMap(branch => branch.rows).find(row => row.name === name);
+            if (!folder) return;
+            frappe.prompt([
+                {fieldname: "folder_name", fieldtype: "Data", label: __("Folder Name"), reqd: 1, default: folder.folder_name},
+            ], async values => {
+                const {message} = await frappe.call({method: "finbyzreach.folder_sidebar.rename_folder", type: "POST",
+                    args: {doctype: this.config.folder, name, new_name: values.folder_name.trim()},
+                    freeze: true, freeze_message: __("Renaming folder…")});
+                const renamed = message.renamed_folders;
+                const filters = this.filters().map(filter => {
+                    if (filter[0] === this.list.doctype && filter[1] === this.config.field) {
+                        if (filter[2] === "=") filter[3] = renamed[filter[3]] || filter[3];
+                        else if (filter[2] === "in" && Array.isArray(filter[3])) filter[3] = filter[3].map(value => renamed[value] || value);
+                    }
+                    return filter;
+                });
+                await this.list.filter_area.clear(false);
+                await this.list.filter_area.set(filters);
+                this.list.start = 0;
+                this.list.on_filter_change();
+                const expanded = [...this.expanded].map(value => renamed[value] || value);
+                await this.reload();
+                for (const parent of expanded) {
+                    this.expanded.add(parent);
+                    if (!this.branches.has(parent)) await this.load(parent);
+                }
+                await this.list.refresh();
+                frappe.show_alert({message: __("Folder renamed"), indicator: "green"});
+            }, __("Rename folder"), __("Rename"));
         }
 
         new_folder() {
