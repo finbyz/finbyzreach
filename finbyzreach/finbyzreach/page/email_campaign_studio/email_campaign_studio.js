@@ -600,6 +600,7 @@ class EmailCampaignStudio {
 	// or delivery values. Scheduling still uses the Studio server-side preflight.
 	makeWizard() {
 		this.wizardStep = "what";
+		this.wizardProgress = {segment: 0, workflow: 0};
 		this.wizardUsage = "segment";
 		this.$root.addClass("ecs-wizard");
 		this.$root.find(".ecs-hero").hide();
@@ -611,9 +612,9 @@ class EmailCampaignStudio {
 		const escape = frappe.utils.escape_html;
 		this.$wizardNav = $("<nav class='ecs-wizard-nav' aria-label='" + escape(__("Email steps")) + "'></nav>")
 			.insertBefore(this.$root.find(".ecs-state-banner"));
-		this.$wizardFooter = $("<div class='ecs-wizard-footer'><button type='button' class='btn btn-default' data-wizard-back>" + __("Back") + "</button><button type='button' class='btn btn-primary' data-wizard-next>" + __("Next") + "</button></div>")
-			.insertAfter(this.$root.find(".ecs-main"));
-		this.$root.find(".ecs-main").append(this.card("design", __("Design"), __("Edit the email in the visual builder. Changes are saved before continuing."), "<div id='ecs-wizard-design'></div>"));
+		this.$wizardFooter = $("<nav class='ecs-wizard-footer' aria-label='" + escape(__("Step navigation")) + "'><span class='ecs-wizard-position' aria-live='polite'></span><div class='ecs-wizard-actions'><button type='button' class='btn btn-default' data-wizard-back>" + __("Back") + "</button><button type='button' class='btn btn-primary' data-wizard-next>" + __("Next") + "</button></div></nav>")
+			.insertAfter(this.$root.find(".ecs-grid"));
+		this.$root.find(".ecs-main").append(this.card("design", __("Design"), __("Edit the email in the visual builder. Changes are saved before continuing."), "<div class='ecs-design-unsubscribe-warning'></div><div id='ecs-wizard-design'></div>"));
 		this.$root.find("#ecs-step-2 .ecs-card-body").prepend("<div id='ecs-wizard-usage'></div><button type='button' class='btn btn-default btn-sm mb-3' data-wizard-create>" + __("Create email from template or blank") + "</button>");
 		this.wizardUsageForm = this.makeForm("#ecs-wizard-usage", [
 			{fieldname: "usage", label: __("Use this email in"), fieldtype: "Select", options: "Segment campaign\nAutomation workflow", default: "Segment campaign", change: () => {
@@ -625,8 +626,7 @@ class EmailCampaignStudio {
 		this.$root.on("click", "[data-wizard-back]", () => this.moveWizard(-1));
 		this.$root.on("click", "[data-wizard-step]", (event) => {
 			const target = $(event.currentTarget).attr("data-wizard-step");
-			const steps = this.wizardSteps();
-			if (steps.indexOf(target) < steps.indexOf(this.wizardStep)) this.moveWizard(steps.indexOf(target) - steps.indexOf(this.wizardStep));
+			this.goToWizardStep(target);
 		});
 		this.$root.on("click", "[data-wizard-create]", () => this.createWizardEmail());
 		this.renderWizard();
@@ -659,8 +659,11 @@ class EmailCampaignStudio {
 		const steps = this.wizardSteps();
 		if (!steps.includes(this.wizardStep)) this.wizardStep = "what";
 		const index = steps.indexOf(this.wizardStep);
+		this.wizardProgress ||= {segment: 0, workflow: 0};
+		const reached = this.wizardProgress[this.wizardUsage] = Math.max(this.wizardProgress[this.wizardUsage] || 0, index);
+		const navigating = this.wizardMoving || this.wizardAdvancing || this.routeLoading || this.busy;
 		const labels = {what: __("What"), design: __("Design"), sender: __("Sender"), who: __("Who"), when: __("When"), check: __("Check")};
-		this.$wizardNav.html(steps.map((step, i) => `<button type="button" data-wizard-step="${step}" class="${step === this.wizardStep ? "active" : ""}" ${i > index ? "disabled" : ""} ${i === index ? 'aria-current="step"' : ''}><span>${i + 1}</span>${labels[step]}</button>`).join(""));
+		this.$wizardNav.html(steps.map((step, i) => `<button type="button" data-wizard-step="${step}" class="${step === this.wizardStep ? "active" : ""}" ${i > reached || navigating ? "disabled" : ""} ${i === index ? 'aria-current="step"' : ''}><span>${i + 1}</span>${labels[step]}</button>`).join(""));
 		const panels = {what: ["2"], design: ["design"], sender: ["3"], who: ["1"], when: ["4", "5"], check: []};
 		this.$root.find(".ecs-main > .ecs-card").hide();
 		panels[this.wizardStep].forEach((id) => this.$root.find("#ecs-step-" + id).show());
@@ -670,7 +673,8 @@ class EmailCampaignStudio {
 		this.$root.find("#ecs-launch-btn,#ecs-draft-btn").toggle(this.editable && this.wizardUsage !== "workflow" && this.wizardStep === "check");
 		// Workflow test/preview controls live in the builder and need no campaign audience.
 		this.$root.find("#ecs-test-btn,#ecs-email-preview-btn").toggle(this.wizardUsage !== "workflow" && this.wizardStep === "check");
-		this.$root.find("[data-wizard-back]").prop("disabled", index === 0 || this.wizardMoving || this.wizardAdvancing);
+		this.$wizardFooter.find(".ecs-wizard-position").text(__("Step {0} of {1}: {2}", [index + 1, steps.length, labels[this.wizardStep]]));
+		this.$root.find("[data-wizard-back]").prop("disabled", index === 0 || navigating);
 		this.$root.find("[data-wizard-next]").toggle(this.editable).prop("disabled", this.wizardMoving || this.wizardAdvancing || this.routeLoading || this.busy)
 			.text(this.wizardStep === "check" ? (this.wizardUsage === "workflow" ? __("Save email") : __("Review & Schedule")) : __("Next"));
 		// The page header must not offer scheduling before the final review step.
@@ -698,6 +702,7 @@ class EmailCampaignStudio {
 		// A failed save, conflict, or a newer unsaved change must keep the user here.
 		const saved = await bridge.save();
 		if (!saved) frappe.msgprint(__("Save the pending changes in the designer before continuing. Resolve any save conflict there first."));
+		if (saved) this.showTemplateState();
 		return saved;
 	}
 
@@ -733,22 +738,38 @@ class EmailCampaignStudio {
 	async moveWizard(delta, advancing = false) {
 		if (this.wizardMoving || (this.wizardAdvancing && !advancing) || this.routeLoading || this.busy) return;
 		this.wizardMoving = true;
+		const routeKey = this.routeKey;
 		this.renderWizard();
 		try {
 			if (this.wizardStep === "design" && !(await this.flushWizardDesign())) return;
 			const steps = this.wizardSteps();
-			this.wizardStep = steps[Math.max(0, Math.min(steps.length - 1, steps.indexOf(this.wizardStep) + delta))];
+			const target = steps[Math.max(0, Math.min(steps.length - 1, steps.indexOf(this.wizardStep) + delta))];
+			if (target === "design" && !(await this.loadWizardDesign())) return;
+			if (routeKey !== this.routeKey || this.routeLoading) return;
+			this.wizardStep = target;
+			this.wizardProgress ||= {segment: 0, workflow: 0};
+			this.wizardProgress[this.wizardUsage] = Math.max(this.wizardProgress[this.wizardUsage] || 0, steps.indexOf(target));
 		} finally {
 			this.wizardMoving = false;
 			this.renderWizard();
 		}
 	}
 
-	async advanceWizard() {
+	async goToWizardStep(target) {
+		const steps = this.wizardSteps();
+		const index = steps.indexOf(target);
+		const current = steps.indexOf(this.wizardStep);
+		const reached = Math.max(current, this.wizardProgress?.[this.wizardUsage] || 0);
+		if (index < 0 || index > reached || index === current) return;
+		if (index < current) return this.moveWizard(index - current);
+		return this.advanceWizard(target);
+	}
+
+	async advanceWizard(target = null) {
 		if (this.wizardMoving || this.wizardAdvancing || this.routeLoading || this.busy) return;
 		this.wizardAdvancing = true;
 		this.renderWizard();
-		try { return await this.advanceWizardStep(); }
+		try { return await this.advanceWizardStep(target); }
 		finally { this.wizardAdvancing = false; this.renderWizard(); }
 	}
 
@@ -759,7 +780,7 @@ class EmailCampaignStudio {
 		return this.createCampaign("draft");
 	}
 
-	async advanceWizardStep() {
+	async advanceWizardStep(target = null) {
 		const routeKey = this.routeKey;
 		if (this.wizardStep === "check") {
 			if (this.wizardUsage !== "workflow") return this.reviewAndSchedule();
@@ -773,7 +794,8 @@ class EmailCampaignStudio {
 				frappe.msgprint(__("Choose an email and complete the required setup fields before continuing."));
 				return;
 			}
-			if (this.wizardUsage !== "workflow" && !(await this.checkCampaignTitle())) return;
+			// The title may still be a draft while the email is being designed.
+			if (target && target !== "design" && this.wizardUsage !== "workflow" && !(await this.checkCampaignTitle())) return;
 			if (routeKey !== this.routeKey || this.routeLoading) return;
 			if (this.consentPolicyEnabled) {
 				if (!(await this.flushWizardDesign())) return;
@@ -782,7 +804,10 @@ class EmailCampaignStudio {
 					this.wizardFrame.remove(); this.wizardFrame = null; this.wizardTemplate = null;
 				}
 			}
-			if (!(await this.loadWizardDesign())) return;
+		}
+		if (this.wizardStep === "design" && this.wizardUsage !== "workflow" && !(await this.checkCampaignTitle())) {
+			frappe.msgprint(__("Choose a unique campaign title in What before continuing."));
+			return;
 		}
 		if (this.wizardStep === "sender" && !this.formValues(this.senderForm, true)) return;
 		if (this.wizardStep === "who") {
@@ -794,7 +819,9 @@ class EmailCampaignStudio {
 			}
 		}
 		if (this.wizardStep === "when" && (!this.formValues(this.scheduleForm, true) || !this.deliveryPlanValid)) return;
-		return this.moveWizard(1, true);
+		if (routeKey !== this.routeKey || this.routeLoading) return;
+		const steps = this.wizardSteps();
+		return this.moveWizard(target ? steps.indexOf(target) - steps.indexOf(this.wizardStep) : 1, true);
 	}
 
 	async loadEmailSetup() {
@@ -1142,6 +1169,7 @@ class EmailCampaignStudio {
 				if (requestId !== this.bootstrapRequest || route.key !== this.routeKey) return null;
 				this.bootstrapLoaded = true;
 				this.wizardStep = "what";
+				this.wizardProgress = {segment: 0, workflow: 0};
 				this.consentPolicyEnabled = Boolean(data.consent_policy_enabled);
 				this.workflowOnly = Boolean(data.workflow_only);
 				this.wizardUsage = this.workflowOnly ? "workflow" : "segment";
@@ -2204,6 +2232,7 @@ class EmailCampaignStudio {
 		const template = this.contentForm.get_value("email_template");
 		const field = this.contentForm.get_field("template_state");
 		const requestId = ++this.templateStateRequest;
+		this.$root.find(".ecs-design-unsubscribe-warning").empty();
 		if (!template) {
 			field.html("");
 			return;
@@ -2223,9 +2252,11 @@ class EmailCampaignStudio {
 		try {
 			const {message} = await frappe.call({method: "finbyzreach.email_template_builder.languages.email_setup", type: "GET", args: {template_name: template}});
 			if (requestId !== this.templateStateRequest || template !== this.contentForm.get_value("email_template")) return;
-			if (message && message.has_unsubscribe === false && this.contentForm.get_value("subscription_topic") !== "Transactional") {
-				field.$wrapper.find(".ecs-unsubscribe-warning").html("<div class='alert alert-warning small mb-0' style='margin-top:8px' role='alert'>" + frappe.utils.escape_html(__("This email has no unsubscribe link. Add an Unsubscribe link block to the email, or use the Transactional email type. The campaign cannot be scheduled without it.")) + "</div>");
-			}
+			const missing = message?.has_unsubscribe === false && this.contentForm.get_value("subscription_topic") !== "Transactional";
+			field.$wrapper.find(".ecs-unsubscribe-warning").html(missing
+				? "<div class='alert alert-warning small mb-0' style='margin-top:8px' role='status'>" + frappe.utils.escape_html(__("This email has no unsubscribe link. Continue to Design to add an Unsubscribe link block before scheduling. You can edit and save the draft.")) + "</div>" : "");
+			this.$root.find(".ecs-design-unsubscribe-warning").html(missing
+				? "<div class='alert alert-warning small mb-0' role='status'>" + frappe.utils.escape_html(__("Add an Unsubscribe link block to this marketing email before scheduling. You can save your design while it is incomplete.")) + "</div>" : "");
 		} catch (error) {
 			// The warning is optional; scheduling still checks the link.
 		}

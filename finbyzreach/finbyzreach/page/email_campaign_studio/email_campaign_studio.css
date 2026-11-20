@@ -2,6 +2,9 @@
 .email-campaign-studio.ecs-wizard {
 	background: var(--page-bg);
 	padding-top: var(--padding-md);
+	/* Clipping must not create a separate scroll container for the footer. */
+	overflow-x: clip;
+	overflow-y: visible;
 }
 .ecs-wizard .ecs-shell { width: 100%; }
 .ecs-wizard .ecs-wizard-nav {
@@ -43,11 +46,11 @@
 .ecs-wizard-nav button.active span { background: var(--text-color); color: var(--card-bg); }
 .ecs-wizard .ecs-grid {
 	grid-template-columns: minmax(0, 1fr) 320px;
-	grid-template-areas: "main side" "footer side";
+	grid-template-areas: "main side";
 }
 .ecs-wizard .ecs-main { grid-area: main; }
 .ecs-wizard .ecs-side { grid-area: side; position: static; height: auto; padding: 0; }
-.ecs-wizard-footer { grid-area: footer; display: flex; justify-content: space-between; gap: var(--margin-md); }
+.ecs-wizard-footer { display: flex; justify-content: space-between; gap: var(--margin-md); }
 .ecs-wizard .ecs-card,
 .ecs-wizard .ecs-days-wrap,
 .ecs-wizard .ecs-target-panel {
@@ -66,18 +69,18 @@
 .ecs-wizard .ecs-summary-title span { background: var(--control-bg); color: var(--text-muted); }
 .ecs-wizard .ecs-launch-note { background: var(--subtle-fg); color: var(--text-muted); border-color: var(--border-color); }
 .ecs-wizard-frame { display: block; width: 100%; height: 760px; min-height: 65vh; border: 0; }
-.ecs-wizard-design .ecs-grid { grid-template-columns: minmax(0, 1fr); grid-template-areas: "main" "footer"; }
+.ecs-wizard-design .ecs-grid { grid-template-columns: minmax(0, 1fr); grid-template-areas: "main"; }
 .ecs-wizard-design .ecs-side { display: none; }
 .ecs-wizard-design #ecs-step-design > .ecs-card-body { padding: 0; }
-.ecs-wizard-check .ecs-grid { grid-template-columns: minmax(0, 1fr); grid-template-areas: "side" "footer"; }
+.ecs-wizard-check .ecs-grid { grid-template-columns: minmax(0, 1fr); grid-template-areas: "side"; }
 .ecs-wizard-check .ecs-main { display: none; }
 .ecs-wizard-check .ecs-side { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 1fr); align-items: start; }
 @media (max-width: 1000px) {
-	.ecs-wizard .ecs-grid { grid-template-columns: minmax(0, 1fr); grid-template-areas: "main" "side" "footer"; }
+	.ecs-wizard .ecs-grid { grid-template-columns: minmax(0, 1fr); grid-template-areas: "main" "side"; }
 	.ecs-wizard .ecs-main, .ecs-wizard .ecs-side { grid-row: auto; }
 	.ecs-wizard .ecs-side { display: flex; }
 	.ecs-wizard-design .ecs-side { display: none; }
-	.ecs-wizard-check .ecs-grid { grid-template-areas: "side" "footer"; }
+	.ecs-wizard-check .ecs-grid { grid-template-areas: "side"; }
 }
 .ecs-wizard .ecs-card[data-step] .ecs-step { background: var(--control-bg); color: var(--text-color); box-shadow: none; }
 
@@ -109,4 +112,29 @@
 }
 @media (prefers-reduced-motion: reduce) {
 	.ecs-wizard .ecs-wizard-nav button { transition: none; }
+}
+
+/* Keep step actions together and reachable while editing a long form. */
+.ecs-wizard-footer {
+    position: sticky;
+    bottom: 0;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 16px;
+    padding: 12px 24px;
+    border-top: 1px solid var(--border-color);
+    background: var(--card-bg);
+}
+.ecs-wizard-position { color: var(--text-muted); font-size: var(--text-sm); }
+.ecs-wizard-actions { display: flex; gap: 12px; margin-left: auto; }
+.ecs-wizard-actions .btn { min-height: 36px; border-radius: 0; padding: 0 16px; }
+.ecs-design-unsubscribe-warning:empty { display: none; }
+.ecs-design-unsubscribe-warning { padding: 16px 24px; }
+@media (max-width: 600px) {
+    .ecs-wizard-footer { padding: 12px; }
+    .ecs-wizard-position { flex-basis: 100%; }
 }
