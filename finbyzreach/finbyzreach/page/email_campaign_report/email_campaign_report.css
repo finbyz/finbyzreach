@@ -146,4 +146,24 @@
 .ecr-link-bar span { display: block; height: 100%; background: var(--text-color); }
 .ecr-utm { padding: 0 16px 12px; margin: 0; }
 
-.ecr-detail-actions { display: inline-flex; gap: 6px; margin-left: 12px; }
+/* Keep the lower report sections inside the same gutter and spacing rhythm. */
+.ecr-links-card, .ecr-email-overview { margin-bottom: 16px; }
+.ecr-details, .ecr-email-overview, .ecr-workflow-usage { border-radius: 0; }
+.ecr-details .ecr-section-head, .ecr-email-overview .ecr-section-head,
+.ecr-workflow-usage .ecr-section-head { flex-wrap: wrap; align-items: center; padding: 24px; }
+.ecr-detail-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; margin-left: auto; }
+.ecr-detail-total { color: var(--ecr-muted); font-size: var(--text-xs); }
+.ecr-detail-actions { display: inline-flex; flex-wrap: wrap; gap: 8px; }
+.ecr-detail-actions .btn, .ecr-open-overall, .ecr-pagination .btn { min-height: 36px; border-radius: 0; }
+.ecr-workflow-usage { overflow: hidden; }
+.ecr-workflow-usage:empty { display: none; }
+.ecr-workflow-table th:nth-child(n+3), .ecr-workflow-table td:nth-child(n+3),
+.ecr-workflow-table tfoot th:not(:first-child),
+.ecr-email-overview th:nth-child(n+2), .ecr-email-overview td:nth-child(n+2) {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+.ecr-workflow-table tfoot th { border-top: 1px solid var(--ecr-border); border-bottom: 0; }
+@media (max-width: 767px) {
+    .ecr-detail-meta { width: 100%; margin-left: 0; justify-content: space-between; }
+}

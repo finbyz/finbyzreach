@@ -75,7 +75,7 @@ class EmailCampaignReport {
 					<p class="ecr-note ecr-utm"></p>
 				</section>
 				<section class="ecr-card ecr-details">
-					<div class="ecr-section-head"><div><h3 class="ecr-contacts-title">${__("Contacts: Clicked")}</h3><p>${__("People behind each recorded action")}</p></div><span class="ecr-detail-total"></span><span class="ecr-detail-actions"><button type="button" class="btn btn-default btn-xs ecr-save-segment">${__("Save as segment")}</button><button type="button" class="btn btn-default btn-xs ecr-export">${__("Export")}</button></span></div>
+					<div class="ecr-section-head"><div><h3 class="ecr-contacts-title">${__("Contacts: Clicked")}</h3><p>${__("People behind each recorded action")}</p></div><div class="ecr-detail-meta"><span class="ecr-detail-total"></span><span class="ecr-detail-actions"><button type="button" class="btn btn-default btn-xs ecr-save-segment">${__("Save as segment")}</button><button type="button" class="btn btn-default btn-xs ecr-export">${__("Export")}</button></span></div></div>
 
 					<div class="ecr-table-wrap"><table class="ecr-table"><thead><tr><th>${__("Full Name")}</th><th>${__("Email")}</th><th>${__("Campaign")}</th><th>${__("Status")}</th><th>${__("Action Time")}</th></tr></thead><tbody></tbody></table></div>
 					<div class="ecr-pagination"><span class="ecr-page-label"></span><div><button class="btn btn-default btn-sm ecr-prev">${__("Previous")}</button><button class="btn btn-default btn-sm ecr-next">${__("Next")}</button></div></div>
@@ -108,6 +108,7 @@ class EmailCampaignReport {
 						<section class="ecr-card ecr-compare-table-wrap"><div class="ecr-section-head"><div><h3>${__("Comparison details")}</h3><p>${__("Recorded outcomes and engagement")}</p></div></div><div class="ecr-table-wrap"><table class="ecr-table ecr-compare-table"><thead></thead><tbody></tbody></table></div></section>
 					</div>
 				</div>
+				<section class="ecr-card ecr-workflow-usage" aria-label="${this.esc(__("E-mails sent by workflows"))}"></section>
 			</div>`);
 		this.page.main.find(".ecr-tabs").html(this.metrics.map(([key, label]) =>
 			`<button type="button" data-metric="${key}" class="ecr-tab">${this.esc(label)}</button>`).join(""));
@@ -597,19 +598,18 @@ class EmailCampaignReport {
 
 	async loadWorkflowUsage() {
 		// EM-27: e-mails sent by workflows are counted here, apart from the campaigns above.
-		if (!this.$workflowUsage) this.$workflowUsage = $('<section class="ecr-workflow-usage" aria-label="' + this.esc(__("E-mails sent by workflows")) + '"></section>').appendTo(this.page.main);
+		this.$workflowUsage = this.page.main.find(".ecr-workflow-usage");
 		try {
 			const {message: data} = await frappe.call({method: "finbyzreach.workflow_email_stats.workflow_email_usage", type: "GET", args: {days: this.days || 30}});
 			const rows = data.rows || [];
 			const body = rows.map(r => `<tr><td>${this.esc(r.workflow_title)}</td><td>${this.esc(r.email_template || "—")}</td><td>${this.number(r.sent)}</td><td>${this.number(r.opened)}</td><td>${this.number(r.clicked)}</td><td>${this.number(r.bounced)}</td><td>${this.number(r.unsubscribed)}</td></tr>`).join("");
 			const totals = data.totals || {};
-			this.$workflowUsage.html(`<h4>${this.esc(__("E-mails sent by workflows"))} <small class="text-muted">${this.esc(__("Last {0} days", [data.days || 30]))}</small></h4>
-				<p class="text-muted">${this.esc(__("Counted separately from the campaigns above."))}</p>
-				<table class="table table-bordered"><thead><tr><th>${this.esc(__("Workflow"))}</th><th>${this.esc(__("E-mail"))}</th><th>${this.esc(__("Sent"))}</th><th>${this.esc(__("Opened"))}</th><th>${this.esc(__("Clicked"))}</th><th>${this.esc(__("Bounced"))}</th><th>${this.esc(__("Unsubscribed"))}</th></tr></thead>
-				<tbody>${body || `<tr><td colspan="7" class="text-muted">${this.esc(__("No workflow e-mails were sent in this period."))}</td></tr>`}</tbody>
-				${rows.length ? `<tfoot><tr><th colspan="2">${this.esc(__("Total"))}</th><th>${this.number(totals.sent)}</th><th>${this.number(totals.opened)}</th><th>${this.number(totals.clicked)}</th><th>${this.number(totals.bounced)}</th><th>${this.number(totals.unsubscribed)}</th></tr></tfoot>` : ""}</table>`);
+			this.$workflowUsage.prop("hidden", false).html(`<div class="ecr-section-head"><div><h3>${this.esc(__("E-mails sent by workflows"))}</h3><p>${this.esc(__("Counted separately from the campaigns above."))}</p></div><span>${this.esc(__("Last {0} days", [data.days || 30]))}</span></div>
+				<div class="ecr-table-wrap"><table class="ecr-table ecr-workflow-table"><thead><tr><th>${this.esc(__("Workflow"))}</th><th>${this.esc(__("E-mail"))}</th><th>${this.esc(__("Sent"))}</th><th>${this.esc(__("Opened"))}</th><th>${this.esc(__("Clicked"))}</th><th>${this.esc(__("Bounced"))}</th><th>${this.esc(__("Unsubscribed"))}</th></tr></thead>
+				<tbody>${body || `<tr><td colspan="7" class="ecr-empty">${this.esc(__("No workflow e-mails were sent in this period."))}</td></tr>`}</tbody>
+				${rows.length ? `<tfoot><tr><th colspan="2">${this.esc(__("Total"))}</th><th>${this.number(totals.sent)}</th><th>${this.number(totals.opened)}</th><th>${this.number(totals.clicked)}</th><th>${this.number(totals.bounced)}</th><th>${this.number(totals.unsubscribed)}</th></tr></tfoot>` : ""}</table></div>`);
 		} catch (error) {
-			this.$workflowUsage.empty();
+			this.$workflowUsage.empty().prop("hidden", true);
 		}
 	}
 	number(value) { return new Intl.NumberFormat().format(Number(value || 0)); }
