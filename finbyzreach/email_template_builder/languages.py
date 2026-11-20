@@ -2,6 +2,8 @@
 import frappe
 from frappe import _
 
+from finbyzreach.email_status import STATUS_OF_CAMPAIGN
+
 LANGUAGES = ("de", "fr", "it", "en")
 
 
@@ -156,13 +158,13 @@ def email_usage(template_names):
 		rows = frappe.get_all(
 			"Campaign", filters={"custom_email_template": ["in", names]},
 			fields=["name", "campaign_name", "custom_email_template", "custom_broadcast_status", "custom_start_on", "modified"],
-			order_by="modified desc", limit_page_length=500,
+			order_by="modified desc, name desc", limit_page_length=0,
 		)
 		for row in rows:
 			entry = result[row.custom_email_template]
 			entry["used_in"].append({"kind": "campaign", "name": row.name, "title": row.campaign_name or row.name})
 			if not entry["status"]:
-				entry["status"] = row.custom_broadcast_status or "Draft"
+				entry["status"] = STATUS_OF_CAMPAIGN.get(row.custom_broadcast_status or "Draft", "Draft")
 				entry["send_time"] = str(row.custom_start_on or "")
 	if frappe.has_permission("Automation Workflow", "read") and frappe.db.exists("DocType", "Automation Workflow Version"):
 		for name in names:

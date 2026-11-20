@@ -22,7 +22,7 @@ def sending_statuses():
 		"Campaign",
 		filters={"custom_email_template": ["is", "set"]},
 		fields=["custom_email_template", "custom_broadcast_status"],
-		order_by="creation desc",
+		order_by="modified desc, name desc",
 		limit_page_length=0,
 	)
 	latest = {}

@@ -277,12 +277,20 @@ frappe.listview_settings["Email Template"] = frappe.listview_settings["Email Tem
 		// EM-40: sending status (draft, scheduled, sending, sent) as a filter and a badge.
 		if (!listview._sending_status_filter) {
 			listview._sending_status_filter = true;
-			const apply = status => {
-				listview.filter_area.remove("name");
+			let request_id = 0;
+			const apply = async status => {
+				const current_request = ++request_id;
+				// Keep the current filter until the lookup succeeds. Ignore responses
+				// from earlier selections, including when All e-mails was clicked.
+				const names = status
+					? (await frappe.call({method: "finbyzreach.email_status.emails_by_sending_status", args: {status}})).message || []
+					: [];
+				if (current_request !== request_id) return;
+				listview.start = 0;
+				await listview.filter_area.remove("name");
+				if (current_request !== request_id) return;
 				if (!status) return listview.refresh();
-				frappe.call({method: "finbyzreach.email_status.emails_by_sending_status", args: {status}}).then(({message}) => {
-					listview.filter_area.add([["Email Template", "name", "in", message.length ? message : ["__none__"]]]);
-				});
+				return listview.filter_area.add([["Email Template", "name", "in", names.length ? names : ["__none__"]]]);
 			};
 			// Toolbar buttons, not a header field: Frappe would filter a header field on a real column.
 			const group = __("Sending status");
