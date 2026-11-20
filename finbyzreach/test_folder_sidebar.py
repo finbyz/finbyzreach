@@ -86,3 +86,9 @@ class TestFolderRename(TestCase):
         with self.assertRaises(frappe.ValidationError):
             folders.rename_folder("Automation Workflow Folder", "Old", "Longer")
         self.rename_doc.assert_not_called()
+
+    def test_form_folders_use_native_rename_with_document_permission_checks(self):
+        result = folders.rename_folder("FP Form Folder", "Old", "New")
+        self.assertEqual(result["name"], "New")
+        self.document.check_permission.assert_called_once_with("write")
+        self.rename_doc.assert_called_once_with("FP Form Folder", "Old", "New", force=True, show_alert=False)

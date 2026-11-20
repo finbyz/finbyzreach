@@ -8,6 +8,7 @@ ROOTS = {
     "Email Template Folder": "All Email Template Folders",
     "Reach Segment Folder": "All Reach Segment Folders",
     "Automation Workflow Folder": None,
+    "FP Form Folder": None,
 }
 
 
@@ -19,14 +20,17 @@ def rename_folder(doctype: str, name: str, new_name: str):
     folder.check_permission("write")
     if name == ROOTS[doctype]:
         frappe.throw(_("The root folder cannot be renamed."))
-    new_name = new_name.strip()
+    new_name = (new_name or "").strip()
     if not new_name or len(new_name) > 140:
         frappe.throw(_("Enter a folder name between 1 and 140 characters."))
     if doctype == "Automation Workflow Folder":
         return _rename_workflow_folder(folder, new_name)
     if name == new_name:
         return {"name": name, "renamed_folders": {name: name}}
-    renamed = frappe.rename_doc(doctype, name, new_name, show_alert=False)
+    # Form folders have field-based names but no generic Desk rename action.
+    # This dedicated action still enforces native document write permissions.
+    options = {"force": True} if doctype == "FP Form Folder" else {}
+    renamed = frappe.rename_doc(doctype, name, new_name, show_alert=False, **options)
     return {"name": renamed, "renamed_folders": {name: renamed}}
 
 

@@ -157,7 +157,7 @@ test('workflow root folder creation supplies the existing path-based folder iden
 });
 
 test('rename is available only for writable folders and never for system roots',async()=>{
-    for (const doctype of ['Reach Segment','Email Template Master','Email Template','Automation Workflow']) {
+    for (const doctype of ['Reach Segment','Email Template Master','Email Template','Automation Workflow','Form']) {
         const {sidebar}=setup(doctype);
         assert.ok(sidebar.row('Existing','Existing',0,true).includes('data-rename="Existing"'));
         assert.ok(!sidebar.row(sidebar.config.root,'Root',0,true).includes('data-rename='));
@@ -170,7 +170,7 @@ test('rename is available only for writable folders and never for system roots',
 });
 
 test('rename uses the server permission-checked action and preserves active search/folder filters',async()=>{
-    for (const doctype of ['Reach Segment','Email Template Master','Email Template','Automation Workflow']) {
+    for (const doctype of ['Reach Segment','Email Template Master','Email Template','Automation Workflow','Form']) {
         const {sidebar,list,frappe,calls}=setup(doctype);
         await sidebar.reload();
         sidebar.branches.set(sidebar.config.root,{rows:[{name:'Existing',folder_name:'Existing'}]});

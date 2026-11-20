@@ -165,7 +165,7 @@ frappe.provide("frappe.reach_folder_sidebar");
         }
 
         can_rename(name) {
-            return this.list.doctype !== "Form" && name !== this.config.root &&
+            return name !== this.config.root &&
                 frappe.model.can_write(this.config.folder);
         }
 
