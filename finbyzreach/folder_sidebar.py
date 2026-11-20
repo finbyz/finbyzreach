@@ -45,7 +45,8 @@ def _rename_workflow_folder(folder, label):
     new = f"{parent}/{label}" if parent else label
     if new == old:
         return {"name": old, "renamed_folders": {old: old}}
-    candidates = frappe.get_all(doctype, filters={"name": ["like", f"{old}/%"]},
+    prefix = old.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    candidates = frappe.get_all(doctype, filters={"name": ["like", f"{prefix}/%"]},
         pluck="name", order_by="name asc", limit_page_length=0)
     # A literal prefix check prevents SQL LIKE wildcards in folder names
     # (for example QA_2026 or 50% off) from including unrelated folders.
