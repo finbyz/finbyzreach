@@ -155,8 +155,67 @@ class SegmentCompletionTest(TestCase):
         drain.assert_called_once()
         self.assertEqual(enqueue.call_args.kwargs['after'],'C199')
 
+    def test_drain_skips_pending_record_taken_by_concurrent_drain(self):
+        rows=[frappe._dict(name='TAKEN',record_doctype='Contact',record_name='C-1'),
+              frappe._dict(name='LIVE',record_doctype='Contact',record_name='C-2')]
+        frappe.db.get_value.side_effect=lambda doctype,name,*args,**kwargs:None if name=='TAKEN' else name
+        with patch.object(frappe,'get_all',return_value=rows),patch.object(frappe,'set_user'),\
+             patch.object(automation,'sync_record',return_value=set()) as sync,\
+             patch.object(automation,'schedule_dependents'),patch.object(automation,'enqueue_changes'):
+            automation.drain_changes()
+        sync.assert_called_once_with('Contact','C-2')
+        self.assertTrue(all(call.kwargs.get('for_update') for call in frappe.db.get_value.call_args_list))
+        frappe.db.delete.assert_called_once_with('Reach Segment Pending Record',{'name':'LIVE'})
+
     def test_preview_and_export_share_default_fields_but_explicit_export_is_exact(self):
         doc=frappe._dict(audience_doctype='Contact',columns_json=None)
         with patch('frappe.model.get_permitted_fields',return_value=['name','full_name','email_id']):
             self.assertEqual(segments.effective_columns(doc),['name','full_name','email_id'])
             self.assertEqual(segments.effective_columns(doc,'["full_name"]'),['full_name'])
+
+
+class PendingRecordDrainRaceTest(TestCase):
+    """Two drains on real connections: the other one takes a row after this one read its batch."""
+    PENDING='Reach Segment Pending Record'
+
+    def setUp(self):
+        if not frappe.db.table_exists(self.PENDING):
+            self.skipTest('Reach Segment Pending Record table is missing')
+        from frappe.utils import now_datetime
+        prefix=f'test-drain-race-{frappe.generate_hash(length=8)}'
+        self.taken,self.live=f'{prefix}-taken',f'{prefix}-live'
+        now=now_datetime()
+        frappe.db.bulk_insert(self.PENDING,['name','creation','modified','owner','modified_by','record_doctype','record_name'],
+            [(name,now,now,'Administrator','Administrator','Contact',name) for name in (self.taken,self.live)])
+        frappe.db.commit()
+        conf=frappe.conf
+        self.other=frappe.database.get_db(socket=conf.db_socket,host=conf.db_host,port=conf.db_port,
+            user=conf.db_user or conf.db_name,password=conf.db_password,cur_db_name=conf.db_name)
+        self.addCleanup(self.cleanup)
+
+    def cleanup(self):
+        frappe.db.rollback()
+        frappe.db.delete(self.PENDING,{'name':['in',[self.taken,self.live]]})
+        frappe.db.commit()
+        self.other.close()
+
+    def test_drain_skips_row_deleted_by_concurrent_drain_after_batch_read(self):
+        # This drain reads its batch, which fixes its REPEATABLE READ snapshot.
+        rows=frappe.db.sql(f'select name, record_doctype, record_name from `tab{self.PENDING}` where name in %s order by name',
+                           [[self.taken,self.live]],as_dict=True)
+        self.assertEqual(len(rows),2)
+        # The other drain takes and finishes one record before this drain reaches it.
+        self.other.sql(f'select name from `tab{self.PENDING}` where name=%s for update',self.taken)
+        self.other.sql(f'delete from `tab{self.PENDING}` where name=%s',self.taken)
+        self.other.commit()
+        live,=[row for row in rows if row.name==self.live]
+        taken,=[row for row in rows if row.name==self.taken]
+        get_all=frappe.get_all
+        batch=lambda doctype,*args,**kwargs:[taken,live] if doctype==self.PENDING else get_all(doctype,*args,**kwargs)
+        with patch.object(frappe,'get_all',side_effect=batch),\
+             patch.object(automation,'sync_record',return_value=set()) as sync,\
+             patch.object(automation,'schedule_dependents'),patch.object(automation,'enqueue_changes'):
+            automation.drain_changes()
+        sync.assert_called_once_with('Contact',self.live)
+        frappe.db.commit()
+        self.assertFalse(frappe.db.exists(self.PENDING,self.live))

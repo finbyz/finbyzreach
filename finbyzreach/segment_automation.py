@@ -134,10 +134,12 @@ def drain_changes():
                               order_by='creation asc, name asc', limit_page_length=100)
         affected = set()
         for row in rows:
-            # Serialize a change with concurrent updates to the same pending key.
-            if not frappe.db.exists('Reach Segment Pending Record', row.name):
+            # Lock the pending key with one locking read. A plain exists() check reads this
+            # transaction's snapshot, so it still sees a row a concurrent drain has already
+            # taken and deleted; the locking read sees the latest committed state, waits for
+            # that drain to commit and then returns None, so the record is skipped, not redone.
+            if not frappe.db.get_value('Reach Segment Pending Record', row.name, 'name', for_update=True):
                 continue
-            frappe.get_doc('Reach Segment Pending Record', row.name, for_update=True)
             if row.record_doctype == 'Email Subscription Preference':
                 from finbyzreach.subscriber_segments import queue_subscription_records
                 queue_subscription_records(row.record_name)
