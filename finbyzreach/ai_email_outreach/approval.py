@@ -18,6 +18,9 @@ def approve_emails(outbound_name: str, rows=None):
 
 	outbound = frappe.get_doc("Outbound Email", outbound_name)
 	outbound.check_permission("write")
+	# Outreach that was stopped (a reply, an unsubscribe, a manual stop) stays stopped.
+	if outbound.get("custom_ai_outreach_status") == "Stopped":
+		frappe.throw(_("This outreach was stopped. Its emails can no longer be approved."), frappe.ValidationError)
 	released = 0
 	for row in outbound.communication_email:
 		if row.status != "Awaiting Approval":
