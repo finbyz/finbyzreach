@@ -117,43 +117,143 @@ def queue_customer_contacts(customer, after=None, doctype='Contact'):
                        after=names[-1],doctype=doctype,queue='short',enqueue_after_commit=True)
 
 
+# One drain job at a time. A Redis owner key is held from the moment a drain job is queued
+# until that job finds nothing left to do. A capture that commits while the key is held only
+# sets the dirty bit, and the running drain loops again instead of a new job being queued.
+# Frappe's own deduplicate=True cannot do this: it is checked when enqueue() is called, before
+# the caller commits, and it blocks a follow-up while the current job is still STARTED.
+DRAIN_OWNER_KEY = 'finbyzreach:segment-drain:owner'
+DRAIN_DIRTY_KEY = 'finbyzreach:segment-drain:dirty'
+DRAIN_KEY_TTL = 900  # seconds; frees the owner key if a worker dies mid-drain
+DRAIN_BATCH_SIZE = 100
+DRAIN_TIME_BUDGET = 120  # seconds per job; the short queue times jobs out at 300
+
+_CLAIM = """
+redis.call('set', KEYS[2], '1', 'EX', ARGV[2])
+if redis.call('set', KEYS[1], ARGV[1], 'NX', 'EX', ARGV[2]) then return 1 end
+return 0
+"""
+# Release only when nothing was signalled since the dirty bit was last cleared.
+_RELEASE = """
+if redis.call('get', KEYS[1]) ~= ARGV[1] then return 1 end
+if redis.call('exists', KEYS[2]) == 1 then return 0 end
+redis.call('del', KEYS[1])
+return 1
+"""
+_TOUCH = """
+if redis.call('get', KEYS[1]) ~= ARGV[1] then return 0 end
+redis.call('expire', KEYS[1], ARGV[2])
+if ARGV[3] == '1' then redis.call('del', KEYS[2]) end
+return 1
+"""
+_DROP = """
+if redis.call('get', KEYS[1]) == ARGV[1] then redis.call('del', KEYS[1]) end
+return 1
+"""
+
+
+def _drain_script(script, token, *args):
+    keys = (frappe.cache.make_key(DRAIN_OWNER_KEY), frappe.cache.make_key(DRAIN_DIRTY_KEY))
+    return int(frappe.cache.eval(script, 2, *keys, token, *args) or 0)
+
+
 def enqueue_changes():
-    if not frappe.db.table_exists('Reach Segment Pending Record'):
+    """Ask for a drain after the current transaction commits. Safe to call once per record."""
+    if frappe.flags.in_reach_segment_drain or not frappe.db.table_exists('Reach Segment Pending Record'):
         return
-    first = frappe.get_all('Reach Segment Pending Record', pluck='name', order_by='creation asc, name asc', limit_page_length=1)
-    if first:
-        frappe.enqueue('finbyzreach.segment_automation.drain_changes', queue='short', enqueue_after_commit=True,
-                       job_id=f'reach-segment-changes:{first[0]}', deduplicate=True)
+    if signal_changes not in frappe.db.after_commit._functions:
+        frappe.db.after_commit.add(signal_changes)
 
 
-def drain_changes():
+def signal_changes():
+    """Runs after commit, so a drain that reads after this point sees the committed records."""
+    try:
+        if not pending_batch(limit=1):
+            return
+        token = frappe.generate_hash(length=16)
+        if not _drain_script(_CLAIM, token, DRAIN_KEY_TTL):
+            return  # a drain is queued or running; the dirty bit makes it look again
+    except Exception:
+        # The caller has already committed. The scheduler's enqueue_changes tick retries.
+        frappe.log_error('Reach Segment drain could not be signalled')
+        return
+    _queue_drain(token)
+
+
+def _queue_drain(token):
+    try:
+        frappe.enqueue('finbyzreach.segment_automation.drain_changes', queue='short', token=token,
+                       job_id=f'reach-segment-changes:{token}:{frappe.generate_hash(length=6)}')
+    except Exception:
+        # QueueOverloaded or Redis trouble: free the owner key so the scheduler's next
+        # enqueue_changes tick queues a drain. Pending records stay in the table.
+        _drain_script(_DROP, token)
+        frappe.log_error('Reach Segment drain could not be queued')
+
+
+def drain_changes(token=None):
+    """Drain pending records in committed batches until none are left or the time budget runs out.
+
+    `token` is the owner key value from signal_changes. A call without it, such as a manual
+    run from the console, drains too but never takes or releases the owner key.
+    """
+    from time import monotonic
     user = frappe.session.user
+    deadline = monotonic() + DRAIN_TIME_BUDGET
     try:
         frappe.set_user('Administrator')
-        rows = frappe.get_all('Reach Segment Pending Record', fields=['name','record_doctype','record_name'],
-                              order_by='creation asc, name asc', limit_page_length=100)
-        affected = set()
-        for row in rows:
-            # Lock the pending key with one locking read. A plain exists() check reads this
-            # transaction's snapshot, so it still sees a row a concurrent drain has already
-            # taken and deleted; the locking read sees the latest committed state, waits for
-            # that drain to commit and then returns None, so the record is skipped, not redone.
-            if not frappe.db.get_value('Reach Segment Pending Record', row.name, 'name', for_update=True):
+        frappe.flags.in_reach_segment_drain = True
+        while True:
+            if token:
+                # Clear the dirty bit before the fresh read below; a capture that commits after
+                # this sets it again, and _RELEASE then refuses to let go.
+                _drain_script(_TOUCH, token, DRAIN_KEY_TTL, 1)
+            frappe.db.commit()
+            if not drain_batch():
+                if not token or _drain_script(_RELEASE, token):
+                    return
                 continue
-            if row.record_doctype == 'Email Subscription Preference':
-                from finbyzreach.subscriber_segments import queue_subscription_records
-                queue_subscription_records(row.record_name)
-            else:
-                affected.update(sync_record(row.record_doctype, row.record_name))
-            frappe.db.delete('Reach Segment Pending Record', {'name':row.name})
-        from finbyzreach.segment_service import count_members
-        for name in affected:
-            segment = frappe.get_doc('Reach Segment', name)
-            update_counts(segment)
-        schedule_dependents(affected)
-        enqueue_changes()
+            frappe.db.commit()
+            if monotonic() >= deadline:
+                if token:
+                    _queue_drain(token)  # keep the owner key; the next job continues
+                return
+    except Exception:
+        if token:
+            _drain_script(_DROP, token)
+        raise
     finally:
+        frappe.flags.in_reach_segment_drain = False
         frappe.set_user(user)
+
+
+def pending_batch(limit=DRAIN_BATCH_SIZE):
+    return frappe.get_all('Reach Segment Pending Record', fields=['name','record_doctype','record_name'],
+                          order_by='creation asc, name asc', limit_page_length=limit)
+
+
+def drain_batch():
+    """Apply one batch of pending records. Returns how many rows the batch read."""
+    rows = pending_batch()
+    affected = set()
+    for row in rows:
+        # Lock the pending key with one locking read. A plain exists() check reads this
+        # transaction's snapshot, so it still sees a row a concurrent drain has already
+        # taken and deleted; the locking read sees the latest committed state, waits for
+        # that drain to commit and then returns None, so the record is skipped, not redone.
+        if not frappe.db.get_value('Reach Segment Pending Record', row.name, 'name', for_update=True):
+            continue
+        if row.record_doctype == 'Email Subscription Preference':
+            from finbyzreach.subscriber_segments import queue_subscription_records
+            queue_subscription_records(row.record_name)
+        else:
+            affected.update(sync_record(row.record_doctype, row.record_name))
+        frappe.db.delete('Reach Segment Pending Record', {'name':row.name})
+    for name in affected:
+        segment = frappe.get_doc('Reach Segment', name)
+        update_counts(segment)
+    schedule_dependents(affected)
+    return len(rows)
 
 
 def capture_publication(doc, method=None):

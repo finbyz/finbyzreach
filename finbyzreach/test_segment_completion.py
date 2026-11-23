@@ -8,6 +8,24 @@ from finbyzreach import segment_service as service, segment_snapshots as snapsho
 from finbyzreach import test_segment_service as sql_tests
 
 
+def mock_local(test):
+    """Swap frappe.local.db/flags/session for the test and put the real ones back.
+
+    patch.object(frappe.local, ..., create=True) deletes the attribute on stop without restoring
+    it, because frappe's Local proxy keeps it outside __dict__, so later tests lost frappe.local.db.
+    """
+    missing=object()
+    for name,value in (('db',MagicMock()),('flags',frappe._dict(mute_messages=True)),
+                       ('session',frappe._dict(user='Administrator'))):
+        try:
+            original=getattr(frappe.local,name)
+        except (AttributeError,RuntimeError):
+            original=missing
+        setattr(frappe.local,name,value)
+        test.addCleanup(lambda name=name,original=original:delattr(frappe.local,name) if original is missing
+                        else setattr(frappe.local,name,original))
+
+
 class SegmentCompletionSQLTest(TestCase):
     def setUp(self):
         self.sql = sql_tests.SegmentSQLTest()
@@ -76,10 +94,7 @@ class SegmentCompletionSQLTest(TestCase):
 
 class SegmentCompletionTest(TestCase):
     def setUp(self):
-        for name,value in (('db',MagicMock()),('flags',frappe._dict(mute_messages=True)),
-                           ('session',frappe._dict(user='Administrator'))):
-            patcher=patch.object(frappe.local,name,value,create=True)
-            patcher.start();self.addCleanup(patcher.stop)
+        mock_local(self)
 
     def test_large_static_preparation_is_bounded_and_keeps_old_generation(self):
         doc=frappe._dict(name='SEG',audience_doctype='Contact',segment_type='Static',snapshot_generation='OLD')
@@ -159,10 +174,10 @@ class SegmentCompletionTest(TestCase):
         rows=[frappe._dict(name='TAKEN',record_doctype='Contact',record_name='C-1'),
               frappe._dict(name='LIVE',record_doctype='Contact',record_name='C-2')]
         frappe.db.get_value.side_effect=lambda doctype,name,*args,**kwargs:None if name=='TAKEN' else name
-        with patch.object(frappe,'get_all',return_value=rows),patch.object(frappe,'set_user'),\
+        with patch.object(automation,'pending_batch',return_value=rows),\
              patch.object(automation,'sync_record',return_value=set()) as sync,\
-             patch.object(automation,'schedule_dependents'),patch.object(automation,'enqueue_changes'):
-            automation.drain_changes()
+             patch.object(automation,'schedule_dependents'):
+            automation.drain_batch()
         sync.assert_called_once_with('Contact','C-2')
         self.assertTrue(all(call.kwargs.get('for_update') for call in frappe.db.get_value.call_args_list))
         frappe.db.delete.assert_called_once_with('Reach Segment Pending Record',{'name':'LIVE'})
@@ -210,12 +225,139 @@ class PendingRecordDrainRaceTest(TestCase):
         self.other.commit()
         live,=[row for row in rows if row.name==self.live]
         taken,=[row for row in rows if row.name==self.taken]
-        get_all=frappe.get_all
-        batch=lambda doctype,*args,**kwargs:[taken,live] if doctype==self.PENDING else get_all(doctype,*args,**kwargs)
-        with patch.object(frappe,'get_all',side_effect=batch),\
+        # One batch, inside the snapshot taken above (drain_changes would commit first).
+        with patch.object(automation,'pending_batch',return_value=[taken,live]),\
              patch.object(automation,'sync_record',return_value=set()) as sync,\
-             patch.object(automation,'schedule_dependents'),patch.object(automation,'enqueue_changes'):
-            automation.drain_changes()
+             patch.object(automation,'schedule_dependents'):
+            automation.drain_batch()
         sync.assert_called_once_with('Contact',self.live)
         frappe.db.commit()
         self.assertFalse(frappe.db.exists(self.PENDING,self.live))
+
+
+class DrainHandshakeTest(TestCase):
+    """At most one drain job: real Redis owner/dirty keys, mocked database and queue."""
+
+    def setUp(self):
+        mock_local(self)
+        suffix=frappe.generate_hash(length=8)
+        for name in ('DRAIN_OWNER_KEY','DRAIN_DIRTY_KEY'):
+            patcher=patch.object(automation,name,f'{getattr(automation,name)}:test-{suffix}')
+            patcher.start();self.addCleanup(patcher.stop)
+        self.addCleanup(lambda:frappe.cache.delete(*(frappe.cache.make_key(getattr(automation,name))
+                                                     for name in ('DRAIN_OWNER_KEY','DRAIN_DIRTY_KEY'))))
+        for target,name in ((frappe,'enqueue'),(frappe,'set_user'),(automation,'schedule_dependents')):
+            patcher=patch.object(target,name)
+            setattr(self,name,patcher.start());self.addCleanup(patcher.stop)
+        frappe.db.get_value.side_effect=lambda doctype,name,*args,**kwargs:name
+
+    def owner(self):
+        value=frappe.cache.get(frappe.cache.make_key(automation.DRAIN_OWNER_KEY))
+        return value.decode() if value else None
+
+    def dirty(self):
+        return bool(frappe.cache.exists(frappe.cache.make_key(automation.DRAIN_DIRTY_KEY)))
+
+    def rows(self,start,count):
+        return [frappe._dict(name=f'P{n:05}',record_doctype='Contact',record_name=f'C{n:05}') for n in range(start,start+count)]
+
+    def test_enqueue_changes_registers_one_after_commit_signal_per_transaction(self):
+        callbacks=frappe.utils.CallbackManager()
+        frappe.db.after_commit=callbacks
+        frappe.db.table_exists.return_value=True
+        for _ in range(600):
+            automation.enqueue_changes()
+        self.assertEqual(list(callbacks._functions),[automation.signal_changes])
+        self.enqueue.assert_not_called()  # nothing is queued before the caller commits
+
+    def test_burst_of_600_changes_queues_exactly_one_drain(self):
+        """600 captures, each in its own transaction, while the drain works through 6 batches."""
+        with patch.object(automation,'pending_batch',return_value=['pending']):
+            for _ in range(200):
+                automation.signal_changes()
+        self.assertEqual(self.enqueue.call_count,1)
+        token=self.enqueue.call_args.kwargs['token']
+        self.assertEqual(self.owner(),token)
+        batches=[self.rows(start,100) for start in range(0,600,100)]
+        def next_batch(limit=automation.DRAIN_BATCH_SIZE):
+            batch=batches.pop(0) if batches else []
+            if batch:  # more captures commit while this batch runs
+                with patch.object(automation,'pending_batch',return_value=['pending']):
+                    for _ in range(80):
+                        automation.signal_changes()
+            return batch
+        with patch.object(automation,'pending_batch',side_effect=next_batch),\
+             patch.object(automation,'sync_record',return_value=set()) as sync:
+            automation.drain_changes(token=token)
+        self.assertEqual(sync.call_count,600)
+        self.assertEqual(len({call.args[1] for call in sync.call_args_list}),600)  # none twice
+        self.assertEqual(self.enqueue.call_count,1)
+        self.assertIsNone(self.owner())
+
+    def test_capture_during_drain_is_drained_by_the_running_job(self):
+        self.assertTrue(automation._drain_script(automation._CLAIM,'T1',60))
+        batches=[self.rows(0,1),[],self.rows(1,1),[]]
+        def next_batch(limit=automation.DRAIN_BATCH_SIZE):
+            batch=batches.pop(0)
+            if not batch and len(batches)==2:
+                # Worst case: a save commits right after the drain read an empty table,
+                # before the drain could release. Its after-commit signal finds the owner held.
+                with patch.object(automation,'pending_batch',return_value=['pending']):
+                    automation.signal_changes()
+            return batch
+        with patch.object(automation,'pending_batch',side_effect=next_batch),\
+             patch.object(automation,'sync_record',return_value=set()) as synced:
+            automation.drain_changes(token='T1')
+        self.assertEqual([call.args[1] for call in synced.call_args_list],['C00000','C00001'])
+        self.enqueue.assert_not_called()
+        self.assertIsNone(self.owner())
+        self.assertFalse(batches)
+
+    def test_capture_after_release_queues_a_new_drain(self):
+        self.assertTrue(automation._drain_script(automation._CLAIM,'T1',60))
+        with patch.object(automation,'pending_batch',return_value=[]):
+            automation.drain_changes(token='T1')
+        self.assertIsNone(self.owner())
+        with patch.object(automation,'pending_batch',return_value=['pending']):
+            automation.signal_changes()
+        self.assertEqual(self.enqueue.call_count,1)
+        self.assertEqual(self.owner(),self.enqueue.call_args.kwargs['token'])
+
+    def test_time_budget_hands_over_to_one_continuation_job(self):
+        self.assertTrue(automation._drain_script(automation._CLAIM,'T1',60))
+        with patch.object(automation,'DRAIN_TIME_BUDGET',0),\
+             patch.object(automation,'pending_batch',return_value=self.rows(0,100)),\
+             patch.object(automation,'sync_record',return_value=set()) as sync:
+            automation.drain_changes(token='T1')
+        self.assertEqual(sync.call_count,100)
+        self.assertEqual(self.enqueue.call_count,1)
+        self.assertEqual(self.enqueue.call_args.kwargs['token'],'T1')
+        self.assertEqual(self.owner(),'T1')
+
+    def test_queue_overloaded_frees_owner_for_the_scheduler(self):
+        self.enqueue.side_effect=frappe.QueueOverloaded
+        with patch.object(automation,'pending_batch',return_value=['pending']),patch.object(frappe,'log_error'):
+            automation.signal_changes()
+        self.assertIsNone(self.owner())
+
+    def test_failed_drain_frees_owner_and_keeps_rows(self):
+        self.assertTrue(automation._drain_script(automation._CLAIM,'T1',60))
+        with patch.object(automation,'pending_batch',return_value=self.rows(0,1)),\
+             patch.object(automation,'sync_record',side_effect=RuntimeError('boom')):
+            with self.assertRaises(RuntimeError):
+                automation.drain_changes(token='T1')
+        self.assertIsNone(self.owner())
+        frappe.db.delete.assert_not_called()
+
+    def test_records_captured_inside_a_drain_do_not_enqueue(self):
+        def fan_out(preference):
+            for _ in range(5):
+                automation.enqueue_changes()
+        row=frappe._dict(name='P1',record_doctype='Email Subscription Preference',record_name='ESP-1')
+        frappe.flags.in_reach_segment_drain=False
+        with patch.object(automation,'pending_batch',side_effect=[[row],[]]),\
+             patch('finbyzreach.subscriber_segments.queue_subscription_records',side_effect=fan_out) as fanned:
+            automation.drain_changes()
+        fanned.assert_called_once_with('ESP-1')
+        frappe.db.after_commit.add.assert_not_called()
+        self.assertFalse(frappe.flags.in_reach_segment_drain)
