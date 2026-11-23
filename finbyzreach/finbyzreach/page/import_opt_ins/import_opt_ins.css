@@ -34,3 +34,10 @@
 .ci-rules > div { border: 1px solid var(--border-color); border-radius: var(--border-radius-md); padding: var(--padding-sm); font-size: var(--text-sm); display: flex; flex-direction: column; gap: 2px; }
 .ci-rules span { color: var(--text-muted); }
 .ci-records { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 0 var(--margin-lg); }
+.import-opt-ins .ci-filter-box { border: 1px solid var(--border-color); border-radius: var(--border-radius-md); padding: 12px 14px; margin: 12px 0; }
+.import-opt-ins .ci-sub { margin: 0 0 8px; font-weight: 600; }
+.import-opt-ins .ci-filter-area { margin-bottom: 8px; }
+.import-opt-ins .ci-filter-area .filter-area { padding: 0; }
+.import-opt-ins .ci-records-box { margin: 12px 0; }
+.import-opt-ins .ci-records-box summary { cursor: pointer; font-weight: 600; margin-bottom: 8px; }
+.import-opt-ins .ci-dim { opacity: .55; }

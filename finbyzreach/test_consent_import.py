@@ -325,3 +325,45 @@ class TestConsentImportContactsAndCustomers(ConsentImportDB):
 		self.assertEqual((doc.status, doc.total_rows, doc.subscribed), ("Completed", 2, 2))
 		for email in ("run.primary@example.com", "run.contact@example.com"):
 			self.assertEqual(frappe.db.get_value(PREFERENCE_DOCTYPE, preference_name(email, TOPIC), "status"), "Subscribed")
+
+
+class TestConsentImportFilters(TestConsentImportLeads):
+	COMPANY = "_Opt-in Filter Test GmbH"
+
+	def filtered_leads(self):
+		return [self.lead(f"filter.{n}@example.com", company_name=self.COMPANY) for n in range(3)]
+
+	def test_filter_selects_matching_records_only(self):
+		leads = self.filtered_leads()
+		self.lead("filter.other@example.com", company_name="_Someone else")
+		filters = [["Lead", "company_name", "=", self.COMPANY]]
+		self.assertEqual(sorted(ci.filtered_names("Lead", filters)), sorted(lead.name for lead in leads))
+		self.assertEqual(ci.count_records("Lead", frappe.as_json(filters)), {"count": 3, "limit": ci.MAX_ROWS, "with_email": 3})
+
+	def test_filter_rejects_other_doctypes_bad_filters_and_too_many_matches(self):
+		with self.assertRaises(frappe.ValidationError):
+			ci.filtered_names("User", [])
+		with self.assertRaises(frappe.ValidationError):
+			ci._filter_list('"company_name"')
+		self.filtered_leads()
+		with patch.object(ci, "MAX_ROWS", 2), self.assertRaises(frappe.ValidationError):
+			ci.filtered_names("Lead", [["Lead", "company_name", "=", self.COMPANY]])
+
+	def test_check_and_run_with_filter_and_overlapping_pick(self):
+		leads = self.filtered_leads()
+		filters = frappe.as_json([["Lead", "company_name", "=", self.COMPANY]])
+		result = ci.check(consent_source="Fair list", filter_doctype="Lead", record_filters=filters,
+			leads=f'["{leads[0].name}"]', default_topics=f'["{TOPIC}"]')
+		self.assertEqual((result["total_rows"], result["subscribe"], result["skip"], result["fail"]), (3, 3, 0, 0))
+		doc = frappe.get_doc(ci.DOCTYPE, result["name"])
+		self.assertEqual((doc.filter_doctype, frappe.parse_json(doc.record_filters)), ("Lead", frappe.parse_json(filters)))
+		doc.db_set("status", "Queued")
+		with patch.object(ci, "_attach_result"):
+			ci.run(doc.name)
+		doc.reload()
+		self.assertEqual((doc.status, doc.subscribed), ("Completed", 3))
+		self.assertEqual(frappe.db.get_value(PREFERENCE_DOCTYPE, preference_name("filter.2@example.com", TOPIC), "status"), "Subscribed")
+
+	def test_filter_alone_needs_topics(self):
+		with self.assertRaises(frappe.ValidationError):
+			ci.check(consent_source="x", filter_doctype="Lead", record_filters="[]")

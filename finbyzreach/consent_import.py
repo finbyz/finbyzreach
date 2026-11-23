@@ -253,6 +253,34 @@ def selected_records(doctype, names):
 	return [{"row": _("Selected"), "record_type": doctype, "record": name} for name in dict.fromkeys(names) if name]
 
 
+def _filter_list(value):
+	"""Frappe list filters as sent by a FilterGroup or a list view: [[doctype, field, operator, value], ...]."""
+	if not value:
+		return []
+	if isinstance(value, str):
+		value = frappe.parse_json(value)
+	if isinstance(value, dict):
+		return value
+	if not isinstance(value, list) or any(not isinstance(row, (list, tuple)) for row in value):
+		frappe.throw(_("Filters must be a list of conditions"))
+	return [list(row[:4]) for row in value]
+
+
+def filtered_names(doctype, filters):
+	"""Every record of doctype that matches the filters and that the user may read."""
+	if doctype not in RECORD_TYPES:
+		frappe.throw(_("Choose Lead, Contact or Customer"))
+	names = frappe.get_list(doctype, filters=_filter_list(filters), pluck="name", order_by="creation asc",
+		limit_page_length=MAX_ROWS + 1)
+	if len(names) > MAX_ROWS:
+		frappe.throw(_("More than {0} {1} records match. Narrow the filters or import in parts.").format(MAX_ROWS, _(doctype)))
+	return names
+
+
+def filter_records(doctype, names):
+	return [{"row": _("Filter"), "record_type": doctype, "record": name} for name in dict.fromkeys(names) if name]
+
+
 def lead_records(names):
 	return selected_records("Lead", names)
 
@@ -428,7 +456,11 @@ def _load(doc):
 		content, filename = _file_content(doc.import_file)
 		records = parse_table(read_table(content, filename))[1]
 	for doctype, field in SELECTIONS:
-		records += selected_records(doctype, _names(doc.get(field)))
+		picked = _names(doc.get(field))
+		records += selected_records(doctype, picked)
+		if doc.filter_doctype == doctype:
+			chosen = set(picked)
+			records += filter_records(doctype, [name for name in filtered_names(doctype, doc.record_filters) if name not in chosen])
 	if len(records) > MAX_ROWS:
 		frappe.throw(_("{0} rows in total. Import at most {1} per run.").format(len(records), MAX_ROWS))
 	items = plan(records, consent_source=doc.consent_source, default_topics=_split_topics(doc.default_topics),
@@ -440,9 +472,13 @@ def _load(doc):
 def _validate_settings(doc):
 	if not _text(doc.consent_source):
 		frappe.throw(_("Describe where the consent came from"))
-	selected = any(_names(doc.get(field)) for _doctype, field in SELECTIONS)
+	if doc.filter_doctype and doc.filter_doctype not in RECORD_TYPES:
+		frappe.throw(_("Choose Lead, Contact or Customer"))
+	if doc.filter_doctype:
+		_filter_list(doc.record_filters)
+	selected = bool(doc.filter_doctype) or any(_names(doc.get(field)) for _doctype, field in SELECTIONS)
 	if not doc.import_file and not selected:
-		frappe.throw(_("Attach a file or select at least one Lead, Contact or Customer"))
+		frappe.throw(_("Attach a file, set a filter or select at least one Lead, Contact or Customer"))
 	if selected and not _split_topics(doc.default_topics):
 		frappe.throw(_("Choose the topics the selected records opted in to"))
 	if doc.default_opted_in_on and frappe.utils.getdate(doc.default_opted_in_on) > frappe.utils.getdate():
@@ -459,10 +495,14 @@ def _topic_list(value):
 
 @frappe.whitelist(methods=["POST"])
 def check(consent_source, import_file=None, leads=None, contacts=None, customers=None, customer_contacts=None,
-		default_topics=None, default_language=None, default_opted_in_on=None, name=None):
+		default_topics=None, default_language=None, default_opted_in_on=None, name=None, filter_doctype=None,
+		record_filters=None):
 	"""Save the run as Draft and return what an import would do. Writes no consent."""
 	_require_role()
+	filter_doctype = filter_doctype if filter_doctype in RECORD_TYPES else ""
 	values = {"import_file": import_file or None, "leads": "\n".join(_names(leads)),
+		"filter_doctype": filter_doctype,
+		"record_filters": frappe.as_json(_filter_list(record_filters), indent=None) if filter_doctype else "",
 		"contacts": "\n".join(_names(contacts)), "customers": "\n".join(_names(customers)),
 		"customer_contacts": ALL_CONTACTS if customer_contacts == ALL_CONTACTS else PRIMARY_CONTACT,
 		"consent_source": _text(consent_source)[:140], "default_topics": "\n".join(_topic_list(default_topics)),
@@ -602,6 +642,22 @@ SEARCH = {
 	"Contact": (["name", "full_name", "company_name", "email_id"], {"email_id": ["is", "set"]}),
 	"Customer": (["name", "customer_name", "email_id"], {"disabled": 0}),
 }
+
+
+@frappe.whitelist(methods=["GET"])
+def count_records(doctype, filters=None):
+	"""How many records the page's filter matches, and how many of them have an email of their own."""
+	_require_role()
+	if doctype not in RECORD_TYPES:
+		frappe.throw(_("Choose Lead, Contact or Customer"))
+	filters = _filter_list(filters)
+	total = len(frappe.get_list(doctype, filters=filters, pluck="name", limit_page_length=0))
+	result = {"count": total, "limit": MAX_ROWS}
+	if doctype in ("Lead", "Contact") and total:
+		with_email = ({**filters, "email_id": ["is", "set"]} if isinstance(filters, dict)
+			else [*filters, [doctype, "email_id", "is", "set"]])
+		result["with_email"] = len(frappe.get_list(doctype, filters=with_email, pluck="name", limit_page_length=0))
+	return result
 
 
 @frappe.whitelist(methods=["GET"])

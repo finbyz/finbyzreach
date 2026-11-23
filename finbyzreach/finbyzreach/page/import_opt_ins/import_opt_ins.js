@@ -2,7 +2,10 @@ frappe.pages["import-opt-ins"].on_page_load = function (wrapper) {
 	const page = frappe.ui.make_app_page({parent: wrapper, title: __("Import Opt-ins"), single_column: true});
 	wrapper.opt_in_importer = new OptInImporter(page);
 };
-frappe.pages["import-opt-ins"].on_page_show = function (wrapper) { wrapper.opt_in_importer?.loadHistory(); };
+frappe.pages["import-opt-ins"].on_page_show = function (wrapper) {
+	wrapper.opt_in_importer?.applyRouteOptions();
+	wrapper.opt_in_importer?.loadHistory();
+};
 
 class OptInImporter {
 	constructor(page) {
@@ -17,11 +20,17 @@ class OptInImporter {
 				<h4>${__("Record people who already opted in")}</h4>
 				<p class="text-muted ci-intro">${__("Each person is saved as a confirmed subscription for their email address and topic. No confirmation email is sent. Use this only for people who gave consent elsewhere and for whom you keep proof.")}</p>
 				<h5 class="ci-step">${__("1. Who")}</h5>
-				<p class="text-muted ci-intro">${__("Attach a file, select Leads, Contacts or Customers, or combine them.")}</p>
+				<p class="text-muted ci-intro">${__("Select records by filter, attach a file, pick single records, or combine them.")}</p>
 				<div class="ci-rules">
 					<div><b>${__("Lead")}</b><span>${__("Consent goes to the Lead's email. Unsubscribed and Do Not Contact Leads are skipped.")}</span></div>
 					<div><b>${__("Contact")}</b><span>${__("Consent goes to the Contact's primary email. Unsubscribed Contacts are skipped.")}</span></div>
 					<div><b>${__("Customer")}</b><span>${__("Consent goes to the primary email of its primary contact, or of all its contacts. Customer campaigns send to these contacts. Disabled Customers are skipped.")}</span></div>
+				</div>
+				<div class="ci-filter-box">
+					<h6 class="ci-sub">${__("Select by filter")}</h6>
+					<div class="ci-filter-type"></div>
+					<div class="ci-filter-area hidden"></div>
+					<div class="ci-filter-count text-muted ci-small"></div>
 				</div>
 				<div class="ci-form">
 					<div class="ci-file">
@@ -35,12 +44,15 @@ class OptInImporter {
 						<a href="#" data-example>${__("Download example file")}</a></p>
 					</div>
 				</div>
-				<div class="ci-records">
-					<div class="ci-pick-lead"></div>
-					<div class="ci-pick-contact"></div>
-					<div class="ci-pick-customer"></div>
-					<div class="ci-customer-contacts"></div>
-				</div>
+				<details class="ci-records-box">
+					<summary>${__("Pick single records")} <span class="ci-picked text-muted"></span></summary>
+					<div class="ci-records">
+						<div class="ci-pick-lead"></div>
+						<div class="ci-pick-contact"></div>
+						<div class="ci-pick-customer"></div>
+					</div>
+				</details>
+				<div class="ci-customer-contacts"></div>
 				<h5 class="ci-step">${__("2. Consent details")}</h5>
 				<div class="ci-form">
 					<div class="ci-source"></div>
@@ -69,6 +81,11 @@ class OptInImporter {
 	downloadExample() { window.open(`/api/method/${this.method}download_template`); }
 	makeControls() {
 		const changed = () => this.updateButtons();
+		this.filterType = frappe.ui.form.make_control({parent: this.$root.find(".ci-filter-type"), render_input: true, df: {
+			fieldtype: "Select", fieldname: "filter_doctype", label: __("Record type"), options: ["", "Lead", "Contact", "Customer"],
+			description: __("Every record of this type that matches the filters below is included. Without filters, all records of the type are included."),
+			change: () => this.setFilterType(this.filterType.get_value()),
+		}});
 		const picker = (doctype, label, description) => frappe.ui.form.make_control({
 			parent: this.$root.find(`.ci-pick-${doctype.toLowerCase()}`), render_input: true, df: {
 				fieldtype: "MultiSelectList", fieldname: doctype.toLowerCase(), label, description,
@@ -87,6 +104,7 @@ class OptInImporter {
 			change: changed,
 		}});
 		this.customerContacts.set_value("Primary contact");
+		this.toggleCustomerContacts();
 		this.source = frappe.ui.form.make_control({parent: this.$root.find(".ci-source"), render_input: true, df: {
 			fieldtype: "Data", fieldname: "consent_source", label: __("Consent source"), reqd: 1,
 			description: __("Where these people gave consent, for example \"Swissbau 2026 sign-up form\". Saved in the consent log. A Source column overrides it per row."),
@@ -110,11 +128,90 @@ class OptInImporter {
 			this.topics.df.options = (message || []).map(row => ({label: `${row.name} (${__(row.category)})`, value: row.name}));
 			this.topics.refresh();
 		});
-		const options = frappe.route_options || {};
-		for (const [doctype, key] of [["Lead", "leads"], ["Contact", "contacts"], ["Customer", "customers"]]) {
-			if (Array.isArray(options[key]) && options[key].length) this.pickers[doctype].set_value(options[key]);
+		this.applyRouteOptions();
+	}
+	applyRouteOptions() {
+		// Set by the "Import opt-ins" action in the Lead, Contact and Customer lists.
+		const options = frappe.opt_in_import_options;
+		if (!options) return;
+		frappe.opt_in_import_options = null;
+		this.state.name = null;
+		this.$root.find(".ci-result").empty();
+		if (options.filter_doctype) {
+			this.setFilterType(options.filter_doctype, options.filters || []);
 		}
-		if (options.leads || options.contacts || options.customers) frappe.route_options = null;
+		let picked = false;
+		for (const [doctype, key] of [["Lead", "leads"], ["Contact", "contacts"], ["Customer", "customers"]]) {
+			const names = Array.isArray(options[key]) ? options[key] : [];
+			this.pickers[doctype].set_value(names);
+			picked = picked || names.length > 0;
+		}
+		this.$root.find(".ci-records-box").prop("open", picked);
+		this.updateButtons();
+	}
+	async setFilterType(doctype, filters = []) {
+		if (this.filterType.get_value() !== (doctype || "")) {
+			this.filterType.value = doctype || "";
+			this.filterType.$input?.val(doctype || "");
+		}
+		this.filterDoctype = doctype || null;
+		const $area = this.$root.find(".ci-filter-area").empty().toggleClass("hidden", !doctype);
+		this.filterGroup = null;
+		this.$root.find(".ci-result").empty();
+		this.toggleCustomerContacts();
+		if (doctype) {
+			// FilterGroup needs the DocType's fields, which a page does not load by itself.
+			this.filterLoading = true;
+			this.updateButtons();
+			try {
+				await frappe.model.with_doctype(doctype);
+			} finally {
+				this.filterLoading = false;
+			}
+			if (this.filterDoctype !== doctype) return;
+			this.filterGroup = new frappe.ui.FilterGroup({parent: $area, doctype, on_change: () => this.filtersChanged()});
+			const rows = (Array.isArray(filters) ? filters : []).filter(row => Array.isArray(row));
+			if (rows.length) {
+				await this.filterGroup.add_filters(rows.map(row => row.slice(0, 4)));
+				this.filterGroup.toggle_empty_filters(!this.filterGroup.filters.length);
+				const added = this.filterGroup.get_filters().map(row => `${row[0]}.${row[1]}`);
+				const dropped = rows.filter(row => !added.includes(`${row[0]}.${row[1]}`));
+				if (dropped.length) {
+					frappe.msgprint({title: __("Some filters were not applied"), indicator: "orange", message:
+						__("These list filters could not be used here, so more records may match than in the list. Check the filters and the count before you import:")
+						+ `<ul>${dropped.map(row => `<li>${this.escape(row[1])} ${this.escape(row[2])} ${this.escape(row[3])}</li>`).join("")}</ul>`});
+				}
+			}
+		}
+		this.filtersChanged();
+	}
+	recordFilters() { return this.filterGroup ? this.filterGroup.get_filters() : []; }
+	filtersChanged() {
+		this.$root.find(".ci-result").empty();
+		this.updateButtons();
+		clearTimeout(this.countTimer);
+		const $count = this.$root.find(".ci-filter-count");
+		const doctype = this.filterDoctype;
+		if (!doctype) return $count.empty();
+		$count.text(__("Counting…"));
+		this.countTimer = setTimeout(async () => {
+			const filters = this.recordFilters();
+			const {message: r} = await frappe.call({method: this.method + "count_records", type: "GET",
+				args: {doctype, filters: JSON.stringify(filters)}});
+			if (doctype !== this.filterDoctype || JSON.stringify(filters) !== JSON.stringify(this.recordFilters())) return;
+			const label = {Lead: __("Leads"), Contact: __("Contacts"), Customer: __("Customers")}[doctype];
+			let text = filters.length ? __("{0} {1} match.", [this.number(r.count), label])
+				: __("No filter set, so all {0} {1} are included.", [this.number(r.count), label]);
+			if (r.with_email != null) text += " " + __("{0} of them have an email.", [this.number(r.with_email)]);
+			if (doctype === "Customer") text += " " + __("Their contacts get the consent, see Customer contacts below.");
+			if (r.count > r.limit) text = __("{0} {1} match. At most {2} can be imported at once. Add a filter to narrow it down.", [this.number(r.count), label, this.number(r.limit)]);
+			const warn = r.count > r.limit || !r.count || !filters.length;
+			$count.toggleClass("ci-warning", warn).toggleClass("text-muted", !warn).text(text);
+		}, 400);
+	}
+	toggleCustomerContacts() {
+		const customers = this.filterDoctype === "Customer" || (this.pickers?.Customer.get_value() || []).length > 0;
+		this.customerContacts?.$wrapper.toggleClass("ci-dim", !customers);
 	}
 	chooseFile() {
 		new frappe.ui.FileUploader({
@@ -137,8 +234,12 @@ class OptInImporter {
 	}
 	selected(doctype) { return this.pickers[doctype].get_value() || []; }
 	updateButtons() {
-		const who = this.state.file || ["Lead", "Contact", "Customer"].some(doctype => this.selected(doctype).length);
-		this.$root.find("[data-check]").prop("disabled", !(who && (this.source.get_value() || "").trim()));
+		const counts = ["Lead", "Contact", "Customer"].map(doctype => this.selected(doctype).length);
+		const picked = counts.reduce((a, b) => a + b, 0);
+		this.$root.find(".ci-picked").text(picked ? `(${__("{0} selected", [this.number(picked)])})` : "");
+		this.toggleCustomerContacts();
+		const who = this.state.file || this.filterDoctype || picked;
+		this.$root.find("[data-check]").prop("disabled", !(who && !this.filterLoading && (this.source.get_value() || "").trim()));
 	}
 	async check() {
 		const $btn = this.$root.find("[data-check]").prop("disabled", true);
@@ -147,6 +248,7 @@ class OptInImporter {
 			const {message} = await frappe.call({method: this.method + "check", type: "POST", args: {
 				name: this.state.name, import_file: this.state.file, leads: JSON.stringify(this.selected("Lead")),
 				contacts: JSON.stringify(this.selected("Contact")), customers: JSON.stringify(this.selected("Customer")),
+				filter_doctype: this.filterDoctype || "", record_filters: JSON.stringify(this.recordFilters()),
 				customer_contacts: this.customerContacts.get_value(),
 				consent_source: this.source.get_value(), default_opted_in_on: this.date.get_value(),
 				default_language: this.language.get_value(), default_topics: JSON.stringify(this.topics.get_checked_options() || []),
@@ -196,6 +298,7 @@ class OptInImporter {
 		await frappe.call({method: this.method + "start", type: "POST", args: {name, consent_confirmed: 1}});
 		this.setFile(null);
 		Object.values(this.pickers).forEach(control => control.set_value([]));
+		await this.setFilterType(null);
 		this.watch(name);
 	}
 	async watch(name) {

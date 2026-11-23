@@ -11,6 +11,8 @@
   "leads",
   "contacts",
   "customers",
+  "filter_doctype",
+  "record_filters",
   "customer_contacts",
   "consent_source",
   "default_topics",
@@ -65,6 +67,21 @@
    "fieldtype": "Long Text",
    "label": "Selected customers",
    "read_only": 1
+  },
+  {
+   "fieldname": "filter_doctype",
+   "fieldtype": "Select",
+   "label": "Filter record type",
+   "options": "\nLead\nContact\nCustomer",
+   "description": "Every record of this type that matches the filters is included."
+  },
+  {
+   "fieldname": "record_filters",
+   "fieldtype": "Code",
+   "label": "Record filters",
+   "options": "JSON",
+   "depends_on": "filter_doctype",
+   "description": "Evaluated again when the import runs."
   },
   {
    "default": "Primary contact",
@@ -170,7 +187,7 @@
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-11-23 16:00:00.000000",
+ "modified": "2026-11-23 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Finbyzreach",
  "name": "Opt-in Import Log",

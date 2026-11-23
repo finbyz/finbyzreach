@@ -11,7 +11,7 @@ class OptinImportLog(Document):
 		if self.is_new() or self.status == "Draft":
 			return
 		before = self.get_doc_before_save()
-		if before and any(before.get(field) != self.get(field) for field in ("import_file", "leads", "contacts", "customers", "customer_contacts", "consent_source", "default_topics", "default_language", "default_opted_in_on")):
+		if before and any(before.get(field) != self.get(field) for field in ("import_file", "leads", "contacts", "customers", "filter_doctype", "record_filters", "customer_contacts", "consent_source", "default_topics", "default_language", "default_opted_in_on")):
 			frappe.throw(_("A started opt-in import cannot be changed. Start a new import instead."))
 
 	def on_trash(self):
