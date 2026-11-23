@@ -30,6 +30,9 @@ class ConsentCenter {
 		this.method = "finbyzreach.finbyzreach.page.subscriptions_consent.subscriptions_consent.";
 		this.$root = $(page.main).addClass("consent-center");
 		page.set_secondary_action(__("Refresh"), () => this.load());
+		if (frappe.user.has_role(["Marketing Manager", "System Manager"])) {
+			page.add_inner_button(__("Import opt-ins"), () => frappe.set_route("import-opt-ins"));
+		}
 		this.$root.on("click", "[data-tab]", (e) => { this.tab = $(e.currentTarget).attr("data-tab"); this.offset = 0; this.render(); });
 		this.$root.on("click", "[data-edit]", (e) => this.edit($(e.currentTarget).attr("data-edit")));
 		this.$root.on("click", "[data-enable-toggle]", (e) => this.toggle($(e.currentTarget).attr("data-enable-toggle")));

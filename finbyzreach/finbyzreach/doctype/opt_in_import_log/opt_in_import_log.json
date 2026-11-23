@@ -1,0 +1,202 @@
+{
+ "actions": [],
+ "autoname": "OPTIN-.#####",
+ "creation": "2026-11-23 12:00:00.000000",
+ "description": "Log of one run on the Import Opt-ins page: who imported which existing opt-ins, from which file or Leads, and the outcome.",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "status",
+  "import_file",
+  "leads",
+  "contacts",
+  "customers",
+  "customer_contacts",
+  "consent_source",
+  "default_topics",
+  "default_language",
+  "default_opted_in_on",
+  "consent_confirmed",
+  "column_break_main",
+  "total_rows",
+  "subscribed",
+  "skipped",
+  "failed",
+  "started_on",
+  "finished_on",
+  "section_result",
+  "result_file",
+  "error"
+ ],
+ "fields": [
+  {
+   "default": "Draft",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Draft\nQueued\nRunning\nCompleted\nFailed",
+   "read_only": 1
+  },
+  {
+   "fieldname": "import_file",
+   "fieldtype": "Attach",
+   "label": "Import file",
+   "description": "Optional. CSV or Excel file of people who opted in. Leave empty when you only select Leads."
+  },
+  {
+   "description": "Leads selected on the Import Opt-ins page, one ID per line. Consent goes to the Lead's email.",
+   "fieldname": "leads",
+   "fieldtype": "Long Text",
+   "label": "Selected leads",
+   "read_only": 1
+  },
+  {
+   "description": "Contacts selected on the Import Opt-ins page, one ID per line. Consent goes to the Contact's primary email.",
+   "fieldname": "contacts",
+   "fieldtype": "Long Text",
+   "label": "Selected contacts",
+   "read_only": 1
+  },
+  {
+   "description": "Customers selected on the Import Opt-ins page, one ID per line. Consent goes to the email of their contacts, as set below.",
+   "fieldname": "customers",
+   "fieldtype": "Long Text",
+   "label": "Selected customers",
+   "read_only": 1
+  },
+  {
+   "default": "Primary contact",
+   "description": "Which contacts of a Customer get the consent, the same choice as in Customer campaigns.",
+   "fieldname": "customer_contacts",
+   "fieldtype": "Select",
+   "label": "Customer contacts",
+   "options": "Primary contact\nAll contacts"
+  },
+  {
+   "description": "Where these people gave consent, for example \"Swissbau 2026 sign-up form\". Saved in the consent log of every row.",
+   "fieldname": "consent_source",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Consent source",
+   "reqd": 1
+  },
+  {
+   "description": "Mailing types or topics used when a row has no topic column. One per line.",
+   "fieldname": "default_topics",
+   "fieldtype": "Small Text",
+   "label": "Default topics"
+  },
+  {
+   "description": "Language of the consent text saved with each row when the file has no language column.",
+   "fieldname": "default_language",
+   "fieldtype": "Select",
+   "label": "Default language",
+   "options": "\nde\nen\nfr\nit"
+  },
+  {
+   "description": "Used for selected Leads and for file rows without an Opted in on date.",
+   "fieldname": "default_opted_in_on",
+   "fieldtype": "Date",
+   "label": "Default opt-in date"
+  },
+  {
+   "default": "0",
+   "fieldname": "consent_confirmed",
+   "fieldtype": "Check",
+   "label": "I confirm these people gave consent and we keep proof of it",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_main",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "total_rows",
+   "fieldtype": "Int",
+   "label": "Rows in file",
+   "read_only": 1
+  },
+  {
+   "fieldname": "subscribed",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Subscribed",
+   "read_only": 1
+  },
+  {
+   "fieldname": "skipped",
+   "fieldtype": "Int",
+   "label": "Skipped",
+   "read_only": 1
+  },
+  {
+   "fieldname": "failed",
+   "fieldtype": "Int",
+   "label": "Failed",
+   "read_only": 1
+  },
+  {
+   "fieldname": "started_on",
+   "fieldtype": "Datetime",
+   "label": "Started on",
+   "read_only": 1
+  },
+  {
+   "fieldname": "finished_on",
+   "fieldtype": "Datetime",
+   "label": "Finished on",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_result",
+   "fieldtype": "Section Break",
+   "label": "Result"
+  },
+  {
+   "description": "The import file with an outcome and reason for every row.",
+   "fieldname": "result_file",
+   "fieldtype": "Attach",
+   "label": "Result file",
+   "read_only": 1
+  },
+  {
+   "fieldname": "error",
+   "fieldtype": "Long Text",
+   "label": "Error",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-11-23 16:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Finbyzreach",
+ "name": "Opt-in Import Log",
+ "naming_rule": "Expression (old style)",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Marketing Manager",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "consent_source",
+ "track_changes": 1
+}

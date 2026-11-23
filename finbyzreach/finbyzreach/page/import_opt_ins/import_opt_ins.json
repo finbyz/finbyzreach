@@ -1,0 +1,26 @@
+{
+ "content": null,
+ "creation": "2026-11-23 12:00:00.000000",
+ "doctype": "Page",
+ "icon": "upload",
+ "idx": 0,
+ "modified": "2026-11-23 14:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Finbyzreach",
+ "name": "import-opt-ins",
+ "owner": "Administrator",
+ "page_name": "import-opt-ins",
+ "roles": [
+  {
+   "role": "Marketing Manager"
+  },
+  {
+   "role": "System Manager"
+  }
+ ],
+ "script": null,
+ "standard": "Yes",
+ "style": null,
+ "system_page": 0,
+ "title": "Import Opt-ins"
+}
