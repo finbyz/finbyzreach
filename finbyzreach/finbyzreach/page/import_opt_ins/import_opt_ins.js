@@ -137,9 +137,9 @@ class OptInImporter {
 		frappe.opt_in_import_options = null;
 		this.state.name = null;
 		this.$root.find(".ci-result").empty();
-		if (options.filter_doctype) {
-			this.setFilterType(options.filter_doctype, options.filters || []);
-		}
+		// Opening from a list replaces whatever was set before: only the list's filter or ticked rows count.
+		this.setFile(null);
+		this.setFilterType(options.filter_doctype || null, options.filters || []);
 		let picked = false;
 		for (const [doctype, key] of [["Lead", "leads"], ["Contact", "contacts"], ["Customer", "customers"]]) {
 			const names = Array.isArray(options[key]) ? options[key] : [];
