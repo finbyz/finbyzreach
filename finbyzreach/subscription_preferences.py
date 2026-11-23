@@ -61,10 +61,12 @@ def _save(email, topic, status, source, *, token_hash=None, expires=None, langua
 	option = _topic(topic, active=status != "Unsubscribed")
 	name = preference_name(email, topic)
 	doc = frappe.get_doc(PREFERENCE_DOCTYPE, name, for_update=True) if frappe.db.exists(PREFERENCE_DOCTYPE, name) else frappe.new_doc(PREFERENCE_DOCTYPE)
-	if doc.is_new():
+	is_new = doc.is_new()
+	if is_new:
 		doc.email = email
 		doc.subscription_topic = topic
-	if status == "Pending" or (status == "Subscribed" and doc.status != "Pending"):
+	# A new record defaults to Pending, so check is_new too: a direct subscribe must keep its consent text.
+	if status == "Pending" or (status == "Subscribed" and (is_new or doc.status != "Pending")):
 		doc.consent_version = str(option.get("modified") or "")
 		doc.consent_text = option.get("description") or ""
 		if language in LANGUAGES:
