@@ -306,11 +306,14 @@ def enroll_current_members(workflow_name, version, segment_name=None, after=None
 
 
 def reconcile_segment(segment_name, after=None):
-    from finbyzreach.segment_service import member_names, member_query, MEMBER, _insert_members
+    from finbyzreach.segment_service import member_names, member_query, MEMBER, _insert_members, report_invalid_definition
     segment = frappe.get_doc('Reach Segment', segment_name, for_update=True)
     if segment.get('archived') or segment.get('snapshot_pending_generation'):
         return
-    names = member_names(segment, after=after, limit=200)
+    try:
+        names = member_names(segment, after=after, limit=200)
+    except frappe.ValidationError as exc:
+        return report_invalid_definition(segment, exc)
     previous = set(frappe.get_all(MEMBER, filters={'segment':segment.name,'is_current':1,'record_name':['in',names]}, pluck='record_name')) if names else set()
     _insert_members(segment.name, names)
     if names:

@@ -372,6 +372,28 @@ def member_query(segment, *, seen=(), apply_exclusions=True):
     return query
 
 
+INVALID_DEFINITION_KEY = 'finbyzreach:invalid-segment-definition:{}:{}'
+INVALID_DEFINITION_TTL = 30 * 24 * 60 * 60
+
+
+def report_invalid_definition(segment, error):
+    """Skip a segment whose saved filters no longer validate, and say so once.
+
+    A filter can outlive its field, for example when a Custom Field is
+    deleted. The nightly jobs then failed on that segment every night. Log it
+    once per definition instead; saving a fixed definition logs again if it
+    is still invalid.
+    """
+    key = INVALID_DEFINITION_KEY.format(segment.name, segment.get('last_definition_change') or '')
+    if frappe.cache.get_value(key):
+        return None
+    frappe.cache.set_value(key, 1, expires_in_sec=INVALID_DEFINITION_TTL)
+    frappe.log_error(title=f'Reach Segment filters are invalid: {segment.name}',
+        message=f'{error}\n\nThe segment is skipped by the nightly jobs until its filters are fixed.',
+        reference_doctype='Reach Segment', reference_name=segment.name)
+    return None
+
+
 def member_names(segment, *, after=None, limit=None, apply_exclusions=True):
     table = frappe.qb.DocType(segment.get('audience_doctype') or 'Lead')
     query = member_query(segment,apply_exclusions=apply_exclusions).select(table.name).orderby(table.name)

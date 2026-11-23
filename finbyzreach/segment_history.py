@@ -22,10 +22,14 @@ def record_event(segment, record_name, event, occurrence):
 def sample_size(segment):
     if not frappe.db.table_exists(SAMPLE):
         return
-    from finbyzreach.segment_service import count_members
+    from finbyzreach.segment_service import count_members, report_invalid_definition
     day = today()
     key = sha256(f'{segment.name}\0{day}'.encode()).hexdigest()
-    values = dict(member_count=count_members(segment), excluded_count=segment.get('excluded_count') or 0)
+    try:
+        member_count = count_members(segment)
+    except frappe.ValidationError as exc:
+        return report_invalid_definition(segment, exc)
+    values = dict(member_count=member_count, excluded_count=segment.get('excluded_count') or 0)
     if frappe.db.exists(SAMPLE, key):
         frappe.db.set_value(SAMPLE, key, values, update_modified=False)
     else:
