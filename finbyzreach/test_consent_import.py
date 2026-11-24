@@ -311,6 +311,14 @@ class TestConsentImportContactsAndCustomers(ConsentImportDB):
 		items = ci.plan(records(f"Email,Topic\nglobal.out@example.com,{TOPIC}\n"), consent_source="x")
 		self.assertEqual((items[0]["action"], items[0]["reason"]), (ci.SKIP, "Globally unsubscribed"))
 
+	def test_email_row_respects_a_customer_unsubscribe(self):
+		customer = self.customer("_Opt-in Import Customer Out AG")
+		self.contact("customer.out@example.com", customer.name)
+		frappe.get_doc({"doctype": "Email Unsubscribe", "email": "customer.out@example.com",
+			"reference_doctype": "Customer", "reference_name": customer.name}).insert(ignore_permissions=True)
+		items = ci.plan(records(f"Email,Topic,Opted in on\ncustomer.out@example.com,{TOPIC},2025-01-01\n"), consent_source="x")
+		self.assertEqual(items[0]["action"], ci.SKIP)
+
 	def test_run_imports_selected_contacts_and_customers(self):
 		customer = self.customer("_Opt-in Import Run AG")
 		primary = self.contact("run.primary@example.com", customer.name)

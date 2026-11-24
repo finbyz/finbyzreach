@@ -88,7 +88,8 @@ def workflow_email_usage(days=30):
 	frappe.has_permission("Email Template", "read", throw=True)
 	if not frappe.db.table_exists("Automation Effect Ledger"):
 		return {"rows": [], "totals": {}}
-	days = max(1, min(int(days or 30), 3650))
+	# The report offers at most 366 days; a larger window reads too many ledger rows.
+	days = max(1, min(int(days or 30), 366))
 	since = add_days(now_datetime(), -days)
 	ledger = frappe.qb.DocType("Automation Effect Ledger")
 	run = frappe.qb.DocType("Automation Run")

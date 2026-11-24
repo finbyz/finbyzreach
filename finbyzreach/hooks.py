@@ -189,8 +189,8 @@ doc_events = {
         "after_insert": [
             "finbyzreach.doc_events.communication.after_insert",
             "finbyzreach.email_marketing.communication_after_insert",
-            "finbyzreach.consent.capture_delivery_failure",
         ],
+        # on_change also runs after insert, so it covers new rows on its own.
         "on_change": "finbyzreach.consent.capture_delivery_failure",
         "after_delete": "finbyzreach.consent.sync_soft_bounce_recipients",
     },

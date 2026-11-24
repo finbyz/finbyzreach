@@ -323,7 +323,25 @@ def _address_record_optouts(emails):
 		out = _reference_unsubscribed_pairs(names, "Contact") if names else set()
 		blocked.update(row.email_id.lower() for row in contacts if row.name in unsubscribed or (row.name, row.email_id.lower()) in out)
 		blocked.update(row.email_id.lower() for row in addresses if row.parent in unsubscribed or (row.parent, row.email_id.lower()) in out)
+		blocked.update(_customer_optouts(names, [*contacts, *({"name": row.parent, "email_id": row.email_id} for row in addresses)]))
 	return blocked
+
+
+def _customer_optouts(contact_names, contact_emails):
+	"""Addresses unsubscribed from the emails of a Customer their Contact belongs to."""
+	from finbyzreach.email_marketing import _reference_unsubscribed_pairs
+	if not contact_names:
+		return set()
+	links = frappe.get_all("Dynamic Link", filters={"parenttype": "Contact", "link_doctype": "Customer",
+		"parent": ["in", list(contact_names)]}, fields=["parent", "link_name"], limit_page_length=0)
+	customers_by_contact = {}
+	for link in links:
+		customers_by_contact.setdefault(link.parent, set()).add(link.link_name)
+	if not customers_by_contact:
+		return set()
+	out = _reference_unsubscribed_pairs({name for names in customers_by_contact.values() for name in names}, "Customer")
+	return {row["email_id"].lower() for row in contact_emails
+		if any((customer, row["email_id"].lower()) in out for customer in customers_by_contact.get(row["name"], ()))}
 
 
 def plan(records, *, consent_source, default_topics=(), default_language=None, default_opted_in_on=None,
