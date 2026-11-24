@@ -25,11 +25,12 @@ class ConsentRegressionTest(TestCase):
             self.assertIsNotNone(consent.consent_exclusion("a@example.com", "Updates", policy=policy, suppressions={}))
         read.assert_any_call("Email Subscription Preference", {"email": "a@example.com", "subscription_topic": "Updates"}, "status")
 
-    def test_soft_bounces_match_mailboxes_instead_of_substrings(self):
-        rows = [frappe._dict(name=str(i), recipients="Jan <jan@x.com>") for i in range(3)]
-        with patch.object(frappe, "get_all", return_value=rows):
-            self.assertFalse(consent._soft_bounce_limit_reached("an@x.com"))
-            self.assertTrue(consent._soft_bounce_limit_reached("jan@x.com"))
+    def test_soft_bounce_lookup_is_exact_and_bounded(self):
+        with patch.object(frappe, "get_all", return_value=[]) as lookup:
+            self.assertFalse(consent._soft_bounce_limit_reached("AN@x.com"))
+        self.assertEqual(lookup.call_args.args, (consent.BOUNCE_RECIPIENT,))
+        self.assertEqual(lookup.call_args.kwargs["filters"]["email"], "an@x.com")
+        self.assertEqual(lookup.call_args.kwargs["limit_page_length"], 3)
 
     def test_workflow_handoff_requires_confirmed_consent(self):
         class Base:

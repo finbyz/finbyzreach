@@ -1,0 +1,43 @@
+{
+ "doctype": "DocType",
+ "name": "Email Soft Bounce Recipient",
+ "module": "Finbyzreach",
+ "autoname": "hash",
+ "field_order": [
+  "communication",
+  "email",
+  "message_created_on"
+ ],
+ "fields": [
+  {
+   "fieldname": "communication",
+   "fieldtype": "Data",
+   "label": "Communication",
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "email",
+   "fieldtype": "Data",
+   "label": "Email",
+   "reqd": 1
+  },
+  {
+   "fieldname": "message_created_on",
+   "fieldtype": "Datetime",
+   "label": "Message created on",
+   "reqd": 1
+  }
+ ],
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "report": 1
+  }
+ ],
+ "sort_field": "message_created_on",
+ "sort_order": "DESC",
+ "read_only": 1,
+ "track_changes": 0
+}

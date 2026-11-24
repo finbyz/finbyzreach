@@ -1,5 +1,6 @@
 """Shared email-address consent policy for campaigns and workflow sends."""
 from email.utils import getaddresses
+from hashlib import sha256
 
 import frappe
 from frappe import _
@@ -77,39 +78,61 @@ SOFT_BOUNCE_LIMIT = 3
 SOFT_BOUNCE_DAYS = 90
 
 
+BOUNCE_RECIPIENT = "Email Soft Bounce Recipient"
+
+
+def _bounce_addresses(doc):
+	return sorted({address.strip().lower()
+		for _, address in getaddresses([str(doc.get("recipients") or "")])
+		if frappe.utils.validate_email_address(address.strip(), throw=False)})
+
+
+def sync_soft_bounce_recipients(doc, method=None):
+	"""Maintain the current Communication projection, without counting repeated saves."""
+	if not frappe.db.table_exists(BOUNCE_RECIPIENT):
+		return
+	deleting = method == "after_delete" or (getattr(doc, "flags", None) or {}).get("in_delete")
+	addresses = (_bounce_addresses(doc) if not deleting
+		and doc.get("sent_or_received") == "Sent"
+		and doc.get("delivery_status") == "Soft-Bounced" else [])
+	filters = {"communication": doc.name}
+	if addresses:
+		filters["email"] = ["not in", addresses]
+	frappe.db.delete(BOUNCE_RECIPIENT, filters)
+	if not addresses:
+		return
+	# Match the original 90-day policy: the message's creation, not its last save.
+	created = doc.get("creation") or frappe.db.get_value("Communication", doc.name, "creation")
+	now = now_datetime()
+	user = frappe.session.user
+	frappe.db.bulk_insert(BOUNCE_RECIPIENT,
+		["name", "creation", "modified", "owner", "modified_by", "communication", "email", "message_created_on"],
+		[(sha256(f"{doc.name}\0{email}".encode()).hexdigest(), now, now, user, user,
+			doc.name, email, created) for email in addresses], ignore_duplicates=True)
+
+
 def _soft_bounce_limit_reached(email):
-	"""EM-38: a temporary failure blocks the address only after several of them (default 3 in 90 days)."""
+	"""Read at most the threshold's worth of indexed, exact mailbox matches."""
 	from frappe.utils import add_days
 	limit = max(cint(frappe.conf.get("soft_bounce_limit")) or SOFT_BOUNCE_LIMIT, 1)
-	email = email.strip().lower()
-	count = 0
-	start = 0
-	while True:
-		rows = frappe.get_all("Communication", filters={
-			"sent_or_received": "Sent", "delivery_status": "Soft-Bounced",
-			"creation": [">=", add_days(now_datetime(), -SOFT_BOUNCE_DAYS)],
-		}, fields=["name", "recipients"], order_by="name asc", start=start, limit_page_length=200)
-		for row in rows:
-			if email in {address.strip().lower() for _, address in getaddresses([row.recipients or ""])}:
-				count += 1
-				if count >= limit:
-					return True
-		if len(rows) < 200:
-			return False
-		start += len(rows)
+	rows = frappe.get_all(BOUNCE_RECIPIENT, filters={
+		"email": email.strip().lower(),
+		"message_created_on": [">=", add_days(now_datetime(), -SOFT_BOUNCE_DAYS)],
+	}, pluck="name", order_by="message_created_on asc", limit_page_length=limit)
+	return len(rows) >= limit
 
 
 def capture_delivery_failure(doc, method=None):
+	sync_soft_bounce_recipients(doc)
+	if (getattr(doc, "flags", None) or {}).get("in_delete"):
+		return
 	if not frappe.db.table_exists("Email Delivery Suppression") or doc.get("sent_or_received") != "Sent":
 		return
 	status = doc.get("delivery_status")
 	reason = {"Bounced": "Hard bounce", "Marked As Spam": "Spam complaint", "Soft-Bounced": "Repeated soft bounce"}.get(status)
 	if not reason:
 		return
-	for _, address in getaddresses([str(doc.get("recipients") or "")]):
-		email = address.strip().lower()
-		if not frappe.utils.validate_email_address(email, throw=False):
-			continue
+	for email in _bounce_addresses(doc):
 		if status == "Soft-Bounced" and not _soft_bounce_limit_reached(email):
 			continue
 		name = frappe.db.get_value("Email Delivery Suppression", {"email": email}, "name")

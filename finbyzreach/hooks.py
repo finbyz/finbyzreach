@@ -192,6 +192,7 @@ doc_events = {
             "finbyzreach.consent.capture_delivery_failure",
         ],
         "on_change": "finbyzreach.consent.capture_delivery_failure",
+        "after_delete": "finbyzreach.consent.sync_soft_bounce_recipients",
     },
     "File": {
         "after_insert": "finbyzreach.email_template_builder.realtime.on_file_after_insert"

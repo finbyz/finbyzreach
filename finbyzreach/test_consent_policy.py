@@ -67,7 +67,7 @@ class TestConsentPolicy(TestCase):
 	def test_feedback_blocks_each_normalized_address_and_ignores_soft_bounces(self):
 		doc = frappe._dict(name="COMM-1", sent_or_received="Sent", delivery_status="Bounced",
 			recipients="Alice <ALICE@example.com>, Bob <bob@example.com>")
-		with patch.object(frappe.db, "table_exists", return_value=True), patch.object(frappe.db, "get_value", return_value=None), patch.object(frappe, "get_doc") as get_doc:
+		with patch.object(consent, "sync_soft_bounce_recipients"), patch.object(frappe.db, "table_exists", return_value=True), patch.object(frappe.db, "get_value", return_value=None), patch.object(frappe, "get_doc") as get_doc:
 			consent.capture_delivery_failure(doc)
 			self.assertEqual({call.args[0]["email"] for call in get_doc.call_args_list}, {"alice@example.com", "bob@example.com"})
 			get_doc.reset_mock(); doc.delivery_status = "Soft-Bounced"
