@@ -3,7 +3,7 @@ import json
 
 import frappe
 from frappe import _
-from frappe.utils import add_days, now_datetime
+from frappe.utils import add_days, now_datetime, validate_email_address
 
 TRACKED = {"Opened": "opened", "Clicked": "clicked", "Bounced": "bounced", "Soft-Bounced": "bounced", "Unsubscribed": "unsubscribed"}
 
@@ -33,7 +33,7 @@ def aggregate(sent_rows, tracking_rows):
 
 
 def _handoff_key(row):
-	return (row["email_queue"], row["communication"], str(row["recipient"]).strip().lower())
+	return (row["email_queue"], row["communication"], validate_email_address(str(row["recipient"])).strip().lower())
 
 
 def _sent_workflow_rows(ledger_rows):
@@ -63,7 +63,7 @@ def _sent_workflow_rows(ledger_rows):
 		.where(queue.name.isin(list({row["email_queue"] for row in candidates})))
 		.where((recipient.parenttype == "Email Queue") & (recipient.parentfield == "recipients")
 			& (recipient.status == "Sent"))).run(as_dict=True)
-	sent = {(row.name, row.communication, str(row.recipient).strip().lower()) for row in handoffs}
+	sent = {(row.name, row.communication, validate_email_address(str(row.recipient)).strip().lower()) for row in handoffs}
 	return [row for row in candidates if _handoff_key(row) in sent]
 
 

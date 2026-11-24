@@ -87,9 +87,10 @@ class TestWorkflowEmailHandoff(IntegrationTestCase):
 
 	def test_handoff_must_match_both_communication_and_normalized_recipient(self):
 		valid = self._ledger(recipient_status="Sent", result_recipient=" PERSON@EXAMPLE.COM ")
+		display_name = self._ledger(recipient_status="Sent", result_recipient='"A Person" <PERSON@EXAMPLE.COM>')
 		wrong_address = self._ledger(recipient_status="Sent", result_recipient="other@example.com")
 		wrong_communication = self._ledger(recipient_status="Sent", result_communication="UNRELATED")
-		self.assertEqual(len(stats._sent_workflow_rows([valid, wrong_address, wrong_communication])), 1)
+		self.assertEqual(len(stats._sent_workflow_rows([valid, display_name, wrong_address, wrong_communication])), 2)
 
 	def test_malformed_or_incomplete_legacy_results_are_not_assumed_sent(self):
 		rows = [frappe._dict(result_json=value) for value in (None, "invalid", "[]", "null", "{}",
