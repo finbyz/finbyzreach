@@ -17,10 +17,10 @@
 <div class="sms-card">
   {% if valid %}
     <h1>{{ _("Send a text message") }}</h1>
-    <div class="sms-number">{{ number }}</div>
-    {% if body %}<div class="sms-body">{{ body }}</div>{% endif %}
+    <div class="sms-number">{{ number | e }}</div>
+    {% if body %}<div class="sms-body">{{ body | e }}</div>{% endif %}
     <p class="sms-phone">{{ _("Opening your messages app…") }}</p>
-    <a id="sms-open" class="sms-button" href="{{ android }}" data-android="{{ android }}" data-ios="{{ ios }}">{{ _("Open messages") }}</a>
+    <a id="sms-open" class="sms-button" href="{{ android | e }}" data-android="{{ android | e }}" data-ios="{{ ios | e }}">{{ _("Open messages") }}</a>
     <p class="sms-desktop" id="sms-desktop">{{ _("On a computer, please send this text from your phone to the number above.") }}</p>
   {% else %}
     <h1>{{ _("This text message link is not valid") }}</h1>

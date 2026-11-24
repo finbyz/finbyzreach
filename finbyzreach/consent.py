@@ -60,10 +60,14 @@ def consent_exclusion(email, email_type, *, policy=None, status=None, status_loa
 	blocks = suppressions if suppressions is not None else suppressed_addresses([email])
 	if email in blocks:
 		return _(blocks[email])
-	if not cint(policy.consent_required):
+	if email_type == TRANSACTIONAL:
 		return None
 	if not status_loaded:
 		status = frappe.db.get_value("Email Subscription Preference", {"email": email, "subscription_topic": email_type}, "status")
+	if status == "Unsubscribed":
+		return _("Unsubscribed from {0}").format(email_type)
+	if not cint(policy.consent_required):
+		return None
 	if status == "Subscribed" or (status == "Pending" and cint(policy.deliver_while_pending)):
 		return None
 	return _("No confirmed subscription to {0}").format(email_type)
@@ -77,13 +81,22 @@ def _soft_bounce_limit_reached(email):
 	"""EM-38: a temporary failure blocks the address only after several of them (default 3 in 90 days)."""
 	from frappe.utils import add_days
 	limit = max(cint(frappe.conf.get("soft_bounce_limit")) or SOFT_BOUNCE_LIMIT, 1)
-	count = frappe.db.count("Communication", {
-		"sent_or_received": "Sent",
-		"delivery_status": "Soft-Bounced",
-		"recipients": ["like", f"%{email}%"],
-		"creation": [">=", add_days(now_datetime(), -SOFT_BOUNCE_DAYS)],
-	})
-	return count >= limit
+	email = email.strip().lower()
+	count = 0
+	start = 0
+	while True:
+		rows = frappe.get_all("Communication", filters={
+			"sent_or_received": "Sent", "delivery_status": "Soft-Bounced",
+			"creation": [">=", add_days(now_datetime(), -SOFT_BOUNCE_DAYS)],
+		}, fields=["name", "recipients"], order_by="name asc", start=start, limit_page_length=200)
+		for row in rows:
+			if email in {address.strip().lower() for _, address in getaddresses([row.recipients or ""])}:
+				count += 1
+				if count >= limit:
+					return True
+		if len(rows) < 200:
+			return False
+		start += len(rows)
 
 
 def capture_delivery_failure(doc, method=None):
@@ -164,7 +177,9 @@ class ConsentQueueMixin:
 				reason = _("No email type set: choose a mailing type or Transactional")
 			for row in self.recipients:
 				if not reason and row.status != "Sent":
-					reason = test_recipient_exclusion(row.recipient, params.get("email_type"))
+					reason = None if params.get("is_test") is True else consent_exclusion(row.recipient, params.get("email_type"))
+					if not reason:
+						reason = test_recipient_exclusion(row.recipient, params.get("email_type"))
 					if reason:
 						break
 		elif method == f"/api/method/{UNSUBSCRIBE_METHOD}":

@@ -119,7 +119,7 @@ class TestSubscriptionPreferences(unittest.TestCase):
 		)
 		self.assertEqual(preferences.confirm("preference", token), "person@example.com")
 		save.assert_called_once_with("person@example.com", "News", "Subscribed", "Double opt-in confirmation")
-		ensure_lead.assert_called_once_with("person@example.com")
+		ensure_lead.assert_called_once_with("person@example.com", name_key="preference:" + hashlib.sha256(token.encode()).hexdigest())
 
 	@patch.object(preferences.frappe, "sendmail", return_value=None)
 	@patch.object(preferences, "_ensure_public_subscriber_lead")
@@ -175,6 +175,7 @@ class TestSubscriptionPreferences(unittest.TestCase):
 		with patch.object(email_marketing, "email_policy", return_value=frappe._dict(available=True, consent_required=1)), \
 			patch.object(email_marketing, "consent_exclusion", return_value=None), \
 			patch.object(frappe.db, "get_value", return_value=frappe._dict(disabled=0, unsubscribed=0, status="Lead")) as get_value, \
+			patch.object(frappe.db, "exists", return_value=False), \
 			patch.object(email_marketing, "_linked_unsubscribed_leads", return_value=set()), \
 			patch.object(email_marketing, "_globally_unsubscribed_emails", return_value=set()), \
 			patch.object(email_marketing, "_reference_unsubscribed_pairs", return_value=set()):
@@ -186,9 +187,9 @@ class TestSubscriptionPreferences(unittest.TestCase):
 	@patch.object(preferences, "unsubscribe")
 	@patch.object(email_marketing.frappe, "respond_as_web_page")
 	@patch.object(email_marketing.frappe, "db", new=MagicMock())
-	@patch.object(email_marketing.frappe, "request", new=SimpleNamespace(query_string=b"campaign_recipient=EC-1&_signature=valid"), create=True)
+	@patch.object(email_marketing.frappe, "request", new=SimpleNamespace(method="POST", query_string=b"campaign_recipient=EC-1&_signature=valid"), create=True)
 	@patch.object(email_marketing.frappe, "form_dict", new=SimpleNamespace(campaign_recipient="EC-1", get=lambda key: "EC-1"))
-	def test_get_unsubscribe_commits_preference_and_campaign_update(
+	def test_post_unsubscribe_updates_preference_and_campaign_without_explicit_commit(
 		self, respond, unsubscribe, signed_recipient, mark
 	):
 		db = email_marketing.frappe.db
@@ -196,7 +197,7 @@ class TestSubscriptionPreferences(unittest.TestCase):
 		email_marketing.unsubscribe_marketing()
 		unsubscribe.assert_called_once_with("person@example.com", "Marketing E-Mails")
 		mark.assert_called_once_with(signed_recipient.return_value[0])
-		db.commit.assert_called_once_with()
+		db.commit.assert_not_called()
 		respond.assert_called_once()
 
 	@patch.object(legacy, "request_subscription")

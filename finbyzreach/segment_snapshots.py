@@ -52,8 +52,7 @@ def prepare(segment, source=None):
     else:
         segment.snapshot_pending_generation = generation
         segment.snapshot_status = 'Queued'
-        frappe.enqueue('finbyzreach.segment_snapshots.build', segment_name=segment.name,
-                       generation=generation, queue='long', enqueue_after_commit=True)
+        enqueue_build(segment.name, generation)
 
 
 def build(segment_name, generation, after=None):
@@ -77,8 +76,7 @@ def build(segment_name, generation, after=None):
             copy_manual(segment.name,source,names)
         if len(names) == PAGE_SIZE:
             frappe.db.set_value('Reach Segment',segment.name,'snapshot_status','Building',update_modified=False)
-            frappe.enqueue('finbyzreach.segment_snapshots.build',segment_name=segment.name,
-                generation=generation,after=names[-1],queue='long',enqueue_after_commit=True)
+            enqueue_build(segment.name, generation, after=names[-1])
         else:
             # No partially prepared snapshot is ever served to preview/export/mail.
             frappe.db.set_value('Reach Segment',segment.name,{
@@ -98,12 +96,34 @@ def build(segment_name, generation, after=None):
         frappe.log_error(title='Reach Segment snapshot failed')
 
 
+def enqueue_build(segment_name, generation, after=None):
+    # Initial jobs, continuations and recovery share the same cursor-based identity.
+    cursor = sha256(str(after or '').encode()).hexdigest()[:24]
+    frappe.enqueue('finbyzreach.segment_snapshots.build', segment_name=segment_name,
+        generation=generation, after=after, queue='long', enqueue_after_commit=True,
+        job_id=f'reach-snapshot:{segment_name}:{generation}:{cursor}', deduplicate=True)
+
+
 def recover():
-    for row in frappe.get_all('Reach Segment',filters={'snapshot_status':['in',['Queued','Building']],
-        'archived':0},fields=['name','snapshot_pending_generation'],limit_page_length=10):
-        frappe.enqueue('finbyzreach.segment_snapshots.build',segment_name=row.name,
-            generation=row.snapshot_pending_generation,queue='long',enqueue_after_commit=True,
-            job_id=f'reach-snapshot:{row.name}:{row.snapshot_pending_generation}',deduplicate=True)
+    from frappe.utils.background_jobs import is_job_enqueued
+    for row in frappe.get_all('Reach Segment', filters={'snapshot_status': ['in', ['Queued', 'Building']],
+        'archived': 0}, fields=['name', 'snapshot_pending_generation'], limit_page_length=10):
+        generation = row.snapshot_pending_generation
+        if not generation:
+            continue
+        rows = frappe.get_all(ROW, filters={'segment': row.name, 'generation': generation},
+            pluck='record_name', order_by='record_name desc', limit_page_length=1)
+        after = rows[0] if rows else None
+        # A running chunk may already have staging rows in its transaction. Its
+        # input cursor is the penultimate committed page, so also check that job.
+        if after:
+            prior = frappe.get_all(ROW, filters={'segment': row.name, 'generation': generation},
+                pluck='record_name', order_by='record_name desc', start=PAGE_SIZE, limit_page_length=1)
+            previous = prior[0] if prior else None
+            cursor = sha256(str(previous or '').encode()).hexdigest()[:24]
+            if is_job_enqueued(f'reach-snapshot:{row.name}:{generation}:{cursor}'):
+                continue
+        enqueue_build(row.name, generation, after=after)
 
 
 def clean_old_rows(segment_name):

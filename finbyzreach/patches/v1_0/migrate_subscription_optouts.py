@@ -37,6 +37,7 @@ def execute():
 		email = frappe.db.get_value("Lead", row.parent, "email_id")
 		if (
 			email
+			and frappe.utils.validate_email_address(email, throw=False)
 			and frappe.db.exists("Subscription Topic", row.subscription_topic)
 			and statuses(email).get(row.subscription_topic) != "Unsubscribed"
 		):

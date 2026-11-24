@@ -44,7 +44,7 @@ def sync_record(doctype, name):
     affected = set()
     for segment_name in frappe.get_all('Reach Segment', filters={
         'audience_doctype': doctype, 'archived': 0}, pluck='name',order_by='name asc'):
-        segment = frappe.get_doc('Reach Segment', segment_name, for_update=True)
+        segment = frappe.get_doc('Reach Segment', segment_name)
         if segment.get('snapshot_pending_generation'):
             continue
         try:
@@ -55,15 +55,23 @@ def sync_record(doctype, name):
             frappe.clear_last_message()
             frappe.logger('finbyzreach').warning('Invalid Reach Segment definition during change processing: %s', segment.name)
             continue
-        affected.add(segment.name)
         previous = frappe.db.get_value(MEMBER, {'segment': segment.name, 'record_name': name}, ['name', 'source','is_current'], as_dict=True)
+        if matches == bool(previous and previous.get('is_current', 1)):
+            continue
+        segment = frappe.get_doc('Reach Segment', segment_name, for_update=True)
+        if segment.get('snapshot_pending_generation'):
+            continue
+        matches = bool(member_query(segment).select(table.name).where(table.name == name).limit(1).run())
+        previous = frappe.db.get_value(MEMBER, {'segment': segment.name, 'record_name': name}, ['name', 'source', 'is_current'], as_dict=True, for_update=True)
         if matches and (not previous or not previous.get('is_current', 1)):
+            affected.add(segment.name)
             if not previous:
                 _insert_members(segment.name, [name])
             else:
                 frappe.db.set_value(MEMBER, previous.name, 'is_current', 1, update_modified=False)
             emit_entry(segment, name, f'segment:{segment.name}:{name}:{frappe.generate_hash(length=16)}')
-        elif not matches and previous:
+        elif not matches and previous and previous.get('is_current', 1):
+            affected.add(segment.name)
             mark_left(segment, previous, name)
 
     return affected
@@ -366,10 +374,11 @@ def validate_main_customer(doc, method=None):
     customers = {row.link_name for row in doc.get('links') or [] if row.link_doctype == 'Customer' and row.link_name}
     if not doc.get('custom_reach_main_customer') and len(customers) == 1 and doc.meta.has_field('custom_reach_main_customer'):
         # SEG-14: a contact with exactly one Customer has an unambiguous main customer.
-        doc.custom_reach_main_customer = customers.pop()
+        doc.custom_reach_main_customer = next(iter(customers))
     main = doc.get('custom_reach_main_customer')
-    if main and not any(row.link_doctype == 'Customer' and row.link_name == main for row in doc.get('links') or []):
-        frappe.throw(frappe._('The main Customer must be linked to this Contact'))
+    if main and main not in customers:
+        # Customer deletion unlinks Contacts through their normal validation hook.
+        doc.custom_reach_main_customer = next(iter(customers)) if len(customers) == 1 else None
 
 
 def queue_identity(doctype, name):

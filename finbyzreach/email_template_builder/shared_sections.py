@@ -78,8 +78,8 @@ def propagate_component_change(doc, method=None) -> None:
 		component=doc.name,
 		queue="long",
 		enqueue_after_commit=True,
-		job_id=f"shared-section:{doc.name}",
-		deduplicate=True,
+		# Every committed revision needs a pass, including edits during a running job.
+		job_id=f"shared-section:{doc.name}:{frappe.generate_hash(length=16)}",
 	)
 
 
@@ -108,7 +108,7 @@ def recompile_linked_templates(component: str | None = None) -> list[str]:
 			limit_page_length=0,
 		)
 		for name in names:
-			doc = frappe.get_doc(doctype, name)
+			doc = frappe.get_doc(doctype, name, for_update=True)
 			try:
 				schema = validate_schema(doc.get("custom_builder_schema"))
 				if component and not any(is_linked(section) and section.get("saved_component") == component for section in schema.get("sections") or []):

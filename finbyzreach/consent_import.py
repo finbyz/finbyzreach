@@ -182,7 +182,7 @@ def _record_targets(records, customer_contacts=PRIMARY_CONTACT):
 
 	wanted = {}
 	for record in records:
-		if not _text(record.get("email")) and _text(record.get("record")):
+		if _text(record.get("record")):
 			wanted.setdefault(_record_type(record), set()).add(_text(record.get("record")))
 	targets = {}
 
@@ -302,6 +302,30 @@ def _known_people(emails):
 	return known
 
 
+def _address_record_optouts(emails):
+	"""Apply record opt-outs even when an import names the address directly."""
+	from finbyzreach.email_marketing import _linked_unsubscribed_leads, _reference_unsubscribed_pairs
+	blocked = set()
+	for part in _chunks(emails):
+		leads = frappe.get_all("Lead", filters={"email_id": ["in", part]},
+			fields=["name", "email_id", "unsubscribed", "status"], limit_page_length=0)
+		linked = _linked_unsubscribed_leads([row.name for row in leads])
+		out = _reference_unsubscribed_pairs([row.name for row in leads], "Lead")
+		blocked.update(row.email_id.lower() for row in leads if cint(row.unsubscribed)
+			or row.status == "Do Not Contact" or row.name in linked or (row.name, row.email_id.lower()) in out)
+		contacts = frappe.get_all("Contact", filters={"email_id": ["in", part]},
+			fields=["name", "email_id", "unsubscribed"], limit_page_length=0)
+		addresses = frappe.get_all("Contact Email", filters={"email_id": ["in", part]},
+			fields=["parent", "email_id"], limit_page_length=0)
+		names = {row.name for row in contacts} | {row.parent for row in addresses}
+		unsubscribed = set(frappe.get_all("Contact", filters={"name": ["in", list(names)], "unsubscribed": 1},
+			pluck="name", limit_page_length=0)) if names else set()
+		out = _reference_unsubscribed_pairs(names, "Contact") if names else set()
+		blocked.update(row.email_id.lower() for row in contacts if row.name in unsubscribed or (row.name, row.email_id.lower()) in out)
+		blocked.update(row.email_id.lower() for row in addresses if row.parent in unsubscribed or (row.parent, row.email_id.lower()) in out)
+	return blocked
+
+
 def plan(records, *, consent_source, default_topics=(), default_language=None, default_opted_in_on=None,
 		customer_contacts=PRIMARY_CONTACT):
 	"""Decide every (row, topic) pair without writing anything.
@@ -324,7 +348,9 @@ def plan(records, *, consent_source, default_topics=(), default_language=None, d
 	for record in records:
 		email = _text(record.get("email")).lower()
 		if email or not _text(record.get("record")):
-			targets = [_target(email, "")]
+			selected_targets = record_targets.get((_record_type(record), _text(record.get("record"))), [])
+			blocked = next((target.blocked for target in selected_targets if target.blocked), None)
+			targets = [_target(email, "", blocked)]
 		else:
 			record_type, name = _record_type(record), _text(record.get("record"))
 			if record_type not in RECORD_TYPES:
@@ -383,6 +409,7 @@ def plan(records, *, consent_source, default_topics=(), default_language=None, d
 	blocks = suppressed_addresses(emails)
 	global_out = _globally_unsubscribed_emails(emails)
 	known = _known_people(emails)
+	record_out = _address_record_optouts(emails)
 	seen = {}
 	for item in wanted:
 		key = (item["email"], item["topic"])
@@ -393,6 +420,8 @@ def plan(records, *, consent_source, default_topics=(), default_language=None, d
 		seen[key] = _("row {0}").format(item["row"]) if isinstance(item["row"], int) else (item["record"] or item["row"])
 		if item["email"] in global_out:
 			item.update(action=SKIP, reason=_("Globally unsubscribed"))
+		elif item["email"] in record_out:
+			item.update(action=SKIP, reason=_("Lead or Contact has opted out"))
 		elif item["email"] in blocks:
 			item.update(action=SKIP, reason=_("Address blocked: {0}").format(_(blocks[item["email"]])))
 		elif current and current.status == "Subscribed":
@@ -651,12 +680,12 @@ def count_records(doctype, filters=None):
 	if doctype not in RECORD_TYPES:
 		frappe.throw(_("Choose Lead, Contact or Customer"))
 	filters = _filter_list(filters)
-	total = len(frappe.get_list(doctype, filters=filters, pluck="name", limit_page_length=0))
+	total = frappe.get_list(doctype, filters=filters, fields=[{"COUNT": "name", "as": "count"}], order_by=None)[0].count
 	result = {"count": total, "limit": MAX_ROWS}
 	if doctype in ("Lead", "Contact") and total:
 		with_email = ({**filters, "email_id": ["is", "set"]} if isinstance(filters, dict)
 			else [*filters, [doctype, "email_id", "is", "set"]])
-		result["with_email"] = len(frappe.get_list(doctype, filters=with_email, pluck="name", limit_page_length=0))
+		result["with_email"] = frappe.get_list(doctype, filters=with_email, fields=[{"COUNT": "name", "as": "count"}], order_by=None)[0].count
 	return result
 
 

@@ -98,8 +98,9 @@ def variant_content(campaign, recipient):
 def results(campaign_name):
 	"""Sent, opened and clicked counts per variant for the test group."""
 	table = frappe.qb.DocType("Email Campaign")
+	queue = frappe.qb.DocType("Email Queue")
 	rows = (
-		frappe.qb.from_(table)
+		frappe.qb.from_(table).join(queue).on(queue.name == table.custom_email_queue)
 		.select(
 			table.custom_ab_variant,
 			frappe.query_builder.functions.Count("*").as_("sent"),
@@ -110,6 +111,8 @@ def results(campaign_name):
 		.where(table.custom_ab_phase == "Test")
 		.where(table.custom_email_queue.isnotnull())
 		.where(table.custom_email_queue != "")
+		.where(queue.status == "Sent")
+		.where(table.custom_delivery_status != "Skipped")
 		.groupby(table.custom_ab_variant)
 		.run(as_dict=True)
 	)
@@ -166,7 +169,8 @@ def decide_due_tests():
 		return
 	for name in frappe.get_all(
 		"Campaign",
-		filters={"custom_ab_status": "Testing", "custom_ab_ends_at": ["<=", now_datetime()]},
+		filters={"custom_ab_status": "Testing", "custom_broadcast_status": ["in", ["Scheduled", "Sending"]], "custom_ab_ends_at": ["<=", now_datetime()]},
+		order_by="custom_ab_ends_at asc, name asc",
 		pluck="name",
 		limit_page_length=50,
 	):

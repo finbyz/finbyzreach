@@ -578,7 +578,8 @@ def is_segment_member(segment_name, record):
     from finbyzreach.segment_service import member_query
     if not record or not record.get('name'):
         return False
-    segment = _segment(segment_name)
+    # Trusted template render only; template validation checks author access.
+    segment = frappe.get_doc('Reach Segment', segment_name)
     if segment.archived or segment.audience_doctype != record.get('doctype'):
         return False
     table = frappe.qb.DocType(segment.audience_doctype)

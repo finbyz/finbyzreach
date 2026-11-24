@@ -1,5 +1,6 @@
 """Consent decisions and delivery boundaries; no live mail or schema changes."""
 from email.parser import Parser
+from datetime import datetime
 from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
@@ -16,6 +17,12 @@ def policy(**values):
 
 
 class TestConsentPolicy(TestCase):
+	def setUp(self):
+		for module in (consent, preferences):
+			clock = patch.object(module, "now_datetime", return_value=datetime(2026, 11, 24, 12))
+			clock.start()
+			self.addCleanup(clock.stop)
+
 	def test_required_consent_and_pending_policy_matrix(self):
 		for pending in (0, 1):
 			for state in (None, "Unsubscribed", "Pending", "Subscribed"):
@@ -64,7 +71,9 @@ class TestConsentPolicy(TestCase):
 			consent.capture_delivery_failure(doc)
 			self.assertEqual({call.args[0]["email"] for call in get_doc.call_args_list}, {"alice@example.com", "bob@example.com"})
 			get_doc.reset_mock(); doc.delivery_status = "Soft-Bounced"
-			consent.capture_delivery_failure(doc); get_doc.assert_not_called()
+			with patch.object(consent, "_soft_bounce_limit_reached", return_value=False):
+				consent.capture_delivery_failure(doc)
+			get_doc.assert_not_called()
 
 	def test_list_unsubscribe_headers_are_standard_idempotent_and_preserve_body(self):
 		queue = SimpleNamespace(message="Subject: Example\r\nContent-Type: text/html\r\n\r\n<p>Hello</p>")

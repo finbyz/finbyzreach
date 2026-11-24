@@ -43,31 +43,41 @@ def workflow_email_usage(days=30):
 	ledger = frappe.qb.DocType("Automation Effect Ledger")
 	run = frappe.qb.DocType("Automation Run")
 	workflow = frappe.qb.DocType("Automation Workflow")
-	found = (
+	query = (
 		frappe.qb.from_(ledger).join(run).on(run.name == ledger.run).join(workflow).on(workflow.name == run.workflow)
-		.select(ledger.result_json, run.workflow, workflow.title)
+		.select(ledger.name, ledger.result_json, run.workflow, workflow.title)
 		.where((ledger.status == "COMPLETED") & ledger.result_json.isnotnull() & (ledger.completed_at >= since))
-		.limit(50000).run(as_dict=True)
 	)
-	sent_rows = []
-	for row in found:
-		try:
-			result = json.loads(row.result_json or "{}")
-		except ValueError:
-			continue
-		if isinstance(result, dict) and result.get("communication"):
-			sent_rows.append({
-				"workflow": row.workflow, "workflow_title": row.title,
-				"email_template": result.get("email_template") or "", "communication": result["communication"],
-			})
-	tracking = []
-	names = list({row["communication"] for row in sent_rows})
-	if names and frappe.db.table_exists("Email Tracking Event"):
-		for index in range(0, len(names), 5000):
-			tracking += frappe.get_all(
-				"Email Tracking Event", filters={"communication": ["in", names[index:index + 5000]]},
-				fields=["communication", "event_type"], limit_page_length=0,
-			)
-	rows = aggregate(sent_rows, tracking)
+	groups = {}
+	after = None
+	has_tracking = frappe.db.table_exists("Email Tracking Event")
+	while True:
+		page = query.where(ledger.name > after) if after else query
+		found = page.orderby(ledger.name).limit(500).run(as_dict=True)
+		if not found:
+			break
+		sent_rows = []
+		for row in found:
+			try:
+				result = json.loads(row.result_json or "{}")
+			except ValueError:
+				continue
+			if isinstance(result, dict) and result.get("communication"):
+				sent_rows.append({"workflow": row.workflow, "workflow_title": row.title,
+					"email_template": result.get("email_template") or "", "communication": result["communication"]})
+		names = list({row["communication"] for row in sent_rows})
+		tracking = frappe.get_all("Email Tracking Event", filters={"communication": ["in", names]},
+			fields=["communication", "event_type"], group_by="communication, event_type", limit_page_length=0) if names and has_tracking else []
+		for row in aggregate(sent_rows, tracking):
+			key = (row["workflow"], row["email_template"])
+			if key not in groups:
+				groups[key] = row
+			else:
+				for field in ("sent", "opened", "clicked", "bounced", "unsubscribed"):
+					groups[key][field] += row[field]
+		after = found[-1].name
+		if len(found) < 500:
+			break
+	rows = sorted(groups.values(), key=lambda row: (-row["sent"], row["workflow_title"]))
 	totals = {key: sum(row[key] for row in rows) for key in ("sent", "opened", "clicked", "bounced", "unsubscribed")}
 	return {"rows": rows, "totals": totals, "days": days}

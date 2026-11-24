@@ -26,3 +26,5 @@ finbyzreach.patches.v1_0.sms_buttons_to_landing_page
 finbyzreach.patches.v1_0.default_single_main_customer
 
 finbyzreach.patches.v1_0.recompile_visual_emails
+
+finbyzreach.patches.v1_0.add_soft_bounce_lookup_index

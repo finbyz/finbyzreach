@@ -151,7 +151,7 @@ def unsubscribe(email, topic, source="Email unsubscribe link"):
 	return _save(email, topic, "Unsubscribed", source)
 
 
-def request_subscription(email, topic, source="Preference center", language=None):
+def request_subscription(email, topic, source="Preference center", language=None, *, confirmation_batch=None, subscriber_names=None):
 	email = normalize_email(email)
 	if language is not None and language not in LANGUAGES:
 		frappe.throw(_("Unsupported subscription language"))
@@ -183,8 +183,19 @@ def request_subscription(email, topic, source="Preference center", language=None
 		expires=now_datetime() + timedelta(days=2),
 		**consent_metadata,
 	)
+	if subscriber_names:
+		remember_name(doc.name + ":" + hashlib.sha256(token.encode()).hexdigest(), **subscriber_names)
 	url = get_url(f"/confirm_subscription?preference={doc.name}&token={token}&lang={language if language in LANGUAGES else 'de'}")
 	subject, message = doi_message(topic, url, language)
+	if confirmation_batch is not None:
+		confirmation_batch.append((subject, message))
+		return "Pending"
+	_queue_confirmation(email, subject, message)
+	return "Pending"
+
+
+def _queue_confirmation(email, subject, message):
+	from finbyzreach.consent import policy_ready
 	queue_options = {}
 	if policy_ready():
 		queue_options = {"add_unsubscribe_link": 0,
@@ -199,7 +210,6 @@ def request_subscription(email, topic, source="Preference center", language=None
 	)
 	if queue and isinstance(getattr(queue, "name", None), str):
 		frappe.enqueue_doc("Email Queue", queue.name, "send", queue="short", enqueue_after_commit=True)
-	return "Pending"
 
 
 @frappe.whitelist(allow_guest=True, methods=["POST"])
@@ -209,20 +219,33 @@ def request_public_subscriptions(email, selected_topics, language=None, first_na
 	if not isinstance(selected, list) or not selected or len(selected) > 20 or not all(isinstance(topic, str) for topic in selected) or len(set(selected)) != len(selected):
 		frappe.throw(_("Choose one or more subscription options"), frappe.ValidationError)
 	email = normalize_email(email)
-	remember_name(email, first_name, last_name)
-	results = [request_subscription(email, topic, "Public registration", **({"language": language} if language else {})) for topic in selected]
+	frappe.form_dict.email = email
+	return _request_public_address(email, selected, language, first_name, last_name)
+
+
+@rate_limit(key="email", limit=1, seconds=600, ip_based=False)
+def _request_public_address(email, selected, language, first_name, last_name):
+	# One address-level quota across IPs and one confirmation message for all options.
+	from finbyzreach.consent import suppressed_addresses
+	if suppressed_addresses([email]):
+		return "Pending"
+	batch = []
+	results = [request_subscription(email, topic, "Public registration", language=language,
+		confirmation_batch=batch, subscriber_names={"first_name": first_name, "last_name": last_name}) for topic in selected]
+	if batch:
+		_queue_confirmation(email, batch[0][0], "<hr>".join(message for _, message in batch))
 	return "Pending" if "Pending" in results else "Subscribed"
 
 
-def _ensure_public_subscriber_lead(email):
+def _ensure_public_subscriber_lead(email, name_key=None):
 	"""Make a confirmed public subscriber available to Lead-based campaigns."""
 	if frappe.db.exists("Lead", {"email_id": email}):
 		return
-	names = frappe.cache.get_value(NAME_CACHE + email) or {}
+	names = frappe.cache.get_value(NAME_CACHE + (name_key or email)) or {}
 	lead = {"doctype": "Lead", "email_id": email, "status": "Lead", "utm_source": _newsletter_signup_source()}
 	lead.update({key: value for key, value in names.items() if key in ("first_name", "last_name") and value})
 	frappe.get_doc(lead).insert(ignore_permissions=True)
-	frappe.cache.delete_value(NAME_CACHE + email)
+	frappe.cache.delete_value(NAME_CACHE + (name_key or email))
 
 
 NEWSLETTER_SIGNUP_SOURCE = "Newsletter Sign-up"
@@ -246,9 +269,10 @@ def confirm(preference, token):
 		doc.confirmation_hash, hashlib.sha256(str(token).encode()).hexdigest()
 	):
 		frappe.throw(_("This confirmation link is invalid or expired"), frappe.PermissionError)
+	name_key = preference + ":" + doc.confirmation_hash
 	_save(doc.email, doc.subscription_topic, "Subscribed", "Double opt-in confirmation")
 	if doc.consent_source == "Public registration":
-		_ensure_public_subscriber_lead(doc.email)
+		_ensure_public_subscriber_lead(doc.email, name_key=name_key)
 	return doc.email
 
 
@@ -404,17 +428,30 @@ def signed_address(signed_query_string):
 	return normalize_email(values["consent_email"][0]), values["email_type"][0], values
 
 
+def confirm_unsubscribe_page():
+	"""A scanner opening GET cannot change preferences; a person submits POST."""
+	from html import escape
+	from frappe.sessions import get_csrf_token
+	csrf = escape(get_csrf_token(), quote=True)
+	message = (
+		'<form method="post"><input type="hidden" name="csrf_token" value="' + csrf + '">'
+		'<p>' + escape(_("Confirm that you want to unsubscribe.")) + '</p>'
+		'<button type="submit">' + escape(_("Unsubscribe")) + '</button></form>'
+	)
+	frappe.respond_as_web_page(_("Unsubscribe"), message, indicator_color="blue")
+
+
 @frappe.whitelist(allow_guest=True, methods=["GET", "POST"])
 def unsubscribe_address(**kwargs):
 	raw = frappe.safe_decode(getattr(frappe.request, "query_string", b""))
 	email, email_type, values = signed_address(raw)
+	if frappe.request.method == "GET":
+		return confirm_unsubscribe_page()
 	types = frappe.get_all("Subscription Topic", filters={"category": "Mailing Type"}, pluck="name", limit_page_length=0) if values.get("scope") == ["all"] else [email_type]
 	for topic in types:
 		if _topic(topic, active=False).category != "System":
 			unsubscribe(email, topic)
-	if frappe.request.method == "GET":
-		frappe.db.commit()
-		frappe.respond_as_web_page(_("Unsubscribed"), _("Your email preferences have been updated."), indicator_color="green")
+	frappe.respond_as_web_page(_("Unsubscribed"), _("Your email preferences have been updated."), indicator_color="green")
 	return "success"
 
 
