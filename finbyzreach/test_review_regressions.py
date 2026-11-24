@@ -127,6 +127,22 @@ class AdditionalBoundaryRegressions(TestCase):
                 patch.object(segment_service, 'member_query', return_value=query):
             self.assertTrue(segments.is_segment_member('SEG', {'doctype':'Lead', 'name':'LEAD'}))
 
+    def test_guest_builds_member_query_only_inside_trusted_render(self):
+        from finbyzreach import segment_service
+        segment = frappe._dict(name='SEG', audience_doctype='Lead', segment_type='Static',
+                               static_leads_json='["LEAD"]', archived=0)
+        user = frappe.session.user
+        frappe.set_user('Guest')
+        try:
+            with self.assertRaises(frappe.PermissionError):
+                segment_service.member_query(segment)
+            with segment_service.trusted_render():
+                query = segment_service.member_query(segment)
+            self.assertFalse(segment_service._trusted())
+            self.assertIsInstance(query.select('name').get_sql(), str)
+        finally:
+            frappe.set_user(user)
+
     def test_import_email_rows_respect_lead_do_not_contact(self):
         from finbyzreach import consent_import
         lead = frappe._dict(name='LEAD', email_id='person@example.com', unsubscribed=0, status='Do Not Contact')

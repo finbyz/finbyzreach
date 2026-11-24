@@ -37,7 +37,7 @@ class SegmentIntegrationTest(TestCase):
         query.select.return_value.where.return_value.limit.return_value.run.return_value = [('LEAD',)]
         database = MagicMock()
         database.get_value.return_value = None
-        with patch.object(frappe.local, 'db', database, create=True), patch.object(frappe.local, 'qb', MariaDB, create=True), patch.object(frappe, 'get_all', return_value=['OLD','VALID']), patch.object(frappe, 'get_doc', side_effect=[broken,valid]), patch.object(service, 'member_query', side_effect=[frappe.ValidationError('removed field'),query]), patch.object(service, '_insert_members') as insert, patch.object(automation, 'emit_entry') as emit, patch.object(frappe, 'clear_last_message'), patch.object(frappe, 'logger'):
+        with patch.object(frappe.local, 'db', database, create=True), patch.object(frappe.local, 'qb', MariaDB, create=True), patch.object(frappe, 'get_all', return_value=['OLD','VALID']), patch.object(frappe, 'get_doc', side_effect=[broken,valid,valid]), patch.object(service, 'member_query', side_effect=[frappe.ValidationError('removed field'),query,query]), patch.object(service, '_insert_members') as insert, patch.object(automation, 'emit_entry') as emit, patch.object(frappe, 'clear_last_message'), patch.object(frappe, 'logger'):
             self.assertEqual(automation.sync_record('Lead', 'LEAD'), {'VALID'})
         insert.assert_called_once_with('VALID', ['LEAD'])
         emit.assert_called_once()

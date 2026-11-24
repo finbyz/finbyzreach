@@ -96,3 +96,12 @@ class TestWorkflowEmailHandoff(IntegrationTestCase):
 		rows = [frappe._dict(result_json=value) for value in (None, "invalid", "[]", "null", "{}",
 			json.dumps({"communication": "C"}))]
 		self.assertEqual(stats._sent_workflow_rows(rows), [])
+
+	def test_purged_queue_falls_back_to_the_communication_delivery_status(self):
+		rows = [self._ledger(recipient_status="Sent", queue_status="Sent", delivery_status=status)
+			for status in ("Sent", "Opened", "Bounced", "Sending", "Error")]
+		for row in rows:
+			queue = json.loads(row.result_json)["email_queue"]
+			frappe.db.delete("Email Queue Recipient", {"parent": queue})
+			frappe.db.delete("Email Queue", {"name": queue})
+		self.assertEqual(len(stats._sent_workflow_rows(rows)), 3)

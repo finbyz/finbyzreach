@@ -575,15 +575,19 @@ def template_segments(audience_doctype):
 
 def is_segment_member(segment_name, record):
     """Safe Jinja predicate for conditional email rows and blocks."""
-    from finbyzreach.segment_service import member_query
+    from finbyzreach.segment_service import member_query, trusted_render
     if not record or not record.get('name'):
         return False
     # Trusted template render only; template validation checks author access.
+    # Guests ("View in browser") and senders without segment access must
+    # still get the same blocks the recipient was sent.
     segment = frappe.get_doc('Reach Segment', segment_name)
     if segment.archived or segment.audience_doctype != record.get('doctype'):
         return False
     table = frappe.qb.DocType(segment.audience_doctype)
-    return bool(member_query(segment).select(table.name).where(table.name == record['name']).limit(1).run())
+    with trusted_render():
+        query = member_query(segment).select(table.name).where(table.name == record['name']).limit(1)
+    return bool(query.run())
 
 
 @frappe.whitelist(methods=['GET'])

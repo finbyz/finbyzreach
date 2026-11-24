@@ -32,6 +32,10 @@ def aggregate(sent_rows, tracking_rows):
 	return sorted(groups.values(), key=lambda g: (-g["sent"], g["workflow_title"]))
 
 
+# Communication statuses that are only reached after SMTP handoff.
+HANDED_OFF_COMMUNICATION_STATUSES = ("Sent", "Opened", "Read", "Clicked", "Bounced", "Soft-Bounced", "Marked As Spam")
+
+
 def _handoff_key(row):
 	return (row["email_queue"], row["communication"], validate_email_address(str(row["recipient"])).strip().lower())
 
@@ -64,7 +68,18 @@ def _sent_workflow_rows(ledger_rows):
 		.where((recipient.parenttype == "Email Queue") & (recipient.parentfield == "recipients")
 			& (recipient.status == "Sent"))).run(as_dict=True)
 	sent = {(row.name, row.communication, validate_email_address(str(row.recipient)).strip().lower()) for row in handoffs}
-	return [row for row in candidates if _handoff_key(row) in sent]
+	# Log Settings purges old Email Queue rows. Their Communication keeps the
+	# delivery status Frappe copied from the queue, so use that for purged queues.
+	queue_names = list({row["email_queue"] for row in candidates})
+	existing = set(frappe.get_all("Email Queue", filters={"name": ["in", queue_names]}, pluck="name"))
+	purged = [row for row in candidates if row["email_queue"] not in existing]
+	delivered = set()
+	if purged:
+		delivered = set(frappe.get_all("Communication", pluck="name", filters={
+			"name": ["in", list({row["communication"] for row in purged})],
+			"delivery_status": ["in", HANDED_OFF_COMMUNICATION_STATUSES]}))
+	return [row for row in candidates if _handoff_key(row) in sent
+		or (row["email_queue"] not in existing and row["communication"] in delivered)]
 
 
 @frappe.whitelist(methods=["GET"])

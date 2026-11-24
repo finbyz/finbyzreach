@@ -22,6 +22,42 @@ LIVE_CAMPAIGN_STATUSES = ('Preparing Audience', 'Scheduled', 'Sending', 'Paused'
 SEGMENT_MARKERS = ('#REACH_SEGMENT#', '#STATIC_SEGMENT#')
 
 
+TRUSTED_FLAG = 'reach_segment_trusted_render'
+
+
+class trusted_render:
+    """Evaluate membership without the session user's permissions.
+
+    Only for server-side email rendering, where a guest or a sender without
+    segment access renders a template whose author was checked on save.
+    """
+
+    def __enter__(self):
+        self.previous = frappe.flags.get(TRUSTED_FLAG)
+        frappe.flags[TRUSTED_FLAG] = True
+
+    def __exit__(self, *exc):
+        frappe.flags[TRUSTED_FLAG] = self.previous
+
+
+def _trusted():
+    return bool(frappe.flags.get(TRUSTED_FLAG))
+
+
+def _require_read(doctype):
+    if not _trusted():
+        _require_read(doctype)
+
+
+def _require_segment_read(segment):
+    if not _trusted():
+        segment.check_permission('read')
+
+
+def _permitted(doctype, **kwargs):
+    return frappe.qb.get_query(doctype, fields=['name'], ignore_permissions=_trusted(), **kwargs)
+
+
 def parsed_list(value):
     result = frappe.parse_json(value or '[]')
     if not isinstance(result, list):
@@ -54,8 +90,7 @@ def _group_condition(doctype, value):
     conditions = []
     for group in groups:
         # Keep Frappe's own field, date, child-table and permission semantics.
-        subquery = frappe.qb.get_query(doctype, fields=['name'], filters=group,
-                                      ignore_permissions=False, distinct=True)
+        subquery = _permitted(doctype, filters=group, distinct=True)
         conditions.append(table.name.isin(subquery))
     return Criterion.any(conditions) if conditions else _empty(table)
 
@@ -87,7 +122,7 @@ def expression_condition(doctype, expression, seen=()):
             return multiselect_condition(doctype, node)
         if node.get('kind') == 'segment':
             other = frappe.get_doc('Reach Segment', node.get('segment'))
-            other.check_permission('read')
+            _require_segment_read(other)
             if other.audience_doctype != doctype:
                 frappe.throw(_('Segment conditions must use the same audience type'))
             criterion = table.name.isin(member_query(other, seen=seen).select(table.name))
@@ -105,11 +140,11 @@ def related_condition(doctype, node):
     target = node.get('doctype')
     if target not in ('Customer', 'Opportunity', 'Sales Order', 'Quotation'):
         frappe.throw(_('Unsupported connected object'))
-    frappe.has_permission(target, 'read', throw=True)
+    _require_read(target)
     table = frappe.qb.DocType(doctype)
     related = frappe.qb.DocType(target)
     match = _group_condition(target, node.get('filters'))
-    permitted = frappe.qb.get_query(target, fields=['name'], ignore_permissions=False)
+    permitted = _permitted(target)
     base = frappe.qb.from_(related).where(related.name.isin(permitted))
     if doctype == 'Contact' and target == 'Customer':
         # Explicitly selected main customer; never choose an arbitrary link.
@@ -168,7 +203,7 @@ def relative_date_condition(doctype, node):
     if field == LAST_ACTIVITY:
         if comparison == 'within_next':
             frappe.throw(_('Last activity can only look back in time'))
-        frappe.has_permission('Communication', 'read', throw=True)
+        _require_read('Communication')
         communication = frappe.qb.DocType('Communication')
         cutoff = add_to_date(now, **{unit: -amount})
         newer = (frappe.qb.from_(communication).select(communication.name)
@@ -226,11 +261,11 @@ def activity_condition(doctype, node):
         frappe.throw(_('Unsupported email activity'))
     if not frappe.db.table_exists('Email Tracking Event'):
         frappe.throw(_('Email tracking is not installed on this site'))
-    frappe.has_permission('Email Tracking Event', 'read', throw=True)
+    _require_read('Email Tracking Event')
     table = frappe.qb.DocType(doctype)
     tracking = frappe.qb.DocType('Email Tracking Event')
     days = max(1, min(cint(node.get('days')) or 30, 3650))
-    permitted = frappe.qb.get_query('Email Tracking Event', fields=['name'], ignore_permissions=False)
+    permitted = _permitted('Email Tracking Event')
     query = (frappe.qb.from_(tracking).where(tracking.name.isin(permitted)).where(tracking.event_type == event)
              .where(tracking.event_time >= add_days(now_datetime(), -days)))
     if node.get('campaign'):
@@ -252,7 +287,7 @@ def visitor_activity_condition(doctype, node):
     source = 'Tracker Pageview' if node['event'] == 'Website visit' else 'Tracker Conversion'
     if not frappe.db.table_exists(source):
         frappe.throw(_('{0} is not installed').format(source))
-    frappe.has_permission(source, 'read', throw=True)
+    _require_read(source)
     meta = frappe.get_meta(doctype)
     if not meta.has_field('custom_website_tracking_visitor_id'):
         frappe.throw(_('Visitor identity tracking is not configured for this object'))
@@ -266,7 +301,7 @@ def visitor_activity_condition(doctype, node):
         ids = Case().when(valid(table.custom_website_tracking_visitor_ids), table.custom_website_tracking_visitor_ids).else_('[]')
         identity |= contains(ids, quote(activity.visitor_id)) == 1
     days = max(1,min(cint(node.get('days')) or 30,3650))
-    permitted = frappe.qb.get_query(source, fields=['name'], ignore_permissions=False)
+    permitted = _permitted(source)
     query = (frappe.qb.from_(activity).select(activity.name).where(activity.name.isin(permitted))
              .where(identity).where(activity.received_at >= add_days(now_datetime(),-days)))
     if source == 'Tracker Pageview':
@@ -285,11 +320,11 @@ def webinar_activity_condition(doctype, node):
     source = 'Contrast Engagement Event'
     if not frappe.db.table_exists(source):
         frappe.throw(_('Webinar tracking is not installed'))
-    frappe.has_permission(source, 'read', throw=True)
+    _require_read(source)
     table = frappe.qb.DocType(doctype)
     event = frappe.qb.DocType(source)
     days = max(1,min(cint(node.get('days')) or 30,3650))
-    permitted = frappe.qb.get_query(source, fields=['name'], ignore_permissions=False)
+    permitted = _permitted(source)
     query = (frappe.qb.from_(event).where(event.name.isin(permitted))
              .where(event.engagement_type.isin(['Live Attendance','Replay View']))
              .where(event.activity_datetime >= add_days(now_datetime(),-days)))
@@ -335,7 +370,7 @@ def member_query(segment, *, seen=(), apply_exclusions=True):
                     _group_condition(doctype, segment.get('filter_groups_json')))
         manual = stored.where(member.source == 'Manual')
         included |= table.name.isin(manual)
-    visible = frappe.qb.get_query(doctype, fields=['name'], ignore_permissions=False)
+    visible = _permitted(doctype)
     query = frappe.qb.from_(table).where(included).where(table.name.isin(visible))
     if not apply_exclusions or segment.get('archived'):
         return query
@@ -346,7 +381,7 @@ def member_query(segment, *, seen=(), apply_exclusions=True):
                                         .where(exclusion.segment == segment.name)))
     for name in parsed_list(segment.get('exclude_segments_json')):
         other = frappe.get_doc('Reach Segment', name)
-        other.check_permission('read')
+        _require_segment_read(other)
         if other.audience_doctype != doctype:
             frappe.throw(_('Excluded segments must use the same audience type'))
         query = query.where(table.name.notin(member_query(other, seen=seen).select(table.name)))

@@ -95,12 +95,15 @@ def variant_content(campaign, recipient):
 	return campaign.custom_snapshot_subject, campaign.custom_snapshot_html
 
 
+# Email Campaign delivery statuses reached only after SMTP handoff.
+HANDED_OFF_STATUSES = ("Sent", "Bounced", "Soft-Bounced", "Marked As Spam")
+
+
 def results(campaign_name):
 	"""Sent, opened and clicked counts per variant for the test group."""
 	table = frappe.qb.DocType("Email Campaign")
-	queue = frappe.qb.DocType("Email Queue")
 	rows = (
-		frappe.qb.from_(table).join(queue).on(queue.name == table.custom_email_queue)
+		frappe.qb.from_(table)
 		.select(
 			table.custom_ab_variant,
 			frappe.query_builder.functions.Count("*").as_("sent"),
@@ -111,8 +114,9 @@ def results(campaign_name):
 		.where(table.custom_ab_phase == "Test")
 		.where(table.custom_email_queue.isnotnull())
 		.where(table.custom_email_queue != "")
-		.where(queue.status == "Sent")
-		.where(table.custom_delivery_status != "Skipped")
+		# The recipient row keeps its own delivery status, which stays after
+		# Log Settings purges the Email Queue row.
+		.where(table.custom_delivery_status.isin(HANDED_OFF_STATUSES))
 		.groupby(table.custom_ab_variant)
 		.run(as_dict=True)
 	)

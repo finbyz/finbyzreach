@@ -4,6 +4,7 @@ from unittest import TestCase
 from unittest.mock import patch
 
 import frappe
+from frappe.tests import IntegrationTestCase
 
 from finbyzreach import ab_test, email_marketing
 
@@ -150,3 +151,16 @@ class AbManyVersionsTest(TestCase):
 			custom_ab_snapshot_subject_c="SC", custom_ab_snapshot_html_c="HC", custom_ab_snapshot_html_d="HD")
 		pick = lambda v: ab_test.variant_content(campaign, {"custom_ab_variant": v})
 		self.assertEqual([pick("A"), pick("B"), pick("C"), pick("D")], [("S", "H"), ("SB", "HB"), ("SC", "HC"), ("S", "HD")])
+
+
+class AbResultsTest(IntegrationTestCase):
+	def test_sent_counts_survive_a_purged_email_queue_and_skip_unsent_rows(self):
+		campaign = "ZZTEST-AB-" + frappe.generate_hash(length=8)
+		statuses = ("Sent", "Bounced", "Skipped", "Queued", "Failed")
+		for index, status in enumerate(statuses):
+			# Raw insertion: no Email Queue row exists, as after a Log Settings purge.
+			frappe.get_doc({"doctype": "Email Campaign", "name": f"{campaign}-{index}",
+				"campaign_name": campaign, "custom_ab_phase": "Test", "custom_ab_variant": "A",
+				"custom_email_queue": f"{campaign}-Q{index}", "custom_delivery_status": status,
+				"custom_opened": 1}).db_insert()
+		self.assertEqual(ab_test.results(campaign)["A"], {"sent": 2, "opened": 2, "clicked": 0})
