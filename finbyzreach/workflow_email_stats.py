@@ -32,6 +32,41 @@ def aggregate(sent_rows, tracking_rows):
 	return sorted(groups.values(), key=lambda g: (-g["sent"], g["workflow_title"]))
 
 
+def _handoff_key(row):
+	return (row["email_queue"], row["communication"], str(row["recipient"]).strip().lower())
+
+
+def _sent_workflow_rows(ledger_rows):
+	"""A completed effect proves queue creation, not SMTP handoff to its recipient."""
+	candidates = []
+	for row in ledger_rows:
+		try:
+			result = json.loads(row.result_json or "{}")
+		except (TypeError, ValueError):
+			continue
+		if not isinstance(result, dict) or result.get("suppressed"):
+			continue
+		if not all(isinstance(result.get(field), str) and result[field].strip()
+			for field in ("communication", "email_queue", "recipient")):
+			continue
+		candidates.append({"workflow": row.workflow, "workflow_title": row.title,
+			"email_template": result.get("email_template") or "", "communication": result["communication"],
+			"email_queue": result["email_queue"], "recipient": result["recipient"]})
+	if not candidates:
+		return []
+	queue = frappe.qb.DocType("Email Queue")
+	recipient = frappe.qb.DocType("Email Queue Recipient")
+	# A partially sent/error queue can still have delivered this recipient. Later
+	# bounces and unsubscribes do not erase its successful SMTP handoff either.
+	handoffs = (frappe.qb.from_(queue).join(recipient).on(recipient.parent == queue.name)
+		.select(queue.name, queue.communication, recipient.recipient)
+		.where(queue.name.isin(list({row["email_queue"] for row in candidates})))
+		.where((recipient.parenttype == "Email Queue") & (recipient.parentfield == "recipients")
+			& (recipient.status == "Sent"))).run(as_dict=True)
+	sent = {(row.name, row.communication, str(row.recipient).strip().lower()) for row in handoffs}
+	return [row for row in candidates if _handoff_key(row) in sent]
+
+
 @frappe.whitelist(methods=["GET"])
 def workflow_email_usage(days=30):
 	"""Per workflow and e-mail: sent, opened, clicked, bounced and unsubscribed in the last N days."""
@@ -56,15 +91,7 @@ def workflow_email_usage(days=30):
 		found = page.orderby(ledger.name).limit(500).run(as_dict=True)
 		if not found:
 			break
-		sent_rows = []
-		for row in found:
-			try:
-				result = json.loads(row.result_json or "{}")
-			except ValueError:
-				continue
-			if isinstance(result, dict) and result.get("communication"):
-				sent_rows.append({"workflow": row.workflow, "workflow_title": row.title,
-					"email_template": result.get("email_template") or "", "communication": result["communication"]})
+		sent_rows = _sent_workflow_rows(found)
 		names = list({row["communication"] for row in sent_rows})
 		tracking = frappe.get_all("Email Tracking Event", filters={"communication": ["in", names]},
 			fields=["communication", "event_type"], group_by="communication, event_type", limit_page_length=0) if names and has_tracking else []

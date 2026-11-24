@@ -1,4 +1,6 @@
 """EM-27: workflow e-mail statistics are counted per workflow and e-mail."""
+import json
+
 import frappe
 from frappe.tests import IntegrationTestCase
 
@@ -37,3 +39,59 @@ class TestWorkflowEmailStats(IntegrationTestCase):
 		result = stats.workflow_email_usage(30)
 		self.assertIn("rows", result)
 		self.assertTrue(all(row["sent"] >= 1 for row in result["rows"]))
+
+
+class TestWorkflowEmailHandoff(IntegrationTestCase):
+	def _ledger(self, *, recipient_status="Not Sent", queue_status="Not Sent", delivery_status="Not Sent",
+			other_recipient_sent=False, result_recipient="person@example.com", result_communication=None):
+		key = frappe.generate_hash(length=12)
+		communication = "ZZTEST-WF-COMM-" + key
+		queue = "ZZTEST-WF-QUEUE-" + key
+		# Raw insertion avoids outgoing-mail hooks; no message is enqueued or sent.
+		frappe.get_doc({"doctype": "Communication", "name": communication,
+			"subject": "ZZTEST workflow handoff", "delivery_status": delivery_status,
+			"communication_type": "Automated Message", "communication_medium": "Email",
+			"sent_or_received": "Sent"}).db_insert()
+		frappe.get_doc({"doctype": "Email Queue", "name": queue, "communication": communication,
+			"status": queue_status, "sender": "sender@example.com", "message": "ZZTEST"}).db_insert()
+		frappe.get_doc({"doctype": "Email Queue Recipient", "name": "ZZTEST-WF-R-" + key,
+			"parent": queue, "parenttype": "Email Queue", "parentfield": "recipients",
+			"recipient": "person@example.com", "status": recipient_status}).db_insert()
+		if other_recipient_sent:
+			frappe.get_doc({"doctype": "Email Queue Recipient", "name": "ZZTEST-WF-OTHER-" + key,
+				"parent": queue, "parenttype": "Email Queue", "parentfield": "recipients",
+				"recipient": "other@example.com", "status": "Sent"}).db_insert()
+		return frappe._dict(workflow="ZZTEST Workflow", title="ZZTEST", result_json=json.dumps({
+			"communication": result_communication or communication, "email_queue": queue,
+			"recipient": result_recipient, "email_template": "ZZTEST Template"}))
+
+	def test_queued_sending_and_suppressed_messages_are_not_sent(self):
+		rows = [self._ledger(queue_status=status) for status in ("Not Sent", "Sending", "Error", "Sent")]
+		self.assertEqual(stats._sent_workflow_rows(rows), [])
+
+	def test_another_sent_recipient_does_not_qualify_the_workflow_target(self):
+		row = self._ledger(queue_status="Partially Sent", other_recipient_sent=True)
+		self.assertEqual(stats._sent_workflow_rows([row]), [])
+
+	def test_successful_handoff_survives_later_bounce_or_unsubscribe(self):
+		rows = [self._ledger(recipient_status="Sent", queue_status="Sent", delivery_status=status)
+			for status in ("Sent", "Bounced", "Soft-Bounced", "Recipient Unsubscribed")]
+		sent = stats._sent_workflow_rows(rows)
+		self.assertEqual(len(sent), 4)
+		self.assertEqual(stats.aggregate(sent, [])[0]["sent"], 4)
+
+	def test_sent_target_counts_even_when_the_overall_queue_is_partial_or_error(self):
+		rows = [self._ledger(recipient_status="Sent", queue_status=status)
+			for status in ("Partially Sent", "Error")]
+		self.assertEqual(len(stats._sent_workflow_rows(rows)), 2)
+
+	def test_handoff_must_match_both_communication_and_normalized_recipient(self):
+		valid = self._ledger(recipient_status="Sent", result_recipient=" PERSON@EXAMPLE.COM ")
+		wrong_address = self._ledger(recipient_status="Sent", result_recipient="other@example.com")
+		wrong_communication = self._ledger(recipient_status="Sent", result_communication="UNRELATED")
+		self.assertEqual(len(stats._sent_workflow_rows([valid, wrong_address, wrong_communication])), 1)
+
+	def test_malformed_or_incomplete_legacy_results_are_not_assumed_sent(self):
+		rows = [frappe._dict(result_json=value) for value in (None, "invalid", "[]", "null", "{}",
+			json.dumps({"communication": "C"}))]
+		self.assertEqual(stats._sent_workflow_rows(rows), [])
