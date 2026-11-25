@@ -46,7 +46,7 @@ def _trusted():
 
 def _require_read(doctype):
     if not _trusted():
-        _require_read(doctype)
+        frappe.has_permission(doctype, 'read', throw=True)
 
 
 def _require_segment_read(segment):

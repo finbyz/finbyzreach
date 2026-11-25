@@ -90,6 +90,44 @@ class SegmentSQLTest(TestCase):
         return doc
     def insert(self, name, city='Bern', doctype='Lead'):
         self.database.connection.execute(f'INSERT INTO "tab{doctype}" (name,email_id,city) VALUES (?,?,?)', (name,name+'@example.com',city))
+    def test_read_permission_is_checked(self):
+        with patch.object(frappe, 'has_permission', return_value=True) as permission:
+            service._require_read('Communication')
+        permission.assert_called_once_with('Communication', 'read', throw=True)
+
+    def test_read_permission_denial_is_propagated(self):
+        with patch.object(frappe, 'has_permission', side_effect=frappe.PermissionError) as permission:
+            with self.assertRaises(frappe.PermissionError):
+                service._require_read('Communication')
+        permission.assert_called_once_with('Communication', 'read', throw=True)
+
+    def test_trusted_render_bypasses_read_check_and_restores_it(self):
+        with patch.object(frappe, 'has_permission', return_value=True) as permission:
+            with service.trusted_render():
+                service._require_read('Communication')
+                permission.assert_not_called()
+            service._require_read('Communication')
+        permission.assert_called_once_with('Communication', 'read', throw=True)
+
+    def test_last_activity_segment_checks_permission_and_returns_members(self):
+        self.insert('ACTIVE')
+        self.insert('QUIET')
+        self.database.connection.execute(
+            'CREATE TABLE "tabCommunication" (name TEXT, reference_doctype TEXT, reference_name TEXT, communication_date TEXT)')
+        self.database.connection.execute(
+            "INSERT INTO tabCommunication VALUES ('C', 'Lead', 'ACTIVE', '2026-11-03')")
+        node = {'operator': 'AND', 'conditions': [{
+            'kind': 'relative_date', 'field': service.LAST_ACTIVITY,
+            'comparison': 'within_last', 'amount': 30, 'unit': 'days',
+        }]}
+        segment = self.segment(filter_expression_json=json.dumps(node))
+        with patch.object(frappe, 'has_permission', return_value=True) as permission:
+            self.assertEqual(service.member_names(segment), ['ACTIVE'])
+        permission.assert_called_once_with('Communication', 'read', throw=True)
+        with patch.object(frappe, 'has_permission', side_effect=frappe.PermissionError):
+            with self.assertRaises(frappe.PermissionError):
+                service.member_names(segment)
+
     def test_active_rechecks_saved_filters_without_unsubscribing(self):
         self.insert('A')
         segment = self.segment()
