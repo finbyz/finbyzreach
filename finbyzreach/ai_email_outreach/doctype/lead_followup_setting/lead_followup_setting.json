@@ -11,7 +11,18 @@
   "column_break_rskj",
   "email_agent",
   "person_research_agent",
-  "company_research_agent"
+  "company_research_agent",
+  "inactive_customer_section",
+  "enable_inactive_customer_followup",
+  "days_since_last_order",
+  "max_days_since_last_order",
+  "order_basis",
+  "followup_cooldown_days",
+  "max_inactive_per_run",
+  "column_break_inactive",
+  "inactive_email_agent",
+  "inactive_customer_group",
+  "inactive_territory"
  ],
  "fields": [
   {
@@ -30,7 +41,7 @@
    "fieldname": "email_account",
    "fieldtype": "Link",
    "label": "Email Account",
-   "mandatory_depends_on": "is_enable",
+   "mandatory_depends_on": "eval:doc.is_enable || doc.enable_inactive_customer_followup",
    "options": "Email Account"
   },
   {
@@ -57,13 +68,94 @@
    "label": "Company Research Agent",
    "mandatory_depends_on": "is_enable",
    "options": "AI Agent"
+  },
+  {
+   "description": "Emails customers who have not ordered for a set number of days. Runs with the daily Smart Followup job at 4 PM.",
+   "fieldname": "inactive_customer_section",
+   "fieldtype": "Section Break",
+   "label": "Inactive Customer Follow-up"
+  },
+  {
+   "default": "0",
+   "fieldname": "enable_inactive_customer_followup",
+   "fieldtype": "Check",
+   "label": "Enable Inactive Customer Follow-up"
+  },
+  {
+   "default": "60",
+   "depends_on": "eval:doc.enable_inactive_customer_followup",
+   "fieldname": "days_since_last_order",
+   "fieldtype": "Int",
+   "label": "Days Since Last Order",
+   "mandatory_depends_on": "eval:doc.enable_inactive_customer_followup",
+   "non_negative": 1
+  },
+  {
+   "default": "365",
+   "depends_on": "eval:doc.enable_inactive_customer_followup",
+   "description": "Customers lost for longer than this are not emailed. 0 means no limit.",
+   "fieldname": "max_days_since_last_order",
+   "fieldtype": "Int",
+   "label": "Ignore If Inactive Longer Than (Days)",
+   "non_negative": 1
+  },
+  {
+   "default": "Sales Order",
+   "depends_on": "eval:doc.enable_inactive_customer_followup",
+   "fieldname": "order_basis",
+   "fieldtype": "Select",
+   "label": "Count Orders From",
+   "options": "Sales Order\nSales Invoice"
+  },
+  {
+   "default": "30",
+   "depends_on": "eval:doc.enable_inactive_customer_followup",
+   "description": "Skip a customer if any email was sent to them in this many days.",
+   "fieldname": "followup_cooldown_days",
+   "fieldtype": "Int",
+   "label": "Cooldown Days",
+   "non_negative": 1
+  },
+  {
+   "default": "50",
+   "depends_on": "eval:doc.enable_inactive_customer_followup",
+   "fieldname": "max_inactive_per_run",
+   "fieldtype": "Int",
+   "label": "Max Emails per Run",
+   "non_negative": 1
+  },
+  {
+   "fieldname": "column_break_inactive",
+   "fieldtype": "Column Break"
+  },
+  {
+   "depends_on": "eval:doc.enable_inactive_customer_followup",
+   "fieldname": "inactive_email_agent",
+   "fieldtype": "Link",
+   "label": "Inactive Customer Email Agent",
+   "mandatory_depends_on": "eval:doc.enable_inactive_customer_followup",
+   "options": "AI Agent"
+  },
+  {
+   "depends_on": "eval:doc.enable_inactive_customer_followup",
+   "fieldname": "inactive_customer_group",
+   "fieldtype": "Link",
+   "label": "Only Customer Group",
+   "options": "Customer Group"
+  },
+  {
+   "depends_on": "eval:doc.enable_inactive_customer_followup",
+   "fieldname": "inactive_territory",
+   "fieldtype": "Link",
+   "label": "Only Territory",
+   "options": "Territory"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2025-11-21 17:26:31.131697",
+ "modified": "2026-11-25 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "AI Email Outreach",
  "name": "Lead Followup Setting",

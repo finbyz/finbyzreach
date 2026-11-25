@@ -8,8 +8,18 @@ from datetime import datetime
 def run_followup_job():
     """Background job to analyze opportunity-related activities and draft follow-up emails"""
     setting = frappe.get_single("Lead Followup Setting")
-    if not setting.is_enable:
-        return
+    result = {"queued": 0}
+
+    if frappe.utils.cint(setting.get("enable_inactive_customer_followup")):
+        from finbyzreach.tasks.every_4PM.inactive_customer_followup import run_inactive_customer_followup
+
+        try:
+            result["inactive_customers_queued"] = run_inactive_customer_followup(setting)["queued"]
+        except Exception:
+            frappe.log_error("Inactive Customer Followup failed", frappe.get_traceback())
+
+    if not frappe.utils.cint(setting.is_enable):
+        return result
 
     followups = get_opportunity_followups(setting.days_since_last_activity) or []
     queued = 0
@@ -25,7 +35,8 @@ def run_followup_job():
         )
         queued += 1
 
-    return {"queued": queued}
+    result["queued"] = queued
+    return result
 
 
 def process_followup_row(row):
