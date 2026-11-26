@@ -255,6 +255,7 @@ scheduler_events = {
         "finbyzreach.segment_automation.enqueue_changes",
         "finbyzreach.segment_snapshots.recover",
         "finbyzreach.email_marketing.flush_dirty_campaign_metrics",
+        "finbyzreach.campaign_metrics.reconcile_campaign_metrics",
         "finbyzreach.ab_test.decide_due_tests",
     ],
     "daily": [
