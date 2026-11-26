@@ -7,6 +7,8 @@ import frappe
 from frappe import _
 from frappe.utils import cint, getdate, nowdate
 
+from finbyzreach.workflow_email_stats import _handoff_key, _sent_workflow_rows
+
 
 PAGE_SIZE = 25
 METRICS = (
@@ -263,29 +265,49 @@ def get_workflow_overview(period="previous_month", from_date=None, to_date=None)
     _read_reporting_permissions()
     summary = {"sent": 0, "opened": 0, "clicked": 0, "hard_bounce": 0, "soft_bounce": 0, "spam": 0, "unsubscribed": 0}
     emails = set()
-    if frappe.db.table_exists("Automation Effect Ledger") and frappe.db.table_exists("Email Tracking Event"):
-        rows = frappe.db.sql(
-            """select JSON_UNQUOTE(JSON_EXTRACT(result_json, '$.communication')) as communication,
-                      JSON_UNQUOTE(JSON_EXTRACT(result_json, '$.email_template')) as template
-               from `tabAutomation Effect Ledger`
-               where status = 'COMPLETED' and completed_at >= %(first)s and completed_at < %(end)s
-                 and JSON_EXTRACT(result_json, '$.email_queue') is not null
-                 and JSON_UNQUOTE(JSON_EXTRACT(result_json, '$.email_queue')) != 'null'""",
-            {"first": first, "end": last + timedelta(days=1)},
-            as_dict=True,
-        )
-        communications = [row.communication for row in rows if row.communication and row.communication != "null"]
-        summary["sent"] = len(rows)
-        emails = {row.template for row in rows if row.template and row.template != "null"}
+    if frappe.db.table_exists("Automation Effect Ledger"):
+        communications = set()
+        handoffs = set()
+        after = None
+        while True:
+            filters = [
+                ["status", "=", "COMPLETED"],
+                ["completed_at", ">=", first],
+                ["completed_at", "<", last + timedelta(days=1)],
+            ]
+            if after:
+                filters.append(["name", ">", after])
+            rows = frappe.get_all(
+                "Automation Effect Ledger", filters=filters,
+                fields=["name", "result_json"], order_by="name asc", limit_page_length=500,
+            )
+            # The overview combines all workflows; the shared handoff verifier
+            # does not need their display names here.
+            for row in rows:
+                row.workflow = row.title = None
+            for row in _sent_workflow_rows(rows):
+                key = _handoff_key(row)
+                if key in handoffs:
+                    continue
+                handoffs.add(key)
+                communications.add(row["communication"])
+                if row.get("email_template"):
+                    emails.add(row["email_template"])
+            if len(rows) < 500:
+                break
+            after = rows[-1].name
+        summary["sent"] = len(handoffs)
         kinds = {"Opened": "opened", "Clicked": "clicked", "Bounced": "hard_bounce", "Soft-Bounced": "soft_bounce", "Unsubscribed": "unsubscribed"}
         seen = {key: set() for key in kinds.values()}
-        for offset in range(0, len(communications), 5000):
-            for event in frappe.get_all(
-                "Email Tracking Event",
-                filters={"communication": ["in", communications[offset:offset + 5000]], "event_type": ["in", list(kinds)]},
-                fields=["communication", "event_type"], limit_page_length=0,
-            ):
-                seen[kinds[event.event_type]].add(event.communication)
+        communications = sorted(communications)
+        if frappe.db.table_exists("Email Tracking Event"):
+            for offset in range(0, len(communications), 500):
+                for event in frappe.get_all(
+                    "Email Tracking Event",
+                    filters={"communication": ["in", communications[offset:offset + 500]], "event_type": ["in", list(kinds)]},
+                    fields=["communication", "event_type"], limit_page_length=0,
+                ):
+                    seen[kinds[event.event_type]].add(event.communication)
         for key, values in seen.items():
             summary[key] = len(values)
     accepted = summary["sent"]
@@ -370,7 +392,7 @@ def _trend(names, first_day, last_day):
         ("spam", "Marked As Spam"),
     ):
         if metric == "sent":
-            action_time = "q.modified"
+            action_time = COHORT_TIME
         elif metric == "failed":
             action_time = "coalesce(q.modified, ec.modified)"
         else:
@@ -450,7 +472,7 @@ def get_report(scope="campaign", value=None, days=30, from_date=None, to_date=No
             "hard_bounce": _("Recorded Frappe Communication Bounced statuses. Missing provider feedback cannot be counted."),
             "soft_bounce": _("Recorded Frappe Communication Soft-Bounced statuses. Missing provider feedback cannot be counted."),
             "spam": _("Recorded Frappe Communication Marked As Spam statuses. Zero does not prove no complaints occurred."),
-            "timeline": _("Sent dates use mail queue time; bounce and spam dates use Communication update time. Engagement dates use the first recorded action."),
+            "timeline": _("Sent dates use mail queue update time, or recipient update time when the queue is missing; these dates may be approximate. Bounce and spam dates use Communication update time. Engagement dates use the first recorded action."),
         },
     }
 
@@ -466,7 +488,7 @@ def _metric_query(names, metric):
         status = FEEDBACK_METRICS.get(metric, "Skipped" if metric == "skipped" else ("Sent" if metric == "sent" else "Failed"))
         condition, condition_args = f"({EFFECTIVE_STATUS}) = %s", [status]
         if metric == "sent":
-            timestamp = "q.modified"
+            timestamp = COHORT_TIME
         elif metric in ("failed", "skipped"):
             timestamp = "coalesce(q.modified, ec.modified)"
         else:

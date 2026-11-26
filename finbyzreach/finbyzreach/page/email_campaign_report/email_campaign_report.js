@@ -80,7 +80,7 @@ class EmailCampaignReport {
 					<div class="ecr-table-wrap"><table class="ecr-table"><thead><tr><th>${__("Full Name")}</th><th>${__("Email")}</th><th>${__("Campaign")}</th><th>${__("Status")}</th><th>${__("Action Time")}</th></tr></thead><tbody></tbody></table></div>
 					<div class="ecr-pagination"><span class="ecr-page-label"></span><div><button class="btn btn-default btn-sm ecr-prev">${__("Previous")}</button><button class="btn btn-default btn-sm ecr-next">${__("Next")}</button></div></div>
 				</section>
-				<section class="ecr-card ecr-email-overview"><div class="ecr-section-head"><div><h3>${__("All emails")}</h3><p class="ecr-overview-period"></p></div><button type="button" class="btn btn-default btn-xs ecr-open-overall">${__("View overall statistics")}</button></div><div class="ecr-table-wrap"><table class="ecr-table"><thead><tr><th>${__("Selection")}</th><th>${__("Sent")}</th><th>${__("Opened")}</th><th>${__("Clicked")}</th><th>${__("Replied")}</th><th>${__("Bounces")}</th><th>${__("Unsubscribed")}</th><th>${__("Failed")}</th></tr></thead><tbody></tbody></table></div></section>
+				<section class="ecr-card ecr-email-overview"><div class="ecr-section-head"><div><h3>${__("All emails")}</h3><p class="ecr-overview-period"></p></div><button type="button" class="btn btn-default btn-xs ecr-open-overall">${__("View overall statistics")}</button></div><div class="ecr-table-wrap"><table class="ecr-table"><thead><tr><th>${__("Selection")}</th><th>${__("Sent")}</th><th>${__("Open rate")}</th><th>${__("Click rate")}</th><th>${__("Replied")}</th><th>${__("Bounces")}</th><th>${__("Unsubscribed")}</th><th>${__("Failed")}</th></tr></thead><tbody></tbody></table></div></section>
 				</div>
 				</div>
 				<div class="ecr-cohort" hidden>

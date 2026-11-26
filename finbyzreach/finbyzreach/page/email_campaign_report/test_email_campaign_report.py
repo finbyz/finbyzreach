@@ -242,3 +242,100 @@ class ExportAndSegmentTest(TestCase):
             report.save_metric_as_segment("campaign", "Campaign-1", "opened", "Openers")
         with self.assertRaises(frappe.ValidationError):
             report.save_metric_as_segment("campaign", "Campaign-1", "opened", "  ")
+
+
+class WorkflowOverviewTest(TestCase):
+    @patch.object(report, "_read_reporting_permissions")
+    @patch.object(report.frappe, "db", new_callable=MagicMock)
+    @patch.object(report.frappe, "get_all")
+    @patch.object(report, "_sent_workflow_rows")
+    def test_only_verified_handoffs_count_and_duplicates_do_not_inflate_rates(self, verify, get_all, db, permissions):
+        db.table_exists.return_value = True
+        ledger_rows = [frappe._dict(name="effect-1", result_json="{}"), frappe._dict(name="effect-2", result_json="{}")]
+        verified = dict(email_queue="queue-1", communication="comm-1", recipient="person@example.com", email_template="Welcome")
+        verify.return_value = [verified, dict(verified, recipient="PERSON@example.com")]
+        get_all.side_effect = [ledger_rows, [frappe._dict(communication="comm-1", event_type="Opened")] * 2]
+        data = report.get_workflow_overview("custom", "2026-09-01", "2026-09-30")
+        self.assertEqual((data["summary"]["sent"], data["summary"]["opened"], data["summary"]["open_rate"]), (1, 1, 100.0))
+        self.assertEqual(data["email_count"], 1)
+        verify.assert_called_once_with(ledger_rows)
+        filters = get_all.call_args_list[0].kwargs["filters"]
+        self.assertIn(["completed_at", ">=", date(2026, 9, 1)], filters)
+        self.assertIn(["completed_at", "<", date(2026, 10, 1)], filters)
+        self.assertEqual(get_all.call_args_list[1].kwargs["filters"]["communication"], ["in", ["comm-1"]])
+
+    @patch.object(report, "_read_reporting_permissions")
+    @patch.object(report.frappe, "db", new_callable=MagicMock)
+    @patch.object(report.frappe, "get_all")
+    @patch.object(report, "_sent_workflow_rows", return_value=[])
+    def test_completed_queue_creation_without_handoff_is_not_sent(self, verify, get_all, db, permissions):
+        db.table_exists.return_value = True
+        get_all.return_value = [frappe._dict(name="pending-effect", result_json="{}")]
+        data = report.get_workflow_overview("30")
+        self.assertEqual(data["summary"]["sent"], 0)
+        self.assertIsNone(data["summary"]["open_rate"])
+        self.assertEqual(data["email_count"], 0)
+        self.assertEqual(get_all.call_count, 1)
+
+    @patch.object(report, "_read_reporting_permissions")
+    @patch.object(report.frappe, "db", new_callable=MagicMock)
+    @patch.object(report.frappe, "get_all")
+    @patch.object(report, "_sent_workflow_rows")
+    def test_pagination_and_missing_tracking_table_preserve_confirmed_send(self, verify, get_all, db, permissions):
+        db.table_exists.side_effect = lambda table: table == "Automation Effect Ledger"
+        rows = [frappe._dict(name=f"effect-{i:04}", result_json="{}") for i in range(500)]
+        get_all.side_effect = [rows, []]
+        verify.side_effect = [[dict(email_queue="q", communication="c", recipient="p@example.com", email_template="T")], []]
+        data = report.get_workflow_overview("30")
+        self.assertEqual(data["summary"]["sent"], 1)
+        self.assertEqual(data["summary"]["opened"], 0)
+        self.assertIn(["name", ">", "effect-0499"], get_all.call_args_list[1].kwargs["filters"])
+
+
+class HistoricalSendTimeTest(TestCase):
+    def test_purged_queue_keeps_sent_timeline_detail_and_export_date(self):
+        # Execute the actual report SQL against a small relational fixture.
+        import sqlite3
+
+        self.enterContext(patch.object(frappe.local, "response", frappe._dict(), create=True))
+        connection = sqlite3.connect(":memory:")
+        self.addCleanup(connection.close)
+        connection.row_factory = sqlite3.Row
+        connection.executescript('''
+            create table `tabEmail Campaign` (
+                name text, campaign_name text, modified text, custom_email_queue text,
+                custom_communication text, custom_delivery_status text, custom_opened int,
+                custom_opened_on text, custom_clicked int, custom_clicked_on text,
+                custom_unsubscribed int, custom_unsubscribed_on text, custom_replied int,
+                custom_replied_on text, custom_recipient_email text, recipient text,
+                email_campaign_for text, custom_contact text, custom_error_message text,
+                custom_excluded_reason text);
+            create table `tabEmail Queue` (name text, modified text);
+            create table `tabCommunication` (name text, delivery_status text, modified text,
+                in_reply_to text, sent_or_received text, sender text);
+            insert into `tabEmail Campaign` (name, campaign_name, modified, custom_email_queue,
+                custom_delivery_status, custom_recipient_email)
+                values ('old', 'Campaign-1', '2026-09-24 12:00:00', 'purged', 'Sent', 'p@example.com'),
+                       ('current', 'Campaign-1', '2026-09-25 12:00:00', 'existing', 'Sent', 'q@example.com');
+            insert into `tabEmail Queue` values ('existing', '2026-09-24 13:00:00');
+        ''')
+
+        def sql(query, args=None, as_dict=False):
+            args = [str(value) if isinstance(value, date) else value for value in (args or [])]
+            rows = connection.execute(query.replace("%s", "?"), args).fetchall()
+            return [frappe._dict(dict(row)) for row in rows] if as_dict else [tuple(row) for row in rows]
+
+        db = MagicMock()
+        db.sql.side_effect = sql
+        with (patch.object(report.frappe, "db", db),
+              patch.object(report, "_campaign_names", return_value=["Campaign-1"]),
+              patch.object(report.frappe, "has_permission", return_value=True)):
+            trend = report._trend(["Campaign-1"], date(2026, 9, 24), date(2026, 9, 25))
+            self.assertEqual([row.get("sent", 0) for row in trend], [2, 0])
+            details = report.get_details("campaign", "Campaign-1", "sent")
+            self.assertEqual(details["total"], 2)
+            self.assertEqual({row["action_time"] for row in details["rows"]}, {"2026-09-24 12:00:00", "2026-09-24 13:00:00"})
+            report.export_metric("campaign", "Campaign-1", "sent")
+            csv = frappe.response["filecontent"].decode("utf-8-sig")
+            self.assertIn("2026-09-24 12:00:00", csv)
+            self.assertIn("2026-09-24 13:00:00", csv)

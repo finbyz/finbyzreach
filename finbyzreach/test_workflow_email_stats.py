@@ -105,3 +105,27 @@ class TestWorkflowEmailHandoff(IntegrationTestCase):
 			frappe.db.delete("Email Queue Recipient", {"parent": queue})
 			frappe.db.delete("Email Queue", {"name": queue})
 		self.assertEqual(len(stats._sent_workflow_rows(rows)), 3)
+
+	def test_report_overview_counts_actual_handoffs_within_selected_period(self):
+		from finbyzreach.finbyzreach.page.email_campaign_report import email_campaign_report as report
+
+		pending = self._ledger(queue_status="Sending")
+		failed = self._ledger(queue_status="Error")
+		partial = self._ledger(recipient_status="Sent", queue_status="Partially Sent")
+		purged = self._ledger(recipient_status="Sent", queue_status="Sent", delivery_status="Sent")
+		queue = json.loads(purged.result_json)["email_queue"]
+		frappe.db.delete("Email Queue Recipient", {"parent": queue})
+		frappe.db.delete("Email Queue", {"name": queue})
+		# A future test-only period isolates these uncommitted rows from site data.
+		for row, completed_at in [(pending, "2099-01-01"), (failed, "2099-01-01"),
+				(partial, "2099-01-01"), (partial, "2099-01-01"), (purged, "2099-01-01"),
+				(self._ledger(recipient_status="Sent"), "2099-01-02"),
+				(frappe._dict(result_json="{}"), "2099-01-01")]:
+			key = "ZZTEST-WF-EFFECT-" + frappe.generate_hash(length=12)
+			frappe.get_doc({"doctype": "Automation Effect Ledger", "name": key,
+				"effect_key": key, "request_hash": key, "run": "ZZTEST", "node_id": "ZZTEST",
+				"status": "COMPLETED", "completed_at": completed_at,
+				"result_json": row.result_json}).db_insert()
+		result = report.get_workflow_overview("custom", "2099-01-01", "2099-01-01")
+		self.assertEqual(result["summary"]["sent"], 2)
+		self.assertEqual(result["email_count"], 1)
