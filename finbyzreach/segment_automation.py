@@ -83,14 +83,17 @@ def capture_change(doc, method=None, enqueue=True):
         return
     if not frappe.db.exists('Reach Segment', {'archived': 0} if doc.doctype == 'Email Subscription Preference' else {'audience_doctype': doc.doctype, 'archived': 0}):
         return
-    from hashlib import sha256
+    from uuid import uuid4
     from frappe.utils import now_datetime
-    key = sha256(f'{doc.doctype}\0{doc.name}'.encode()).hexdigest()
+    # Each committed change owns its row. A deterministic identity key races
+    # with a drain deleting that key, and can abort the caller with MariaDB 1020.
+    # Append in the caller's transaction, so rollback also removes the change.
+    key = uuid4().hex
     now = now_datetime()
     user = frappe.session.user
     frappe.db.bulk_insert('Reach Segment Pending Record',
         ['name','creation','modified','owner','modified_by','record_doctype','record_name'],
-        [(key,now,now,user,user,doc.doctype,doc.name)], ignore_duplicates=True)
+        [(key,now,now,user,user,doc.doctype,doc.name)])
     if enqueue:
         enqueue_changes()
 
@@ -244,6 +247,7 @@ def drain_batch():
     """Apply one batch of pending records. Returns how many rows the batch read."""
     rows = pending_batch()
     affected = set()
+    processed = set()
     for row in rows:
         # Lock the pending key with one locking read. A plain exists() check reads this
         # transaction's snapshot, so it still sees a row a concurrent drain has already
@@ -251,11 +255,14 @@ def drain_batch():
         # that drain to commit and then returns None, so the record is skipped, not redone.
         if not frappe.db.get_value('Reach Segment Pending Record', row.name, 'name', for_update=True):
             continue
-        if row.record_doctype == 'Email Subscription Preference':
-            from finbyzreach.subscriber_segments import queue_subscription_records
-            queue_subscription_records(row.record_name)
-        else:
-            affected.update(sync_record(row.record_doctype, row.record_name))
+        identity = (row.record_doctype, row.record_name)
+        if identity not in processed:
+            if row.record_doctype == 'Email Subscription Preference':
+                from finbyzreach.subscriber_segments import queue_subscription_records
+                queue_subscription_records(row.record_name)
+            else:
+                affected.update(sync_record(row.record_doctype, row.record_name))
+            processed.add(identity)
         frappe.db.delete('Reach Segment Pending Record', {'name':row.name})
     for name in affected:
         segment = frappe.get_doc('Reach Segment', name)
