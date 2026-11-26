@@ -25,7 +25,7 @@ add_to_apps_screen = [
 app_include_css = [
     "/assets/finbyzreach/css/subscription_preferences.css?v=20261119.1",
     "/assets/finbyzreach/css/segments.css?v=20261119.1",
-    "/assets/finbyzreach/css/folder_sidebar.css?v=20261114.3",
+    "/assets/finbyzreach/css/folder_sidebar.css?v=20261126.3",
     "/assets/finbyzreach/css/email_workspace.css?v=20261114.1",
 ]
 after_request = ["finbyzreach.subscription_embed.set_subscription_embed_policy"]
