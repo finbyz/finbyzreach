@@ -531,7 +531,7 @@ def export_metric(scope="campaign", value=None, metric="opened"):
         # A leading = + - @ would be run as a formula by spreadsheet programs.
         cells = [row.email, row.audience, row.record, row.campaign, str(row.action_time or ""), row.reason or ""]
         writer.writerow(["'" + c if c and c[0] in "=+-@" else c for c in cells])
-    frappe.response["filename"] = f"email-{metric}-{frappe.utils.nowdate()}.csv"
+    frappe.response["filename"] = f"email-{metric}-{nowdate()}.csv"
     frappe.response["filecontent"] = out.getvalue().encode("utf-8-sig")
     frappe.response["type"] = "download"
 

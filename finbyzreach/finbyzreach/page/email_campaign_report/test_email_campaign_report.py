@@ -220,6 +220,10 @@ class SkippedAndLinkClicksTest(TestCase):
 
 
 class ExportAndSegmentTest(TestCase):
+    def setUp(self):
+        # These tests replace frappe.db, and nowdate() reads the time zone through it.
+        self.enterContext(patch.object(report, "nowdate", return_value="2026-10-06"))
+
     @patch.object(report, "_campaign_names", return_value=["Campaign-1"])
     @patch.object(report.frappe, "has_permission", return_value=True)
     @patch.object(report.frappe.db, "sql")
@@ -245,6 +249,10 @@ class ExportAndSegmentTest(TestCase):
 
 
 class WorkflowOverviewTest(TestCase):
+    def setUp(self):
+        # These tests replace frappe.db, and nowdate() reads the time zone through it.
+        self.enterContext(patch.object(report, "nowdate", return_value="2026-10-06"))
+
     @patch.object(report, "_read_reporting_permissions")
     @patch.object(report.frappe, "db", new_callable=MagicMock)
     @patch.object(report.frappe, "get_all")
@@ -293,6 +301,10 @@ class WorkflowOverviewTest(TestCase):
 
 
 class HistoricalSendTimeTest(TestCase):
+    def setUp(self):
+        # These tests replace frappe.db, and nowdate() reads the time zone through it.
+        self.enterContext(patch.object(report, "nowdate", return_value="2026-10-06"))
+
     def test_purged_queue_keeps_sent_timeline_detail_and_export_date(self):
         # Execute the actual report SQL against a small relational fixture.
         import sqlite3
